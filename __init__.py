@@ -29,6 +29,17 @@ from ai_film_editor_nodes.nodes.export.shot_sequence_builder_node import AFE_Sho
 from ai_film_editor_nodes.nodes.export.project_export_node import AFE_ProjectExport
 from ai_film_editor_nodes.nodes.export.watermark_node import AFE_Watermark
 
+# Part 5 - Consistency
+from ai_film_editor_nodes.nodes.consistency.ipadapter_node import AFE_IPAdapterConfig
+from ai_film_editor_nodes.nodes.consistency.controlnet_node import AFE_ControlNetPose
+
+# Part 5 - Production
+from ai_film_editor_nodes.nodes.production.transition_node import AFE_TransitionEffect
+from ai_film_editor_nodes.nodes.production.subtitle_node import AFE_SubtitleOverlay
+from ai_film_editor_nodes.nodes.production.colorgrade_node import AFE_ColorGrade
+from ai_film_editor_nodes.nodes.production.quality_gate_node import AFE_QualityGate
+from ai_film_editor_nodes.nodes.production.shot_report_node import AFE_ShotReport
+
 NODE_CLASS_MAPPINGS = {
     # Part 1
     "AFE_CharacterAsset": AFE_CharacterAsset,
@@ -54,6 +65,14 @@ NODE_CLASS_MAPPINGS = {
     "AFE_ShotSequenceBuilder": AFE_ShotSequenceBuilder,
     "AFE_ProjectExport": AFE_ProjectExport,
     "AFE_Watermark": AFE_Watermark,
+    # Part 5
+    "AFE_IPAdapterConfig": AFE_IPAdapterConfig,
+    "AFE_ControlNetPose": AFE_ControlNetPose,
+    "AFE_TransitionEffect": AFE_TransitionEffect,
+    "AFE_SubtitleOverlay": AFE_SubtitleOverlay,
+    "AFE_ColorGrade": AFE_ColorGrade,
+    "AFE_QualityGate": AFE_QualityGate,
+    "AFE_ShotReport": AFE_ShotReport,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -81,6 +100,14 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AFE_ShotSequenceBuilder": "🎬 Shot Sequence Builder",
     "AFE_ProjectExport": "📤 Project Export",
     "AFE_Watermark": "💧 Watermark",
+    # Part 5
+    "AFE_IPAdapterConfig": "🎭 IP-Adapter Config (Character Consistency)",
+    "AFE_ControlNetPose": "🦾 ControlNet Pose Control",
+    "AFE_TransitionEffect": "✂️ Transition Effect",
+    "AFE_SubtitleOverlay": "💬 Subtitle Overlay",
+    "AFE_ColorGrade": "🎨 Color Grade",
+    "AFE_QualityGate": "✅ Quality Gate",
+    "AFE_ShotReport": "📋 Shot Report",
 }
 
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]
