@@ -9,6 +9,7 @@ from ai_film_editor_nodes.nodes.director.shot_duration_node import AFE_ShotDurat
 from ai_film_editor_nodes.nodes.director.tail_frame_node import AFE_TailFrameExtractor
 from ai_film_editor_nodes.nodes.director.tone_comp_node import AFE_ToneCompensation
 from ai_film_editor_nodes.nodes.adapters.video_adapter_node import AFE_VideoModelAdapter
+from ai_film_editor_nodes.nodes.utils.prompt_preview_node import AFE_PromptPreview
 
 NODE_CLASS_MAPPINGS = {
     "AFE_CharacterAsset": AFE_CharacterAsset,
@@ -19,6 +20,7 @@ NODE_CLASS_MAPPINGS = {
     "AFE_TailFrameExtractor": AFE_TailFrameExtractor,
     "AFE_ToneCompensation": AFE_ToneCompensation,
     "AFE_VideoModelAdapter": AFE_VideoModelAdapter,
+    "AFE_PromptPreview": AFE_PromptPreview,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -30,6 +32,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AFE_TailFrameExtractor": "AFE Tail Frame Extractor",
     "AFE_ToneCompensation": "AFE Tone Compensation",
     "AFE_VideoModelAdapter": "AFE Video Model Adapter",
+    "AFE_PromptPreview": "AFE Prompt Preview",
 }
 
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]

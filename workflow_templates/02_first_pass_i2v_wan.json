@@ -1,0 +1,170 @@
+{
+  "1": {
+    "inputs": {
+      "character_name": "主角",
+      "positive_prompt": "1girl, beautiful, detailed face, cinematic",
+      "negative_prompt": "lowres, bad anatomy, blurry",
+      "seed": -1,
+      "base_model": "wan_i2v_14b_480p",
+      "load_existing": false
+    },
+    "class_type": "AFE_CharacterAsset",
+    "_meta": {"title": "AFE Character Asset"}
+  },
+  "2": {
+    "inputs": {
+      "character": ["1", 0],
+      "outfit_name": "默认服装",
+      "outfit_prompt": "casual clothes, t-shirt, jeans",
+      "negative_prompt": ""
+    },
+    "class_type": "AFE_OutfitAsset",
+    "_meta": {"title": "AFE Outfit Asset"}
+  },
+  "3": {
+    "inputs": {
+      "scene_name": "室内场景",
+      "background_prompt": "modern living room, warm lighting",
+      "scene_type": "interior",
+      "ambient_light": "warm"
+    },
+    "class_type": "AFE_SceneAsset",
+    "_meta": {"title": "AFE Scene Asset"}
+  },
+  "4": {
+    "inputs": {"base_frames": 124, "fps": 24, "add_seconds": 0.0},
+    "class_type": "AFE_ShotDuration",
+    "_meta": {"title": "AFE Shot Duration"}
+  },
+  "5": {
+    "inputs": {
+      "character": ["1", 0],
+      "outfit": ["2", 0],
+      "scene": ["3", 0],
+      "shot_prompt": "镜头描述：人物走向窗边，转身看向镜头",
+      "camera_motion": "static",
+      "target_model": "wan_i2v",
+      "width": 640,
+      "height": 360,
+      "seed": -1
+    },
+    "class_type": "AFE_VideoModelAdapter",
+    "_meta": {"title": "AFE Video Model Adapter"}
+  },
+  "6": {
+    "inputs": {
+      "positive": ["5", 0],
+      "negative": ["5", 1],
+      "seed": ["5", 2],
+      "width": ["5", 3],
+      "height": ["5", 4]
+    },
+    "class_type": "AFE_PromptPreview",
+    "_meta": {"title": "AFE Prompt Preview"}
+  },
+  "7": {
+    "inputs": {"image": "tail_frame.png", "upload": "image"},
+    "class_type": "LoadImage",
+    "_meta": {"title": "Load Tail Frame"}
+  },
+  "8": {
+    "inputs": {
+      "current_image": ["7", 0],
+      "reference_frame": ["7", 0],
+      "strength": 0.3,
+      "enable": true
+    },
+    "class_type": "AFE_ToneCompensation",
+    "_meta": {"title": "AFE Tone Compensation"}
+  },
+  "9": {
+    "inputs": {
+      "model": "Wan2.1-I2V-14B-480P_fp8_e4m3fn.safetensors",
+      "dtype": "fp8_e4m3fn",
+      "fp8_fastmode": false
+    },
+    "class_type": "WanVideoModelLoader",
+    "_meta": {"title": "Wan Video Model Loader"}
+  },
+  "10": {
+    "inputs": {"clip_name": "umt5-xxl-enc-bf16.safetensors", "type": "sd3"},
+    "class_type": "CLIPLoader",
+    "_meta": {"title": "CLIP Loader (T5)"}
+  },
+  "11": {
+    "inputs": {"vae_name": "wan_2.1_vae.safetensors"},
+    "class_type": "VAELoader",
+    "_meta": {"title": "VAE Loader"}
+  },
+  "12": {
+    "inputs": {
+      "clip": ["10", 0],
+      "positive": ["6", 0],
+      "negative": ["6", 1]
+    },
+    "class_type": "WanTextEncode",
+    "_meta": {"title": "Wan Text Encode"}
+  },
+  "13": {
+    "inputs": {
+      "vae": ["11", 0],
+      "image": ["8", 0],
+      "width": ["6", 3],
+      "height": ["6", 4],
+      "length": ["4", 0],
+      "batch_size": 1
+    },
+    "class_type": "WanImageToVideoLatent",
+    "_meta": {"title": "Wan I2V Latent"}
+  },
+  "14": {
+    "inputs": {
+      "model": ["9", 0],
+      "add_noise": "enable",
+      "noise_seed": ["6", 2],
+      "steps": 20,
+      "cfg": 6.0,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "positive": ["12", 0],
+      "negative": ["12", 1],
+      "latent_image": ["13", 0],
+      "start_at_step": 0,
+      "end_at_step": 10000,
+      "return_with_leftover_noise": "disable"
+    },
+    "class_type": "KSamplerAdvanced",
+    "_meta": {"title": "KSampler Advanced"}
+  },
+  "15": {
+    "inputs": {
+      "samples": ["14", 0],
+      "vae": ["11", 0],
+      "enable_vae_tiling": false
+    },
+    "class_type": "WanVideoVAEDecode",
+    "_meta": {"title": "Wan Video VAE Decode"}
+  },
+  "16": {
+    "inputs": {"images": ["15", 0], "extract_mode": "last_frame"},
+    "class_type": "AFE_TailFrameExtractor",
+    "_meta": {"title": "AFE Tail Frame Extractor"}
+  },
+  "17": {
+    "inputs": {"images": ["16", 0], "filename_prefix": "AFE_tail_frame"},
+    "class_type": "SaveImage",
+    "_meta": {"title": "Save Tail Frame"}
+  },
+  "18": {
+    "inputs": {
+      "images": ["15", 0],
+      "frame_rate": 24.0,
+      "loop_count": 0,
+      "filename_prefix": "AFE_shot",
+      "format": "video/h264-mp4",
+      "save_output": true
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {"title": "VHS Video Combine"}
+  }
+}

@@ -1,53 +1,31 @@
-# Required & Recommended Nodes
+# Required Nodes for AI Film Editor Workflows
 
-## Built-in ComfyUI Nodes (No Installation)
-These come with every ComfyUI installation:
-- `KSampler` / `KSamplerAdvanced`
-- `CLIPTextEncode`
-- `VAEDecode` / `VAEEncode`
-- `CheckpointLoaderSimple`
-- `LoadImage`
-- `SaveImage`
-- `EmptyLatentImage`
-- `LoraLoader`
-- `VAELoader`
-- `CLIPLoader`
-- `ImageScale` / `ImageUpscaleWithModel`
+---
 
-## Recommended Third-Party Nodes
+## Section 1 — 内置节点（ComfyUI 自带，无需安装）
 
-### ComfyUI-VideoHelperSuite (required for video workflows)
-- **Repo**: https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite
-- **Nodes used**: `VHS_VideoCombine`, `VHS_LoadVideo`, `VHS_LoadImages`
-- **Install via ComfyUI Manager** or:
-  ```bash
-  cd ComfyUI/custom_nodes
-  git clone https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite
-  ```
+KSampler, KSamplerAdvanced, CLIPTextEncode, VAEDecode, VAELoader, CLIPLoader, CheckpointLoaderSimple, LoadImage, SaveImage, EmptyLatentImage, ImageScale
 
-## Video Model Nodes (Install one based on your model)
+---
 
-### Wan 2.1
-Wan video nodes are included in recent ComfyUI versions (search for `WanImageToVideo` or `WanTextToVideo` in your node list). If not present, search **ComfyUI Manager** for "Wan" to install a community pack.
-- Wan 2.1 I2V 14B 480p model: https://huggingface.co/Wan-AI/Wan2.1-I2V-14B-480P
-- Wan 2.1 T2V 1.3B model (lighter): https://huggingface.co/Wan-AI/Wan2.1-T2V-1.3B
+## Section 2 — 通过 ComfyUI Manager 安装
 
-### Kling
-Search ComfyUI Manager for "Kling" or use Kling's official API with a generic HTTP node.
+- **ComfyUI-VideoHelperSuite**（作者：Kosinkadink）
+  - 安装方式：ComfyUI Manager → Search "VideoHelperSuite"
+  - 提供节点：VHS_VideoCombine
 
-## Model Files (Download Required)
-Place model files in the ComfyUI `models/` subdirectory as directed by each loader node.
+- **ComfyUI-WanVideoWrapper**（作者：kijai）
+  - 安装方式：ComfyUI Manager → Search "WanVideoWrapper"
+  - 提供节点：WanVideoModelLoader, WanTextEncode, WanImageToVideoLatent, WanVideoVAEDecode
 
-| Model | Type | Link | Destination |
-|-------|------|------|-------------|
-| SD 1.5 | Checkpoint | https://huggingface.co/runwayml/stable-diffusion-v1-5 | `models/checkpoints/` |
-| SDXL 1.0 | Checkpoint | https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0 | `models/checkpoints/` |
-| Wan 2.1 I2V 14B 480p | Video | https://huggingface.co/Wan-AI/Wan2.1-I2V-14B-480P | `models/wan/` |
-| Wan 2.1 T2V 1.3B | Video | https://huggingface.co/Wan-AI/Wan2.1-T2V-1.3B | `models/wan/` |
+---
 
-## Minimum System Requirements
-- Python 3.10+
-- ComfyUI latest stable (https://github.com/comfyanonymous/ComfyUI)
-- 16 GB RAM (32 GB recommended for 14B video models)
-- NVIDIA GPU 8 GB VRAM+ (24 GB+ for 14B video models)
-- CUDA 11.8+ or 12.x
+## Section 3 — 模型文件下载（放到 ComfyUI 对应 models 子目录）
+
+| 文件名 | 目标目录 |
+|--------|----------|
+| Wan2.1-I2V-14B-480P_fp8_e4m3fn.safetensors | models/diffusion_models/ |
+| umt5-xxl-enc-bf16.safetensors | models/text_encoders/ |
+| wan_2.1_vae.safetensors | models/vae/ |
+
+下载地址：https://huggingface.co/Kijai/WanVideo_comfy

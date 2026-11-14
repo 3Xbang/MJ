@@ -1,0 +1,14 @@
+{
+  "1": {
+    "inputs": {
+      "script_text": "在这里输入剧本...",
+      "llm_api_key": "",
+      "llm_base_url": "https://api.openai.com/v1",
+      "llm_model": "gpt-4o-mini",
+      "available_characters": "",
+      "available_scenes": ""
+    },
+    "class_type": "AFE_ScriptParser",
+    "_meta": {"title": "AFE Script Parser"}
+  }
+}

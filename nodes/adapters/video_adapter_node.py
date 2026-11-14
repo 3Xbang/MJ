@@ -21,16 +21,16 @@ class AFE_VideoModelAdapter:
         return {
             "required": {
                 "character": ("CHARACTER_ASSET",),
-                "scene": ("SCENE_ASSET",),
                 "shot_prompt": ("STRING", {"multiline": True, "default": ""}),
                 "camera_motion": (["static", "pan_left", "pan_right", "zoom_in", "zoom_out", "tilt_up", "tilt_down", "orbit"],),
-                "target_model": (["wan_i2v", "wan_t2v", "kling_i2v", "generic"],),
+                "target_model": (["wan_i2v", "wan_t2v", "generic"],),
                 "width": ("INT", {"default": 640, "min": 64, "max": 2048, "step": 8}),
                 "height": ("INT", {"default": 360, "min": 64, "max": 2048, "step": 8}),
+                "seed": ("INT", {"default": -1, "min": -1, "max": 2**31 - 1}),
             },
             "optional": {
                 "outfit": ("OUTFIT_ASSET",),
-                "seed": ("INT", {"default": -1, "min": -1, "max": 2**31 - 1}),
+                "scene": ("SCENE_ASSET",),
                 "negative_prompt": ("STRING", {"multiline": True, "default": ""}),
             }
         }
@@ -40,14 +40,15 @@ class AFE_VideoModelAdapter:
     FUNCTION = "adapt_for_model"
     CATEGORY = "AI Film Editor/Adapters"
 
-    def adapt_for_model(self, character, scene, shot_prompt, camera_motion, target_model,
-                        width, height, outfit=None, seed=-1, negative_prompt=""):
+    def adapt_for_model(self, character, shot_prompt, camera_motion, target_model,
+                        width, height, seed, scene=None, outfit=None, negative_prompt=""):
         char_pos = character.get("positive_prompt", "")
         char_neg = character.get("negative_prompt", "")
-        scene_bg = scene.get("background_prompt", "")
-        scene_neg = scene.get("negative_prompt", "")
         outfit_pos = outfit.get("outfit_prompt", "") if outfit else ""
         outfit_neg = outfit.get("negative_prompt", "") if outfit else ""
+
+        scene_bg = scene.get("background_prompt", "") if scene else ""
+        scene_neg = scene.get("negative_prompt", "") if scene else ""
 
         parts = [p for p in [char_pos, outfit_pos, scene_bg, shot_prompt] if p.strip()]
         cam_desc = CAMERA_MOTION_DESCRIPTIONS.get(camera_motion, "camera static")
@@ -56,9 +57,6 @@ class AFE_VideoModelAdapter:
             positive = ", ".join(parts)
             if cam_desc:
                 positive = f"{positive}, {cam_desc}"
-        elif target_model == "kling_i2v":
-            positive = ", ".join(parts)
-            positive = f"{positive}, {cam_desc}, high quality, 4K, cinematic, smooth motion"
         else:  # generic
             positive = " ".join(parts)
             if cam_desc:
