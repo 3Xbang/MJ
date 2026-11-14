@@ -1,0 +1,103 @@
+{
+  "last_node_id": 7,
+  "last_link_id": 7,
+  "nodes": [
+    {
+      "id": 1, "type": "AFE_ScriptParser",
+      "pos": [50, 100], "size": {"0": 315, "1": 200},
+      "flags": {}, "order": 0, "mode": 0,
+      "outputs": [
+        {"name": "shot_sequence", "type": "SHOT_SEQUENCE", "links": [1], "slot_index": 0},
+        {"name": "shot_count", "type": "INT", "links": [], "slot_index": 1},
+        {"name": "script_summary", "type": "STRING", "links": [], "slot_index": 2}
+      ],
+      "inputs": [],
+      "widgets_values": [""]
+    },
+    {
+      "id": 2, "type": "AFE_ShotSequenceBuilder",
+      "pos": [420, 100], "size": {"0": 315, "1": 150},
+      "flags": {}, "order": 1, "mode": 0,
+      "outputs": [
+        {"name": "sequence_manifest_path", "type": "STRING", "links": [2], "slot_index": 0},
+        {"name": "total_shots", "type": "INT", "links": [], "slot_index": 1},
+        {"name": "total_duration_seconds", "type": "FLOAT", "links": [], "slot_index": 2}
+      ],
+      "inputs": [
+        {"name": "shot_sequence", "type": "SHOT_SEQUENCE", "link": 1}
+      ],
+      "widgets_values": ["./output/final", "我的影片", false]
+    },
+    {
+      "id": 3, "type": "AFE_ProjectExport",
+      "pos": [800, 100], "size": {"0": 315, "1": 200},
+      "flags": {}, "order": 2, "mode": 0,
+      "outputs": [
+        {"name": "export_config_json", "type": "STRING", "links": [], "slot_index": 0}
+      ],
+      "inputs": [
+        {"name": "sequence_manifest_path", "type": "STRING", "link": 2}
+      ],
+      "widgets_values": ["mp4_h264", "1080p", "high", 24.0, true, "我的影片"]
+    },
+    {
+      "id": 4, "type": "VHS_LoadVideo",
+      "pos": [50, 400], "size": {"0": 315, "1": 200},
+      "flags": {}, "order": 3, "mode": 0,
+      "outputs": [
+        {"name": "IMAGE", "type": "IMAGE", "links": [3], "slot_index": 0},
+        {"name": "frame_count", "type": "INT", "links": [], "slot_index": 1},
+        {"name": "audio", "type": "AUDIO", "links": [4], "slot_index": 2}
+      ],
+      "inputs": [],
+      "widgets_values": ["shot_01_final.mp4", "all", 0, 0, "enabled", false, false, "ComfyUI"]
+    },
+    {
+      "id": 5, "type": "VHS_VideoCombine",
+      "pos": [420, 400], "size": {"0": 315, "1": 200},
+      "flags": {}, "order": 4, "mode": 0,
+      "outputs": [
+        {"name": "Filenames", "type": "VHS_FILENAMES", "links": [5], "slot_index": 0}
+      ],
+      "inputs": [
+        {"name": "images", "type": "IMAGE", "link": 3},
+        {"name": "audio", "type": "AUDIO", "link": 4}
+      ],
+      "widgets_values": [24, 0, "AFE_final", "video/h264-mp4", true, "default", {}]
+    },
+    {
+      "id": 6, "type": "AFE_Watermark",
+      "pos": [800, 400], "size": {"0": 315, "1": 200},
+      "flags": {}, "order": 5, "mode": 0,
+      "outputs": [
+        {"name": "images", "type": "IMAGE", "links": [6], "slot_index": 0}
+      ],
+      "inputs": [
+        {"name": "images", "type": "IMAGE", "link": 5}
+      ],
+      "widgets_values": ["AI Film Editor", "bottom_right", 0.3, false, 24, "#FFFFFF"]
+    },
+    {
+      "id": 7, "type": "SaveImage",
+      "pos": [1150, 400], "size": {"0": 315, "1": 150},
+      "flags": {}, "order": 6, "mode": 0,
+      "outputs": [],
+      "inputs": [
+        {"name": "images", "type": "IMAGE", "link": 6}
+      ],
+      "widgets_values": ["AFE_export"]
+    }
+  ],
+  "links": [
+    [1, 1, 0, 2, 0, "SHOT_SEQUENCE"],
+    [2, 2, 0, 3, 0, "STRING"],
+    [3, 4, 0, 5, 0, "IMAGE"],
+    [4, 4, 2, 5, 1, "AUDIO"],
+    [5, 5, 0, 6, 0, "VHS_FILENAMES"],
+    [6, 6, 0, 7, 0, "IMAGE"]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {"ds": {"scale": 0.6, "offset": [0, 0]}},
+  "version": 0.4
+}

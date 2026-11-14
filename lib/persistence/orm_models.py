@@ -139,3 +139,28 @@ class ShotORM(Base):
         "ProjectORM",
         back_populates="shots",
     )
+
+
+class AudioORM(Base):
+    """SQLAlchemy ORM model for AudioAsset persistence."""
+
+    __tablename__ = "audio_assets"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    audio_type: Mapped[str] = mapped_column(Text, default="dialogue")
+    file_path: Mapped[str | None] = mapped_column(Text)
+    duration_seconds: Mapped[float] = mapped_column(default=0.0)
+    transcript: Mapped[str | None] = mapped_column(Text)
+    language: Mapped[str] = mapped_column(Text, default="zh")
+    shot_id: Mapped[str | None] = mapped_column(Text)
+    character_id: Mapped[str | None] = mapped_column(Text)
+    tags: Mapped[list | None] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(Text, default="active")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+    data: Mapped[dict] = mapped_column(JSON, nullable=False)

@@ -42,3 +42,33 @@ KSampler, KSamplerAdvanced, CLIPTextEncode, VAEDecode, VAELoader, CLIPLoader, Ch
 | OUTFIT_ASSET | 服装资产，关联到角色 |
 | SCENE_ASSET | 场景/背景资产，包含环境信息 |
 | PROPS_ASSET | 道具资产，包含道具类型、提示词、关联角色与场景 |
+
+## Part 2 — 二采精修 (Second Pass Refinement)
+
+### Required Downloads
+- **ComfyUI_CodeFormer** — AI face restoration and enhancement
+  - Install from ComfyUI Manager
+  - Used by: `AFE_FaceEnhancer` node (graceful fallback passthrough if not installed)
+- **ComfyUI-BSRGAN** or **ComfyUI-Real-ESRGAN** — AI video/image super-resolution
+  - Install from ComfyUI Manager
+  - Chain after `AFE_VideoUpscaler` for AI-quality super-resolution
+
+## Part 3 — 音频唇形同步 (Audio & Lip Sync)
+
+### Required Downloads (choose one)
+- **ComfyUI-LatentSync** — Latent-space lip sync (recommended)
+  - Install from ComfyUI Manager
+- **ComfyUI-Wav2Lip** — Wav2Lip-based lip sync
+  - Install from ComfyUI Manager
+- **ComfyUI-SadTalker** — SadTalker-based talking head
+  - Install from ComfyUI Manager
+
+### Notes
+- `AFE_LipSyncConfig` outputs `images` + `audio_path` → connect to your chosen lip sync node
+- `AFE_AudioVideoSync` outputs `images` + `frame_rate` + `audio_path` → connect directly to `VHS_VideoCombine`
+
+## Part 4 — 剪辑发布 (Edit & Export)
+
+### No additional downloads required
+- Part 4 uses VideoHelperSuite (`VHS_VideoCombine`) already listed in Part 1
+- `AFE_ShotSequenceBuilder`, `AFE_ProjectExport`, and `AFE_Watermark` are self-contained
