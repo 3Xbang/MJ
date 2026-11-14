@@ -29,3 +29,16 @@ KSampler, KSamplerAdvanced, CLIPTextEncode, VAEDecode, VAELoader, CLIPLoader, Ch
 | wan_2.1_vae.safetensors | models/vae/ |
 
 下载地址：https://huggingface.co/Kijai/WanVideo_comfy
+
+---
+
+## Section 4 — 自定义节点类型（本项目输出类型）
+
+以下是 AI Film Editor 节点之间传递的自定义数据类型：
+
+| 类型名称 | 描述 |
+|----------|------|
+| CHARACTER_ASSET | 角色资产，包含角色提示词、LoRA 配置、视图等 |
+| OUTFIT_ASSET | 服装资产，关联到角色 |
+| SCENE_ASSET | 场景/背景资产，包含环境信息 |
+| PROPS_ASSET | 道具资产，包含道具类型、提示词、关联角色与场景 |

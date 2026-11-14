@@ -31,6 +31,7 @@ class AFE_VideoModelAdapter:
             "optional": {
                 "outfit": ("OUTFIT_ASSET",),
                 "scene": ("SCENE_ASSET",),
+                "props": ("PROPS_ASSET",),
                 "negative_prompt": ("STRING", {"multiline": True, "default": ""}),
             }
         }
@@ -41,7 +42,7 @@ class AFE_VideoModelAdapter:
     CATEGORY = "AI Film Editor/Adapters"
 
     def adapt_for_model(self, character, shot_prompt, camera_motion, target_model,
-                        width, height, seed, scene=None, outfit=None, negative_prompt=""):
+                        width, height, seed, scene=None, outfit=None, props=None, negative_prompt=""):
         char_pos = character.get("positive_prompt", "")
         char_neg = character.get("negative_prompt", "")
         outfit_pos = outfit.get("outfit_prompt", "") if outfit else ""
@@ -50,7 +51,9 @@ class AFE_VideoModelAdapter:
         scene_bg = scene.get("background_prompt", "") if scene else ""
         scene_neg = scene.get("negative_prompt", "") if scene else ""
 
-        parts = [p for p in [char_pos, outfit_pos, scene_bg, shot_prompt] if p.strip()]
+        props_pos = props.get("positive_prompt", "") if props else ""
+
+        parts = [p for p in [char_pos, outfit_pos, scene_bg, props_pos, shot_prompt] if p.strip()]
         cam_desc = CAMERA_MOTION_DESCRIPTIONS.get(camera_motion, "camera static")
 
         if target_model in ("wan_i2v", "wan_t2v"):

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from ai_film_editor_nodes.nodes.dam.character_node import AFE_CharacterAsset
 from ai_film_editor_nodes.nodes.dam.outfit_node import AFE_OutfitAsset
+from ai_film_editor_nodes.nodes.dam.props_node import AFE_PropsAsset
 from ai_film_editor_nodes.nodes.dam.scene_node import AFE_SceneAsset
 from ai_film_editor_nodes.nodes.director.script_parser_node import AFE_ScriptParser
 from ai_film_editor_nodes.nodes.director.shot_duration_node import AFE_ShotDuration
@@ -14,6 +15,7 @@ from ai_film_editor_nodes.nodes.utils.prompt_preview_node import AFE_PromptPrevi
 NODE_CLASS_MAPPINGS = {
     "AFE_CharacterAsset": AFE_CharacterAsset,
     "AFE_OutfitAsset": AFE_OutfitAsset,
+    "AFE_PropsAsset": AFE_PropsAsset,
     "AFE_SceneAsset": AFE_SceneAsset,
     "AFE_ScriptParser": AFE_ScriptParser,
     "AFE_ShotDuration": AFE_ShotDuration,
@@ -26,6 +28,7 @@ NODE_CLASS_MAPPINGS = {
 NODE_DISPLAY_NAME_MAPPINGS = {
     "AFE_CharacterAsset": "AFE Character Asset",
     "AFE_OutfitAsset": "AFE Outfit Asset",
+    "AFE_PropsAsset": "🔧 Props Asset",
     "AFE_SceneAsset": "AFE Scene Asset",
     "AFE_ScriptParser": "AFE Script Parser",
     "AFE_ShotDuration": "AFE Shot Duration",

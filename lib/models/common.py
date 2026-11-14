@@ -68,6 +68,7 @@ class ViewType(StrEnum):
     WIDE_SHOT = "wide_shot"
     MEDIUM_SHOT = "medium_shot"
     SCENE_DETAIL = "scene_detail"
+    USAGE_STATE = "usage_state"
     CUSTOM = "custom"
 
 

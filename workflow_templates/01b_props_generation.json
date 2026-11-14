@@ -1,0 +1,84 @@
+{
+  "1": {
+    "inputs": {
+      "prop_name": "道具",
+      "prop_prompt": "highly detailed, studio lighting, clean background",
+      "negative_prompt": "lowres, bad anatomy, blurry, watermark",
+      "prop_type": "other",
+      "seed": -1,
+      "load_existing": false
+    },
+    "class_type": "AFE_PropsAsset",
+    "_meta": {"title": "🔧 Props Asset"}
+  },
+  "2": {
+    "inputs": {
+      "shot_prompt": "prop on display surface, product shot, neutral background",
+      "camera_motion": "static",
+      "target_model": "generic",
+      "width": 512,
+      "height": 512,
+      "seed": -1,
+      "props": ["1", 0]
+    },
+    "class_type": "AFE_VideoModelAdapter",
+    "_meta": {"title": "AFE Video Model Adapter"}
+  },
+  "3": {
+    "inputs": {
+      "positive": ["2", 0],
+      "negative": ["2", 1],
+      "seed": ["2", 2],
+      "width": ["2", 3],
+      "height": ["2", 4]
+    },
+    "class_type": "AFE_PromptPreview",
+    "_meta": {"title": "AFE Prompt Preview"}
+  },
+  "4": {
+    "inputs": {"ckpt_name": "请选择你的SD模型"},
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {"title": "Load Checkpoint"}
+  },
+  "5": {
+    "inputs": {"text": ["3", 0], "clip": ["4", 1]},
+    "class_type": "CLIPTextEncode",
+    "_meta": {"title": "CLIP Text Encode (正向)"}
+  },
+  "6": {
+    "inputs": {"text": ["3", 1], "clip": ["4", 1]},
+    "class_type": "CLIPTextEncode",
+    "_meta": {"title": "CLIP Text Encode (负向)"}
+  },
+  "7": {
+    "inputs": {"width": ["3", 3], "height": ["3", 4], "batch_size": 1},
+    "class_type": "EmptyLatentImage",
+    "_meta": {"title": "Empty Latent Image"}
+  },
+  "8": {
+    "inputs": {
+      "seed": ["3", 2],
+      "steps": 20,
+      "cfg": 7.0,
+      "sampler_name": "euler",
+      "scheduler": "karras",
+      "denoise": 1.0,
+      "model": ["4", 0],
+      "positive": ["5", 0],
+      "negative": ["6", 0],
+      "latent_image": ["7", 0]
+    },
+    "class_type": "KSampler",
+    "_meta": {"title": "KSampler"}
+  },
+  "9": {
+    "inputs": {"samples": ["8", 0], "vae": ["4", 2]},
+    "class_type": "VAEDecode",
+    "_meta": {"title": "VAE Decode"}
+  },
+  "10": {
+    "inputs": {"images": ["9", 0], "filename_prefix": "AFE_Props"},
+    "class_type": "SaveImage",
+    "_meta": {"title": "Save Image"}
+  }
+}

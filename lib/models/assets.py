@@ -1,11 +1,24 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
+from enum import StrEnum
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
 from ai_film_editor_nodes.lib.models.common import AssetStatus, SceneType, ViewType
+
+
+class PropType(StrEnum):
+    """Classification of a prop asset by category."""
+
+    WEAPON = "weapon"
+    VEHICLE = "vehicle"
+    FURNITURE = "furniture"
+    ACCESSORY = "accessory"
+    FOOD = "food"
+    ELECTRONIC = "electronic"
+    OTHER = "other"
 
 
 class LoraConfig(BaseModel):
@@ -124,3 +137,23 @@ class SceneAsset(BaseModel):
     status: AssetStatus = AssetStatus.DRAFT
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class PropsAsset(BaseModel):
+    """A managed prop asset with type classification and generation parameters."""
+
+    asset_id: str = Field(default_factory=lambda: str(uuid4()))
+    name: str
+    prop_type: PropType = PropType.OTHER
+    positive_prompt: str = ""
+    negative_prompt: str = ""
+    seed: int = -1
+    base_model_logical_name: str = "wan_i2v_14b_480p"
+    character_id: str | None = None
+    scene_id: str | None = None
+    views: list[GeneratedView] = Field(default_factory=list)
+    version_history: list[AssetVersion] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
+    status: AssetStatus = AssetStatus.DRAFT
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

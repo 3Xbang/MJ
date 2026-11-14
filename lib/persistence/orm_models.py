@@ -80,6 +80,27 @@ class SceneORM(Base):
     data: Mapped[dict] = mapped_column(JSON, nullable=False)
 
 
+class PropsORM(Base):
+    """SQLAlchemy ORM model for PropsAsset persistence."""
+
+    __tablename__ = "props"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    prop_type: Mapped[str | None] = mapped_column(Text)
+    character_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    scene_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tags: Mapped[list | None] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(Text, default="draft")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+    data: Mapped[dict] = mapped_column(JSON, nullable=False)
+
+
 class ProjectORM(Base):
     """SQLAlchemy ORM model for ProjectState persistence."""
 
