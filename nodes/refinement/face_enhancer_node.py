@@ -35,12 +35,21 @@ class AFE_FaceEnhancer:
         if not enable:
             return (images,)
 
+        # Step 1: check whether the CodeFormer pack is importable at all.
         try:
-            # CodeFormer is provided by the ComfyUI_CodeFormer node pack.
-            # When installed, it registers its own restoration pipeline.
-            # We attempt to invoke it; if unavailable we gracefully degrade.
             import importlib
             codeformer_mod = importlib.import_module("custom_nodes.ComfyUI_CodeFormer.codeformer_node")
+        except (ImportError, ModuleNotFoundError):
+            logger.warning(
+                "CodeFormer not found. Install ComfyUI_CodeFormer via ComfyUI Manager "
+                "for AI face enhancement. Passing images through unchanged."
+            )
+            return (images,)
+
+        # Step 2: attempt the actual enhancement.  If CodeFormer is installed but its
+        # API differs from what we expect, surface a distinguishable error rather than
+        # silently falling through to passthrough.
+        try:
             enhancer = codeformer_mod.CodeFormerEnhance()
             result = enhancer.enhance(
                 images=images,
@@ -48,9 +57,10 @@ class AFE_FaceEnhancer:
                 only_center_face=only_center_face,
             )
             return (result[0],) if isinstance(result, (list, tuple)) else (result,)
-        except (ImportError, ModuleNotFoundError, AttributeError):
+        except Exception as exc:
             logger.warning(
-                "CodeFormer not found. Install ComfyUI_CodeFormer for AI face enhancement. "
+                f"CodeFormer is installed but enhancement failed: {exc}. "
+                "Check that ComfyUI_CodeFormer is up to date and compatible. "
                 "Passing images through unchanged."
             )
             return (images,)

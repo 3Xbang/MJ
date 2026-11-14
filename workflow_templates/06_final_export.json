@@ -1,5 +1,5 @@
 {
-  "last_node_id": 7,
+  "last_node_id": 6,
   "last_link_id": 7,
   "nodes": [
     {
@@ -53,48 +53,35 @@
       "widgets_values": ["shot_01_final.mp4", "all", 0, 0, "enabled", false, false, "ComfyUI"]
     },
     {
-      "id": 5, "type": "VHS_VideoCombine",
+      "id": 6, "type": "AFE_Watermark",
       "pos": [420, 400], "size": {"0": 315, "1": 200},
       "flags": {}, "order": 4, "mode": 0,
       "outputs": [
-        {"name": "Filenames", "type": "VHS_FILENAMES", "links": [5], "slot_index": 0}
+        {"name": "images", "type": "IMAGE", "links": [5], "slot_index": 0}
       ],
       "inputs": [
-        {"name": "images", "type": "IMAGE", "link": 3},
-        {"name": "audio", "type": "AUDIO", "link": 4}
-      ],
-      "widgets_values": [24, 0, "AFE_final", "video/h264-mp4", true, "default", {}]
-    },
-    {
-      "id": 6, "type": "AFE_Watermark",
-      "pos": [800, 400], "size": {"0": 315, "1": 200},
-      "flags": {}, "order": 5, "mode": 0,
-      "outputs": [
-        {"name": "images", "type": "IMAGE", "links": [6], "slot_index": 0}
-      ],
-      "inputs": [
-        {"name": "images", "type": "IMAGE", "link": 5}
+        {"name": "images", "type": "IMAGE", "link": 3}
       ],
       "widgets_values": ["AI Film Editor", "bottom_right", 0.3, false, 24, "#FFFFFF"]
     },
     {
-      "id": 7, "type": "SaveImage",
-      "pos": [1150, 400], "size": {"0": 315, "1": 150},
-      "flags": {}, "order": 6, "mode": 0,
+      "id": 5, "type": "VHS_VideoCombine",
+      "pos": [800, 400], "size": {"0": 315, "1": 200},
+      "flags": {}, "order": 5, "mode": 0,
       "outputs": [],
       "inputs": [
-        {"name": "images", "type": "IMAGE", "link": 6}
+        {"name": "images", "type": "IMAGE", "link": 5},
+        {"name": "audio", "type": "AUDIO", "link": 4}
       ],
-      "widgets_values": ["AFE_export"]
+      "widgets_values": [24, 0, "AFE_final", "video/h264-mp4", true, "default", {}]
     }
   ],
   "links": [
     [1, 1, 0, 2, 0, "SHOT_SEQUENCE"],
     [2, 2, 0, 3, 0, "STRING"],
-    [3, 4, 0, 5, 0, "IMAGE"],
+    [3, 4, 0, 6, 0, "IMAGE"],
     [4, 4, 2, 5, 1, "AUDIO"],
-    [5, 5, 0, 6, 0, "VHS_FILENAMES"],
-    [6, 6, 0, 7, 0, "IMAGE"]
+    [5, 6, 0, 5, 0, "IMAGE"]
   ],
   "groups": [],
   "config": {},

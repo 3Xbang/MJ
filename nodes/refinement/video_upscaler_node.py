@@ -1,6 +1,9 @@
 from __future__ import annotations
 import torch
 import torch.nn.functional as F
+from ai_film_editor_nodes.lib.utils.logger import get_logger
+
+logger = get_logger("AFE_VideoUpscaler")
 
 
 class AFE_VideoUpscaler:
@@ -43,6 +46,11 @@ class AFE_VideoUpscaler:
 
         scale = 2 if scale_factor == "2x" else 4
         mode = self._MODE_MAP.get(upscale_method, "bicubic")
+        if upscale_method == "lanczos":
+            logger.warning(
+                "PyTorch does not support Lanczos interpolation; using bilinear as a proxy. "
+                "For true Lanczos quality, use a PIL-based upscaler node instead."
+            )
         align_corners = False if mode in ("bilinear", "bicubic") else None
 
         # images: (B, H, W, C) → permute to (B, C, H, W) for F.interpolate
