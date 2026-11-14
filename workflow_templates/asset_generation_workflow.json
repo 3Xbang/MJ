@@ -1,0 +1,274 @@
+{
+  "last_node_id": 13,
+  "last_link_id": 24,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "AFE_CharacterAsset",
+      "pos": [50, 50],
+      "size": {"0": 320, "1": 280},
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "character", "type": "CHARACTER_ASSET", "links": [1, 23], "slot_index": 0},
+        {"name": "character_id", "type": "STRING", "links": null, "slot_index": 1}
+      ],
+      "properties": {"Node name for S&R": "AFE_CharacterAsset"},
+      "widgets_values": ["主角", "a beautiful young woman, detailed face, film lighting", "ugly, blurry, low quality", -1, false, ""]
+    },
+    {
+      "id": 2,
+      "type": "AFE_OutfitAsset",
+      "pos": [50, 370],
+      "size": {"0": 320, "1": 240},
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {"name": "character", "type": "CHARACTER_ASSET", "link": 1}
+      ],
+      "outputs": [
+        {"name": "outfit", "type": "OUTFIT_ASSET", "links": [2], "slot_index": 0},
+        {"name": "outfit_id", "type": "STRING", "links": null, "slot_index": 1}
+      ],
+      "properties": {"Node name for S&R": "AFE_OutfitAsset"},
+      "widgets_values": ["现代休闲装", "casual modern outfit, fabric detail", "ugly, torn", -1, false, ""]
+    },
+    {
+      "id": 3,
+      "type": "AFE_SceneAsset",
+      "pos": [50, 650],
+      "size": {"0": 320, "1": 240},
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "scene", "type": "SCENE_ASSET", "links": [3], "slot_index": 0},
+        {"name": "scene_id", "type": "STRING", "links": null, "slot_index": 1}
+      ],
+      "properties": {"Node name for S&R": "AFE_SceneAsset"},
+      "widgets_values": ["咖啡厅", "cozy cafe interior, warm lighting, bokeh background", "ugly, dark", "interior", "warm", -1, false, ""]
+    },
+    {
+      "id": 4,
+      "type": "AFE_PropsAsset",
+      "pos": [50, 930],
+      "size": {"0": 320, "1": 240},
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "props", "type": "PROPS_ASSET", "links": [4], "slot_index": 0},
+        {"name": "prop_id", "type": "STRING", "links": null, "slot_index": 1}
+      ],
+      "properties": {"Node name for S&R": "AFE_PropsAsset"},
+      "widgets_values": ["咖啡杯", "ceramic coffee cup, steam rising", "", "accessory", -1, false, ""]
+    },
+    {
+      "id": 5,
+      "type": "AFE_VideoModelAdapter",
+      "pos": [420, 300],
+      "size": {"0": 340, "1": 320},
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {"name": "character", "type": "CHARACTER_ASSET", "link": 23},
+        {"name": "outfit", "type": "OUTFIT_ASSET", "link": 2},
+        {"name": "scene", "type": "SCENE_ASSET", "link": 3},
+        {"name": "props", "type": "PROPS_ASSET", "link": 4}
+      ],
+      "outputs": [
+        {"name": "positive_prompt", "type": "STRING", "links": [5], "slot_index": 0},
+        {"name": "negative_prompt", "type": "STRING", "links": [6], "slot_index": 1},
+        {"name": "seed", "type": "INT", "links": [7], "slot_index": 2},
+        {"name": "width", "type": "INT", "links": [8], "slot_index": 3},
+        {"name": "height", "type": "INT", "links": [9], "slot_index": 4}
+      ],
+      "properties": {"Node name for S&R": "AFE_VideoModelAdapter"},
+      "widgets_values": ["主角在咖啡厅，手持咖啡杯", "static", "wan_i2v", 640, 360, 42]
+    },
+    {
+      "id": 6,
+      "type": "AFE_PromptPreview",
+      "pos": [420, 660],
+      "size": {"0": 340, "1": 200},
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {"name": "positive", "type": "STRING", "link": 5},
+        {"name": "negative", "type": "STRING", "link": 6},
+        {"name": "seed", "type": "INT", "link": 7},
+        {"name": "width", "type": "INT", "link": 8},
+        {"name": "height", "type": "INT", "link": 9}
+      ],
+      "outputs": [
+        {"name": "positive", "type": "STRING", "links": [10], "slot_index": 0},
+        {"name": "negative", "type": "STRING", "links": [11], "slot_index": 1},
+        {"name": "seed", "type": "INT", "links": null, "slot_index": 2},
+        {"name": "width", "type": "INT", "links": [13], "slot_index": 3},
+        {"name": "height", "type": "INT", "links": [14], "slot_index": 4}
+      ],
+      "properties": {"Node name for S&R": "AFE_PromptPreview"},
+      "widgets_values": []
+    },
+    {
+      "id": 7,
+      "type": "CheckpointLoaderSimple",
+      "pos": [820, 50],
+      "size": {"0": 315, "1": 100},
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "MODEL", "type": "MODEL", "links": [15], "slot_index": 0},
+        {"name": "CLIP", "type": "CLIP", "links": [16, 24], "slot_index": 1},
+        {"name": "VAE", "type": "VAE", "links": [17], "slot_index": 2}
+      ],
+      "properties": {"Node name for S&R": "CheckpointLoaderSimple"},
+      "widgets_values": [""]
+    },
+    {
+      "id": 8,
+      "type": "CLIPTextEncode",
+      "pos": [820, 200],
+      "size": {"0": 315, "1": 120},
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {"name": "text", "type": "STRING", "link": 10},
+        {"name": "clip", "type": "CLIP", "link": 16}
+      ],
+      "outputs": [
+        {"name": "CONDITIONING", "type": "CONDITIONING", "links": [18], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "CLIPTextEncode"},
+      "widgets_values": []
+    },
+    {
+      "id": 9,
+      "type": "CLIPTextEncode",
+      "pos": [820, 370],
+      "size": {"0": 315, "1": 120},
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {"name": "text", "type": "STRING", "link": 11},
+        {"name": "clip", "type": "CLIP", "link": 24}
+      ],
+      "outputs": [
+        {"name": "CONDITIONING", "type": "CONDITIONING", "links": [19], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "CLIPTextEncode"},
+      "widgets_values": []
+    },
+    {
+      "id": 10,
+      "type": "EmptyLatentImage",
+      "pos": [820, 520],
+      "size": {"0": 315, "1": 110},
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {"name": "width", "type": "INT", "link": 13},
+        {"name": "height", "type": "INT", "link": 14}
+      ],
+      "outputs": [
+        {"name": "LATENT", "type": "LATENT", "links": [20], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "EmptyLatentImage"},
+      "widgets_values": [1]
+    },
+    {
+      "id": 11,
+      "type": "KSampler",
+      "pos": [1200, 200],
+      "size": {"0": 315, "1": 260},
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {"name": "model", "type": "MODEL", "link": 15},
+        {"name": "positive", "type": "CONDITIONING", "link": 18},
+        {"name": "negative", "type": "CONDITIONING", "link": 19},
+        {"name": "latent_image", "type": "LATENT", "link": 20}
+      ],
+      "outputs": [
+        {"name": "LATENT", "type": "LATENT", "links": [21], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "KSampler"},
+      "widgets_values": [42, "fixed", 20, 7.0, "euler", "karras", 1.0]
+    },
+    {
+      "id": 12,
+      "type": "VAEDecode",
+      "pos": [1600, 200],
+      "size": {"0": 210, "1": 110},
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {"name": "samples", "type": "LATENT", "link": 21},
+        {"name": "vae", "type": "VAE", "link": 17}
+      ],
+      "outputs": [
+        {"name": "IMAGE", "type": "IMAGE", "links": [22], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "VAEDecode"},
+      "widgets_values": []
+    },
+    {
+      "id": 13,
+      "type": "SaveImage",
+      "pos": [1600, 360],
+      "size": {"0": 210, "1": 80},
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {"name": "images", "type": "IMAGE", "link": 22}
+      ],
+      "outputs": [],
+      "properties": {"Node name for S&R": "SaveImage"},
+      "widgets_values": ["AFE_Asset"]
+    }
+  ],
+  "links": [
+    [1, 1, 0, 2, 0, "CHARACTER_ASSET"],
+    [2, 2, 0, 5, 1, "OUTFIT_ASSET"],
+    [3, 3, 0, 5, 2, "SCENE_ASSET"],
+    [4, 4, 0, 5, 3, "PROPS_ASSET"],
+    [5, 5, 0, 6, 0, "STRING"],
+    [6, 5, 1, 6, 1, "STRING"],
+    [7, 5, 2, 6, 2, "INT"],
+    [8, 5, 3, 6, 3, "INT"],
+    [9, 5, 4, 6, 4, "INT"],
+    [10, 6, 0, 8, 0, "STRING"],
+    [11, 6, 1, 9, 0, "STRING"],
+    [13, 6, 3, 10, 0, "INT"],
+    [14, 6, 4, 10, 1, "INT"],
+    [15, 7, 0, 11, 0, "MODEL"],
+    [16, 7, 1, 8, 1, "CLIP"],
+    [17, 7, 2, 12, 1, "VAE"],
+    [18, 8, 0, 11, 1, "CONDITIONING"],
+    [19, 9, 0, 11, 2, "CONDITIONING"],
+    [20, 10, 0, 11, 3, "LATENT"],
+    [21, 11, 0, 12, 0, "LATENT"],
+    [22, 12, 0, 13, 0, "IMAGE"],
+    [23, 1, 0, 5, 0, "CHARACTER_ASSET"],
+    [24, 7, 1, 9, 1, "CLIP"]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {"ds": {"scale": 0.8, "offset": [0, 0]}},
+  "version": 0.4
+}

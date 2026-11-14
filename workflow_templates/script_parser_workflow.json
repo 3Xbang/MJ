@@ -1,0 +1,54 @@
+{
+  "last_node_id": 2,
+  "last_link_id": 1,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "AFE_ScriptParser",
+      "pos": [100, 100],
+      "size": {"0": 500, "1": 400},
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "shot_sequence", "type": "SHOT_SEQUENCE", "links": null, "slot_index": 0},
+        {"name": "shot_count", "type": "INT", "links": null, "slot_index": 1},
+        {"name": "sequence_json", "type": "STRING", "links": [1], "slot_index": 2}
+      ],
+      "properties": {"Node name for S&R": "AFE_ScriptParser"},
+      "widgets_values": [
+        "在繁华的都市中，主角独自走在夜晚的街道上，霓虹灯映照着她的面庞。突然，她的手机响起，来电显示一个陌生号码。",
+        "",
+        "https://api.deepseek.com/v1",
+        "deepseek-chat",
+        "",
+        ""
+      ]
+    },
+    {
+      "id": 2,
+      "type": "ShowText|pysssss",
+      "pos": [700, 100],
+      "size": {"0": 400, "1": 400},
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {"name": "text", "type": "STRING", "link": 1}
+      ],
+      "outputs": [
+        {"name": "STRING", "type": "STRING", "links": null, "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "ShowText|pysssss"},
+      "widgets_values": [""]
+    }
+  ],
+  "links": [
+    [1, 1, 2, 2, 0, "STRING"]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {"ds": {"scale": 0.8, "offset": [0, 0]}},
+  "version": 0.4
+}
