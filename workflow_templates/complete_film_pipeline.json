@@ -1356,7 +1356,7 @@
     },
     {
       "id": 29,
-      "type": "WanTextEncode",
+      "type": "CLIPTextEncode",
       "pos": [
         1730,
         1480
@@ -1404,14 +1404,14 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "WanTextEncode",
+        "Node name for S&R": "CLIPTextEncode",
         "cnr_id": "comfyui_wanvideowrapper"
       },
       "widgets_values": []
     },
     {
       "id": 30,
-      "type": "WanVideoVAEDecode",
+      "type": "WanVideoDecode",
       "pos": [
         2130,
         1020
@@ -1447,7 +1447,7 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "WanVideoVAEDecode",
+        "Node name for S&R": "WanVideoDecode",
         "cnr_id": "comfyui_wanvideowrapper"
       },
       "widgets_values": [
@@ -1456,7 +1456,7 @@
     },
     {
       "id": 31,
-      "type": "WanImageToVideoLatent",
+      "type": "WanVideoSampler",
       "pos": [
         1290,
         1360
@@ -1506,10 +1506,20 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "WanImageToVideoLatent",
+        "Node name for S&R": "WanVideoSampler",
         "cnr_id": "comfyui_wanvideowrapper"
       },
-      "widgets_values": []
+      "widgets_values": [
+        640,
+        360,
+        81,
+        1,
+        42,
+        "euler",
+        "simple",
+        20,
+        6.5
+      ]
     },
     {
       "id": 32,
