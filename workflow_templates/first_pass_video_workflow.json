@@ -1,5 +1,5 @@
 {
-  "last_node_id": 17,
+  "last_node_id": 18,
   "last_link_id": 26,
   "nodes": [
     {
@@ -8,7 +8,7 @@
       "pos": [50, 50],
       "size": {"0": 320, "1": 280},
       "flags": {},
-      "order": 0,
+      "order": 1,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -24,7 +24,7 @@
       "pos": [50, 370],
       "size": {"0": 320, "1": 240},
       "flags": {},
-      "order": 1,
+      "order": 2,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -40,7 +40,7 @@
       "pos": [50, 650],
       "size": {"0": 320, "1": 160},
       "flags": {},
-      "order": 2,
+      "order": 3,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -57,7 +57,7 @@
       "pos": [420, 150],
       "size": {"0": 340, "1": 320},
       "flags": {},
-      "order": 8,
+      "order": 9,
       "mode": 0,
       "inputs": [
         {"name": "character", "type": "CHARACTER_ASSET", "link": 1},
@@ -71,7 +71,7 @@
         {"name": "height", "type": "INT", "links": [8], "slot_index": 4}
       ],
       "properties": {"Node name for S&R": "AFE_VideoModelAdapter"},
-      "widgets_values": ["主角在夜晚街道行走，镜头缓慢推进", "pan_left", "wan_i2v", 640, 360, 42]
+      "widgets_values": ["主角在夜晚街道行走，镜头缓慢推进", "pan_left", "(未安装视频模型，ComfyUI Manager 搜索 Wan2.1 I2V)", 640, 360, 42]
     },
     {
       "id": 5,
@@ -79,7 +79,7 @@
       "pos": [420, 480],
       "size": {"0": 340, "1": 200},
       "flags": {},
-      "order": 9,
+      "order": 10,
       "mode": 0,
       "inputs": [
         {"name": "positive", "type": "STRING", "link": 4},
@@ -104,7 +104,7 @@
       "pos": [420, 730],
       "size": {"0": 315, "1": 100},
       "flags": {},
-      "order": 3,
+      "order": 4,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -120,7 +120,7 @@
       "pos": [420, 880],
       "size": {"0": 320, "1": 180},
       "flags": {},
-      "order": 7,
+      "order": 8,
       "mode": 0,
       "inputs": [
         {"name": "current_image", "type": "IMAGE", "link": 14}
@@ -137,7 +137,7 @@
       "pos": [820, 50],
       "size": {"0": 315, "1": 120},
       "flags": {},
-      "order": 4,
+      "order": 5,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -152,7 +152,7 @@
       "pos": [820, 220],
       "size": {"0": 315, "1": 100},
       "flags": {},
-      "order": 5,
+      "order": 6,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -167,7 +167,7 @@
       "pos": [820, 380],
       "size": {"0": 315, "1": 100},
       "flags": {},
-      "order": 6,
+      "order": 7,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -182,7 +182,7 @@
       "pos": [820, 500],
       "size": {"0": 315, "1": 180},
       "flags": {},
-      "order": 10,
+      "order": 11,
       "mode": 0,
       "inputs": [
         {"name": "clip", "type": "CLIP", "link": 17},
@@ -202,7 +202,7 @@
       "pos": [820, 730],
       "size": {"0": 315, "1": 160},
       "flags": {},
-      "order": 11,
+      "order": 12,
       "mode": 0,
       "inputs": [
         {"name": "vae", "type": "VAE", "link": 18},
@@ -223,7 +223,7 @@
       "pos": [1200, 300],
       "size": {"0": 315, "1": 260},
       "flags": {},
-      "order": 12,
+      "order": 13,
       "mode": 0,
       "inputs": [
         {"name": "model", "type": "MODEL", "link": 16},
@@ -243,7 +243,7 @@
       "pos": [1600, 200],
       "size": {"0": 315, "1": 200},
       "flags": {},
-      "order": 13,
+      "order": 14,
       "mode": 0,
       "inputs": [
         {"name": "samples", "type": "LATENT", "link": 22},
@@ -261,7 +261,7 @@
       "pos": [1600, 420],
       "size": {"0": 320, "1": 180},
       "flags": {},
-      "order": 14,
+      "order": 15,
       "mode": 0,
       "inputs": [
         {"name": "images", "type": "IMAGE", "link": 23}
@@ -278,7 +278,7 @@
       "pos": [1600, 580],
       "size": {"0": 210, "1": 80},
       "flags": {},
-      "order": 15,
+      "order": 16,
       "mode": 0,
       "inputs": [
         {"name": "images", "type": "IMAGE", "link": 24}
@@ -293,7 +293,7 @@
       "pos": [1600, 730],
       "size": {"0": 315, "1": 200},
       "flags": {},
-      "order": 16,
+      "order": 17,
       "mode": 0,
       "inputs": [
         {"name": "images", "type": "IMAGE", "link": 26}
@@ -301,6 +301,19 @@
       "outputs": [],
       "properties": {"Node name for S&R": "VHS_VideoCombine"},
       "widgets_values": [24.0, 0, "AFE_shot_", "video/h264-mp4", true]
+    },
+    {
+      "id": 18,
+      "type": "AFE_ModelChecker",
+      "pos": [-200, 300],
+      "size": {"0": 300, "1": 150},
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [{"name": "status_report", "type": "STRING", "links": null, "slot_index": 0}],
+      "properties": {"Node name for S&R": "AFE_ModelChecker"},
+      "widgets_values": ["全部检查"]
     }
   ],
   "links": [

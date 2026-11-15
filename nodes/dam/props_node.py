@@ -7,6 +7,7 @@ from ai_film_editor_nodes.lib.models.common import AssetStatus
 from ai_film_editor_nodes.lib.persistence.database import init_db, get_session
 from ai_film_editor_nodes.lib.persistence.orm_models import PropsORM
 from ai_film_editor_nodes.lib.utils.logger import get_logger
+from ai_film_editor_nodes.lib.utils.model_checker import get_model_list
 
 logger = get_logger("AFE_PropsAsset")
 
@@ -38,6 +39,7 @@ class AFE_PropsAsset:
                 "scene": ("SCENE_ASSET",),
                 "load_existing": ("BOOLEAN", {"default": False}),
                 "prop_id": ("STRING", {"default": ""}),
+                "image_checkpoint": (get_model_list("checkpoints", "(未安装图片模型，ComfyUI Manager 搜索 flux1-dev)"),),
             },
         }
 
@@ -57,6 +59,7 @@ class AFE_PropsAsset:
         scene=None,
         load_existing: bool = False,
         prop_id: str = "",
+        image_checkpoint=None,
     ):
         init_db()
 

@@ -2,6 +2,7 @@ import torch
 import numpy as np
 from PIL import Image
 import os
+from ai_film_editor_nodes.lib.utils.model_checker import get_model_list
 
 class AFE_IPAdapterConfig:
     DESCRIPTION = "需要在工作流中安装 ComfyUI-IPAdapter-plus 节点包。本节点为配置节点，实际注入由 IPAdapterAdvanced 节点完成（连接方式见工作流模板）。"
@@ -11,6 +12,8 @@ class AFE_IPAdapterConfig:
         return {
             "required": {
                 "character": ("CHARACTER_ASSET",),
+                "ipadapter_model": (get_model_list("ipadapter", "(未安装，ComfyUI Manager 搜索 ip-adapter-plus)"),),
+                "clip_vision": (get_model_list("clip_vision", "(未安装，ComfyUI Manager 搜索 clip vision h)"),),
                 "weight": ("FLOAT", {"default": 0.6, "min": 0.0, "max": 1.0, "step": 0.05}),
                 "weight_type": (["original", "linear", "channel penalty"],),
             },
@@ -25,7 +28,7 @@ class AFE_IPAdapterConfig:
     FUNCTION = "build_config"
     CATEGORY = "AI Film Editor/Consistency"
 
-    def build_config(self, character, weight, weight_type, reference_image=None, noise=0.0):
+    def build_config(self, character, ipadapter_model, clip_vision, weight, weight_type, reference_image=None, noise=0.0):
         ref_tensor = None
         if reference_image is not None:
             ref_tensor = reference_image
@@ -55,5 +58,7 @@ class AFE_IPAdapterConfig:
             "weight_type": weight_type,
             "noise": noise,
             "reference_image_tensor": ref_tensor,
+            "ipadapter_model": ipadapter_model,
+            "clip_vision": clip_vision,
         }
         return (config,)

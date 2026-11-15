@@ -1,5 +1,6 @@
 import random
 from ai_film_editor_nodes.lib.utils.logger import get_logger
+from ai_film_editor_nodes.lib.utils.model_checker import get_model_list
 
 logger = get_logger("AFE_VideoModelAdapter")
 
@@ -23,7 +24,7 @@ class AFE_VideoModelAdapter:
                 "character": ("CHARACTER_ASSET",),
                 "shot_prompt": ("STRING", {"multiline": True, "default": ""}),
                 "camera_motion": (["static", "pan_left", "pan_right", "zoom_in", "zoom_out", "tilt_up", "tilt_down", "orbit"],),
-                "target_model": (["wan_i2v", "wan_t2v", "generic"],),
+                "video_model": (get_model_list("diffusion_models", "(未安装视频模型，ComfyUI Manager 搜索 Wan2.1 I2V)"),),
                 "width": ("INT", {"default": 640, "min": 64, "max": 2048, "step": 8}),
                 "height": ("INT", {"default": 360, "min": 64, "max": 2048, "step": 8}),
                 "seed": ("INT", {"default": -1, "min": -1, "max": 2**31 - 1}),
@@ -41,8 +42,19 @@ class AFE_VideoModelAdapter:
     FUNCTION = "adapt_for_model"
     CATEGORY = "AI Film Editor/Adapters"
 
-    def adapt_for_model(self, character, shot_prompt, camera_motion, target_model,
+    def _detect_model_type(self, model_filename: str) -> str:
+        name = model_filename.lower()
+        if "wan" in name and "i2v" in name:
+            return "wan_i2v"
+        if "wan" in name and "t2v" in name:
+            return "wan_t2v"
+        if "kling" in name:
+            return "kling"
+        return "generic"
+
+    def adapt_for_model(self, character, shot_prompt, camera_motion, video_model,
                         width, height, seed, scene=None, outfit=None, props=None, negative_prompt=""):
+        target_model = self._detect_model_type(video_model)
         char_pos = character.get("positive_prompt", "")
         char_neg = character.get("negative_prompt", "")
         outfit_pos = outfit.get("outfit_prompt", "") if outfit else ""

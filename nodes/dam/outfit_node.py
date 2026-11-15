@@ -4,6 +4,7 @@ from ai_film_editor_nodes.lib.models.common import AssetStatus
 from ai_film_editor_nodes.lib.persistence.database import init_db, get_session
 from ai_film_editor_nodes.lib.persistence.orm_models import OutfitORM
 from ai_film_editor_nodes.lib.utils.logger import get_logger
+from ai_film_editor_nodes.lib.utils.model_checker import get_model_list
 from datetime import datetime, timezone
 
 logger = get_logger("AFE_OutfitAsset")
@@ -23,6 +24,7 @@ class AFE_OutfitAsset:
                 "seed": ("INT", {"default": -1, "min": -1, "max": 2**31 - 1}),
                 "load_existing": ("BOOLEAN", {"default": False}),
                 "outfit_id": ("STRING", {"default": ""}),
+                "image_checkpoint": (get_model_list("checkpoints", "(未安装图片模型，ComfyUI Manager 搜索 flux1-dev)"),),
             }
         }
 
@@ -32,7 +34,7 @@ class AFE_OutfitAsset:
     CATEGORY = "AI Film Editor/Assets"
 
     def create_or_load_outfit(self, character, outfit_name, outfit_prompt, negative_prompt,
-                               seed=-1, load_existing=False, outfit_id=""):
+                               seed=-1, load_existing=False, outfit_id="", image_checkpoint=None):
         init_db()
         character_id = character["asset_id"]
         if load_existing:

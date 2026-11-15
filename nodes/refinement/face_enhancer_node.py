@@ -1,5 +1,6 @@
 from __future__ import annotations
 from ai_film_editor_nodes.lib.utils.logger import get_logger
+from ai_film_editor_nodes.lib.utils.model_checker import get_model_list
 
 logger = get_logger("AFE_FaceEnhancer")
 
@@ -16,6 +17,7 @@ class AFE_FaceEnhancer:
         return {
             "required": {
                 "images": ("IMAGE",),
+                "face_model": (get_model_list("facerestore_models", "(未安装，ComfyUI Manager 搜索 codeformer)"),),
                 "fidelity_weight": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.05}),
                 "enable": ("BOOLEAN", {"default": True}),
             },
@@ -31,7 +33,7 @@ class AFE_FaceEnhancer:
     OUTPUT_NODE = False
     DESCRIPTION = "AI face enhancement. Requires ComfyUI_CodeFormer. Passes through unchanged if not installed."
 
-    def enhance_faces(self, images, fidelity_weight=0.5, enable=True, only_center_face=False):
+    def enhance_faces(self, images, face_model, fidelity_weight=0.5, enable=True, only_center_face=False):
         if not enable:
             return (images,)
 

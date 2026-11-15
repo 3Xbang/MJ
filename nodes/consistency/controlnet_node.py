@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+from ai_film_editor_nodes.lib.utils.model_checker import get_model_list
 
 class AFE_ControlNetPose:
     DESCRIPTION = "需要安装 comfyui_controlnet_aux + ComfyUI-Advanced-ControlNet。"
@@ -9,6 +10,7 @@ class AFE_ControlNetPose:
         return {
             "required": {
                 "pose_image": ("IMAGE",),
+                "controlnet_model": (get_model_list("controlnet", "(未安装，ComfyUI Manager 搜索 controlnet openpose)"),),
                 "control_strength": ("FLOAT", {"default": 0.6, "min": 0.0, "max": 1.0}),
                 "start_percent": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0}),
                 "end_percent": ("FLOAT", {"default": 0.6, "min": 0.0, "max": 1.0}),
@@ -87,7 +89,7 @@ class AFE_ControlNetPose:
                 img[max(0,py-3):min(size,py+4), max(0,px-3):min(size,px+4)] = colors_joint
         return torch.from_numpy(img.astype(np.float32)/255.0).unsqueeze(0)  # [1,H,W,3]
 
-    def build_pose_config(self, pose_image, control_strength, start_percent, end_percent, pose_preset="custom", flip_pose=False):
+    def build_pose_config(self, pose_image, controlnet_model, control_strength, start_percent, end_percent, pose_preset="custom", flip_pose=False):
         if pose_preset != "custom":
             tensor = self._make_skeleton_image(pose_preset)
         else:
@@ -99,5 +101,6 @@ class AFE_ControlNetPose:
             "control_strength": control_strength,
             "start_percent": start_percent,
             "end_percent": end_percent,
+            "controlnet_model": controlnet_model,
         }
         return (config,)

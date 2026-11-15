@@ -12,6 +12,7 @@ from ai_film_editor_nodes.nodes.director.tail_frame_node import AFE_TailFrameExt
 from ai_film_editor_nodes.nodes.director.tone_comp_node import AFE_ToneCompensation
 from ai_film_editor_nodes.nodes.adapters.video_adapter_node import AFE_VideoModelAdapter
 from ai_film_editor_nodes.nodes.utils.prompt_preview_node import AFE_PromptPreview
+from ai_film_editor_nodes.nodes.utils.model_checker_node import AFE_ModelChecker
 
 # Part 2 - Refinement
 from ai_film_editor_nodes.nodes.refinement.refinement_config_node import AFE_RefinementConfig
@@ -52,6 +53,7 @@ NODE_CLASS_MAPPINGS = {
     "AFE_ToneCompensation": AFE_ToneCompensation,
     "AFE_VideoModelAdapter": AFE_VideoModelAdapter,
     "AFE_PromptPreview": AFE_PromptPreview,
+    "AFE_ModelChecker": AFE_ModelChecker,
     # Part 2
     "AFE_RefinementConfig": AFE_RefinementConfig,
     "AFE_SecondPassAdapter": AFE_SecondPassAdapter,
@@ -87,6 +89,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AFE_ToneCompensation": "AFE Tone Compensation",
     "AFE_VideoModelAdapter": "AFE Video Model Adapter",
     "AFE_PromptPreview": "AFE Prompt Preview",
+    "AFE_ModelChecker": "🔍 Model Checker",
     # Part 2
     "AFE_RefinementConfig": "🎯 Refinement Config",
     "AFE_SecondPassAdapter": "🔄 Second Pass Adapter",

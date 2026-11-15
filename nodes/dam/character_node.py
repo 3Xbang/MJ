@@ -5,6 +5,7 @@ from ai_film_editor_nodes.lib.models.common import AssetStatus
 from ai_film_editor_nodes.lib.persistence.database import init_db, get_session
 from ai_film_editor_nodes.lib.persistence.orm_models import CharacterORM
 from ai_film_editor_nodes.lib.utils.logger import get_logger
+from ai_film_editor_nodes.lib.utils.model_checker import get_model_list
 from datetime import datetime, timezone
 
 logger = get_logger("AFE_CharacterAsset")
@@ -19,7 +20,7 @@ class AFE_CharacterAsset:
                 "positive_prompt": ("STRING", {"multiline": True, "default": ""}),
                 "negative_prompt": ("STRING", {"multiline": True, "default": ""}),
                 "seed": ("INT", {"default": -1, "min": -1, "max": 2**31 - 1}),
-                "base_model": ("STRING", {"default": "wan_i2v_14b_480p"}),
+                "image_checkpoint": (get_model_list("checkpoints", "(未安装图片模型，ComfyUI Manager 搜索 flux1-dev)"),),
             },
             "optional": {
                 "reference_image": ("IMAGE",),
@@ -34,7 +35,7 @@ class AFE_CharacterAsset:
     CATEGORY = "AI Film Editor/Assets"
 
     def create_or_load_character(self, character_name, positive_prompt, negative_prompt,
-                                  seed, base_model, reference_image=None,
+                                  seed, image_checkpoint, reference_image=None,
                                   load_existing=False, character_id=""):
         init_db()
         if load_existing:
@@ -53,7 +54,7 @@ class AFE_CharacterAsset:
                 positive_prompt=positive_prompt,
                 negative_prompt=negative_prompt,
                 seed=seed,
-                base_model_logical_name=base_model,
+                base_model_logical_name=image_checkpoint,
                 status=AssetStatus.DRAFT,
             )
             row = CharacterORM(
