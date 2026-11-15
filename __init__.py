@@ -64,6 +64,12 @@ from ai_film_editor_nodes.nodes.dam.auto_asset_pipeline_node import AFE_AutoAsse
 from ai_film_editor_nodes.nodes.audio.tts_generator_node import AFE_TTSGenerator
 from ai_film_editor_nodes.nodes.director.shot_status_node import AFE_ShotStatusBoard
 
+# Part 9 - Character Consistency, Shot Batch Controller, Final Assembly, Project Manager
+from ai_film_editor_nodes.nodes.consistency.character_consistency_node import AFE_CharacterConsistency
+from ai_film_editor_nodes.nodes.director.shot_batch_controller_node import AFE_ShotBatchController
+from ai_film_editor_nodes.nodes.export.final_assembly_node import AFE_FinalAssembly
+from ai_film_editor_nodes.nodes.director.project_manager_node import AFE_ProjectManager
+
 NODE_CLASS_MAPPINGS = {
     # Part 1
     "AFE_CharacterAsset": AFE_CharacterAsset,
@@ -111,6 +117,11 @@ NODE_CLASS_MAPPINGS = {
     "AFE_AutoAssetPipeline": AFE_AutoAssetPipeline,
     "AFE_TTSGenerator": AFE_TTSGenerator,
     "AFE_ShotStatusBoard": AFE_ShotStatusBoard,
+    # Part 9
+    "AFE_CharacterConsistency": AFE_CharacterConsistency,
+    "AFE_ShotBatchController":  AFE_ShotBatchController,
+    "AFE_FinalAssembly":        AFE_FinalAssembly,
+    "AFE_ProjectManager":       AFE_ProjectManager,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -160,6 +171,10 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AFE_AutoAssetPipeline": "🏭 Auto Asset Pipeline (自动资产管线)",
     "AFE_TTSGenerator": "🎙️ TTS Generator (语音合成)",
     "AFE_ShotStatusBoard": "📊 Shot Status Board (分镜状态板)",
+    "AFE_CharacterConsistency": "🎭 Character Consistency (角色一致性)",
+    "AFE_ShotBatchController":  "🔄 Shot Batch Controller (分镜批控)",
+    "AFE_FinalAssembly":        "🎞️ Final Assembly (最终合成)",
+    "AFE_ProjectManager":       "📁 Project Manager (项目管理)",
 }
 
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]

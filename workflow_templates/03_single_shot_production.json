@@ -1,6 +1,6 @@
 {
-  "last_node_id": 9,
-  "last_link_id": 12,
+  "last_node_id": 12,
+  "last_link_id": 13,
   "nodes": [
     {
       "id": 1,
@@ -11,7 +11,7 @@
       "order": 0,
       "mode": 0,
       "inputs": [
-        {"name": "shot_sequence", "type": "SHOT_SEQUENCE", "link": null}
+        {"name": "shot_sequence", "type": "SHOT_SEQUENCE", "link": 13}
       ],
       "outputs": [
         {"name": "positive_prompt", "type": "STRING", "links": [5], "slot_index": 0},
@@ -167,6 +167,67 @@
       ],
       "properties": {"Node name for S&R": "VHS_VideoCombine"},
       "widgets_values": [24, 0, "AFE_shot", "video/h264-mp4", "yuv420p", 19, true, false, true]
+    },
+    {
+      "id": 10,
+      "type": "AFE_ProjectManager",
+      "pos": [50, 50],
+      "size": {"0": 380, "1": 130},
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "project_root", "type": "STRING", "links": null, "slot_index": 0},
+        {"name": "assets_dir", "type": "STRING", "links": null, "slot_index": 1},
+        {"name": "shots_dir", "type": "STRING", "links": null, "slot_index": 2},
+        {"name": "audio_dir", "type": "STRING", "links": null, "slot_index": 3},
+        {"name": "project_status", "type": "STRING", "links": null, "slot_index": 4}
+      ],
+      "properties": {"Node name for S&R": "AFE_ProjectManager"},
+      "widgets_values": ["get_paths", "my_film_project", "./projects"]
+    },
+    {
+      "id": 11,
+      "type": "AFE_ShotBatchController",
+      "pos": [50, 200],
+      "size": {"0": 380, "1": 200},
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {"name": "shot_sequence", "type": "SHOT_SEQUENCE", "link": null}
+      ],
+      "outputs": [
+        {"name": "shot_sequence", "type": "SHOT_SEQUENCE", "links": [13], "slot_index": 0},
+        {"name": "current_shot_id", "type": "STRING", "links": null, "slot_index": 1},
+        {"name": "tail_frame", "type": "IMAGE", "links": null, "slot_index": 2},
+        {"name": "batch_status", "type": "STRING", "links": null, "slot_index": 3},
+        {"name": "current_index", "type": "INT", "links": null, "slot_index": 4},
+        {"name": "total_shots", "type": "INT", "links": null, "slot_index": 5}
+      ],
+      "properties": {"Node name for S&R": "AFE_ShotBatchController"},
+      "widgets_values": [0, "./projects/tail_frames", "./projects/output"]
+    },
+    {
+      "id": 12,
+      "type": "AFE_CharacterConsistency",
+      "pos": [900, 50],
+      "size": {"0": 350, "1": 180},
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {"name": "character", "type": "CHARACTER_ASSET", "link": null}
+      ],
+      "outputs": [
+        {"name": "reference_image", "type": "IMAGE", "links": null, "slot_index": 0},
+        {"name": "weight", "type": "FLOAT", "links": null, "slot_index": 1},
+        {"name": "weight_type", "type": "STRING", "links": null, "slot_index": 2},
+        {"name": "consistency_status", "type": "STRING", "links": null, "slot_index": 3}
+      ],
+      "properties": {"Node name for S&R": "AFE_CharacterConsistency"},
+      "widgets_values": [0.6, "original", true]
     }
   ],
   "links": [
@@ -181,7 +242,8 @@
     [9, 5, 0, 6, 3, "LATENT"],
     [10, 6, 0, 7, 0, "LATENT"],
     [11, 7, 0, 8, 0, "IMAGE"],
-    [12, 7, 0, 9, 0, "IMAGE"]
+    [12, 7, 0, 9, 0, "IMAGE"],
+    [13, 11, 0, 1, 0, "SHOT_SEQUENCE"]
   ],
   "groups": [],
   "config": {},
