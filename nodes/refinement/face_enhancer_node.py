@@ -55,6 +55,7 @@ class AFE_FaceEnhancer:
             enhancer = codeformer_mod.CodeFormerEnhance()
             result = enhancer.enhance(
                 images=images,
+                face_model=face_model,
                 fidelity_weight=fidelity_weight,
                 only_center_face=only_center_face,
             )

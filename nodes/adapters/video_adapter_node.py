@@ -1,6 +1,6 @@
 import random
 from ai_film_editor_nodes.lib.utils.logger import get_logger
-from ai_film_editor_nodes.lib.utils.model_checker import get_model_list
+from ai_film_editor_nodes.lib.utils.model_checker import get_model_list, require_model
 
 logger = get_logger("AFE_VideoModelAdapter")
 
@@ -54,6 +54,9 @@ class AFE_VideoModelAdapter:
 
     def adapt_for_model(self, character, shot_prompt, camera_motion, video_model,
                         width, height, seed, scene=None, outfit=None, props=None, negative_prompt=""):
+        # Fail fast when no diffusion model is installed (placeholder was selected)
+        if video_model.startswith("("):
+            require_model("wan_i2v_model")
         target_model = self._detect_model_type(video_model)
         char_pos = character.get("positive_prompt", "")
         char_neg = character.get("negative_prompt", "")

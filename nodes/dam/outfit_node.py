@@ -48,11 +48,16 @@ class AFE_OutfitAsset:
             logger.info(f"Loaded outfit: {asset.name} ({asset.asset_id})")
             return (asset.model_dump(), asset.asset_id)
         else:
+            # Guard: placeholder strings start with "(" — do not persist them as a model name
+            _safe_checkpoint = None
+            if image_checkpoint and not image_checkpoint.startswith("("):
+                _safe_checkpoint = image_checkpoint
             asset = OutfitAsset(
                 name=outfit_name,
                 character_id=character_id,
                 outfit_prompt=outfit_prompt,
                 negative_prompt=negative_prompt,
+                base_model_logical_name=_safe_checkpoint or "wan_i2v_14b_480p",
                 status=AssetStatus.DRAFT,
             )
             row = OutfitORM(

@@ -81,12 +81,18 @@ class AFE_PropsAsset:
         character_id = character.get("asset_id") if character else None
         scene_id = scene.get("asset_id") if scene else None
 
+        # Guard: placeholder strings start with "(" — do not persist them as a model name
+        _safe_checkpoint = None
+        if image_checkpoint and not image_checkpoint.startswith("("):
+            _safe_checkpoint = image_checkpoint
+
         asset = PropsAsset(
             name=prop_name,
             prop_type=PropType(prop_type),
             positive_prompt=full_prompt,
             negative_prompt=negative_prompt,
             seed=seed,
+            base_model_logical_name=_safe_checkpoint or "wan_i2v_14b_480p",
             character_id=character_id,
             scene_id=scene_id,
             status=AssetStatus.DRAFT,

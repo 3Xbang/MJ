@@ -35,9 +35,11 @@ class AFE_ModelChecker:
     def check_models(self, check_mode: str):
         keys = MODE_KEYS.get(check_mode, list(MODEL_REQUIREMENTS.keys()))
         lines = [f"=== AFE 模型检查报告 [{check_mode}] ===\n"]
+        # Single-pass: cache results to avoid querying folder_paths twice per key
+        results = {key: check_requirement(key) for key in keys}
         for key in keys:
             req = MODEL_REQUIREMENTS[key]
-            installed, msg = check_requirement(key)
+            installed, msg = results[key]
             if installed:
                 lines.append(f"✅ {req['description']}\n   文件: {msg}")
             else:
@@ -45,7 +47,7 @@ class AFE_ModelChecker:
                     f"❌ {req['description']}\n"
                     f"   ComfyUI Manager 搜索: \"{req['manager_search']}\""
                 )
-        installed_count = sum(1 for k in keys if check_requirement(k)[0])
+        installed_count = sum(1 for installed, _ in results.values() if installed)
         lines.append(f"\n已安装: {installed_count}/{len(keys)}")
         report = "\n".join(lines)
         logger.info(f"Model check [{check_mode}]: {installed_count}/{len(keys)} installed")

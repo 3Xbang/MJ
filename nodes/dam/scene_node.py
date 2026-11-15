@@ -47,11 +47,16 @@ class AFE_SceneAsset:
             logger.info(f"Loaded scene: {asset.name} ({asset.asset_id})")
             return (asset.model_dump(), asset.asset_id)
         else:
+            # Guard: placeholder strings start with "(" — do not persist them as a model name
+            _safe_checkpoint = None
+            if image_checkpoint and not image_checkpoint.startswith("("):
+                _safe_checkpoint = image_checkpoint
             asset = SceneAsset(
                 name=scene_name,
                 scene_type=SceneType(scene_type),
                 background_prompt=background_prompt,
                 ambient_light=ambient_light,
+                base_model_logical_name=_safe_checkpoint or "wan_i2v_14b_480p",
                 status=AssetStatus.DRAFT,
             )
             row = SceneORM(

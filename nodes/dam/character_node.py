@@ -49,12 +49,14 @@ class AFE_CharacterAsset:
             logger.info(f"Loaded character: {asset.name} ({asset.asset_id})")
             return (asset.model_dump(), asset.asset_id)
         else:
+            # Guard: placeholder strings start with "(" — do not persist them as a model name
+            _safe_checkpoint = image_checkpoint if not image_checkpoint.startswith("(") else None
             asset = CharacterAsset(
                 name=character_name,
                 positive_prompt=positive_prompt,
                 negative_prompt=negative_prompt,
                 seed=seed,
-                base_model_logical_name=image_checkpoint,
+                base_model_logical_name=_safe_checkpoint or "wan_i2v_14b_480p",
                 status=AssetStatus.DRAFT,
             )
             row = CharacterORM(
