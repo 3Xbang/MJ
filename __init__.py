@@ -1,5 +1,12 @@
 """AI Film Editor — ComfyUI custom node package."""
 from __future__ import annotations
+import sys, os
+
+# 确保 custom_nodes 目录在 Python 路径中
+_pkg_dir = os.path.dirname(os.path.abspath(__file__))
+_custom_nodes_dir = os.path.dirname(_pkg_dir)
+if _custom_nodes_dir not in sys.path:
+    sys.path.insert(0, _custom_nodes_dir)
 
 # Part 1 - Core DAM & Director
 from ai_film_editor_nodes.nodes.dam.character_node import AFE_CharacterAsset
