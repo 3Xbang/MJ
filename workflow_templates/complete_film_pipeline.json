@@ -2889,6 +2889,7 @@
   ],
   "groups": [
     {
+      "id": 101,
       "title": "📝 剧本解析",
       "bounding": [
         0,
@@ -2896,9 +2897,12 @@
         3200,
         800
       ],
-      "color": "#3d4f6b"
+      "color": "#3d4f6b",
+      "font_size": 24,
+      "flags": {}
     },
     {
+      "id": 102,
       "title": "🎭 角色资产",
       "bounding": [
         0,
@@ -2906,9 +2910,12 @@
         3400,
         1100
       ],
-      "color": "#4f3d6b"
+      "color": "#4f3d6b",
+      "font_size": 24,
+      "flags": {}
     },
     {
+      "id": 103,
       "title": "🎬 分镜生产",
       "bounding": [
         0,
@@ -2916,9 +2923,12 @@
         3600,
         850
       ],
-      "color": "#3d6b4f"
+      "color": "#3d6b4f",
+      "font_size": 24,
+      "flags": {}
     },
     {
+      "id": 104,
       "title": "🔊 音频层",
       "bounding": [
         0,
@@ -2926,9 +2936,12 @@
         2500,
         600
       ],
-      "color": "#6b4f3d"
+      "color": "#6b4f3d",
+      "font_size": 24,
+      "flags": {}
     },
     {
+      "id": 105,
       "title": "🎨 精修层",
       "bounding": [
         0,
@@ -2936,9 +2949,12 @@
         3000,
         600
       ],
-      "color": "#6b3d3d"
+      "color": "#6b3d3d",
+      "font_size": 24,
+      "flags": {}
     },
     {
+      "id": 106,
       "title": "📤 导出层",
       "bounding": [
         0,
@@ -2946,7 +2962,9 @@
         1500,
         500
       ],
-      "color": "#3d6b6b"
+      "color": "#3d6b6b",
+      "font_size": 24,
+      "flags": {}
     }
   ],
   "config": {},
