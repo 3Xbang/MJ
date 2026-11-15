@@ -1,0 +1,97 @@
+{
+  "last_node_id": 4,
+  "last_link_id": 4,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LocalLLM",
+      "pos": [50, 200],
+      "size": {"0": 320, "1": 200},
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "model", "type": "CUSTOM", "links": [1], "slot_index": 0},
+        {"name": "tokenizer", "type": "CUSTOM", "links": [2], "slot_index": 1}
+      ],
+      "properties": {"Node name for S&R": "LocalLLM"},
+      "widgets_values": ["Qwen/Qwen2.5-7B-Instruct", "cuda", "float16", false]
+    },
+    {
+      "id": 2,
+      "type": "LLM",
+      "pos": [450, 200],
+      "size": {"0": 350, "1": 300},
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {"name": "model", "type": "CUSTOM", "link": 1},
+        {"name": "tokenizer", "type": "CUSTOM", "link": 2},
+        {"name": "user_prompt", "type": "STRING", "link": 3}
+      ],
+      "outputs": [
+        {"name": "text", "type": "STRING", "links": [4], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "LLM"},
+      "widgets_values": ["你是一位专业影视分镜师。", 0.7, 2048, true, false]
+    },
+    {
+      "id": 3,
+      "type": "AFE_ScriptParser",
+      "pos": [50, 50],
+      "size": {"0": 400, "1": 350},
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {"name": "llm_response", "type": "STRING", "link": 4}
+      ],
+      "outputs": [
+        {"name": "shot_sequence", "type": "SHOT_SEQUENCE", "links": null, "slot_index": 0},
+        {"name": "shot_count", "type": "INT", "links": null, "slot_index": 1},
+        {"name": "sequence_json", "type": "STRING", "links": null, "slot_index": 2},
+        {"name": "prompt_for_llm", "type": "STRING", "links": [3], "slot_index": 3}
+      ],
+      "properties": {"Node name for S&R": "AFE_ScriptParser"},
+      "widgets_values": [
+        "在繁华的都市中，主角独自走在夜晚的街道上，霓虹灯映照着她的面庞。突然，她的手机响起，来电显示一个陌生号码。她犹豫片刻，接起了电话。",
+        "api",
+        "",
+        "https://api.deepseek.com/v1",
+        "deepseek-chat",
+        "Qwen/Qwen2.5-7B-Instruct",
+        "",
+        ""
+      ]
+    },
+    {
+      "id": 4,
+      "type": "ShowText|pysssss",
+      "pos": [900, 200],
+      "size": {"0": 400, "1": 300},
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {"name": "text", "type": "STRING", "link": null}
+      ],
+      "outputs": [
+        {"name": "STRING", "type": "STRING", "links": null, "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "ShowText|pysssss"},
+      "widgets_values": [""]
+    }
+  ],
+  "links": [
+    [1, 1, 0, 2, 0, "CUSTOM"],
+    [2, 1, 1, 2, 1, "CUSTOM"],
+    [3, 3, 3, 2, 2, "STRING"],
+    [4, 2, 0, 3, 0, "STRING"]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {"ds": {"scale": 0.8, "offset": [0, 0]}},
+  "version": 0.4
+}
