@@ -70,6 +70,12 @@ from ai_film_editor_nodes.nodes.director.shot_batch_controller_node import AFE_S
 from ai_film_editor_nodes.nodes.export.final_assembly_node import AFE_FinalAssembly
 from ai_film_editor_nodes.nodes.director.project_manager_node import AFE_ProjectManager
 
+# Part 10 - Wan Optimizer, Shot Editor, Reference Image Manager, Shot Prompt Composer
+from ai_film_editor_nodes.nodes.adapters.wan_prompt_optimizer_node import AFE_WanPromptOptimizer
+from ai_film_editor_nodes.nodes.director.shot_editor_node import AFE_ShotEditor
+from ai_film_editor_nodes.nodes.dam.reference_image_manager_node import AFE_ReferenceImageManager
+from ai_film_editor_nodes.nodes.director.shot_prompt_composer_node import AFE_ShotPromptComposer
+
 NODE_CLASS_MAPPINGS = {
     # Part 1
     "AFE_CharacterAsset": AFE_CharacterAsset,
@@ -122,6 +128,11 @@ NODE_CLASS_MAPPINGS = {
     "AFE_ShotBatchController":  AFE_ShotBatchController,
     "AFE_FinalAssembly":        AFE_FinalAssembly,
     "AFE_ProjectManager":       AFE_ProjectManager,
+    # Part 10 - Wan Optimizer, Shot Editor, Reference Image Manager, Shot Prompt Composer
+    "AFE_WanPromptOptimizer":    AFE_WanPromptOptimizer,
+    "AFE_ShotEditor":            AFE_ShotEditor,
+    "AFE_ReferenceImageManager": AFE_ReferenceImageManager,
+    "AFE_ShotPromptComposer":    AFE_ShotPromptComposer,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -175,6 +186,11 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AFE_ShotBatchController":  "🔄 Shot Batch Controller (分镜批控)",
     "AFE_FinalAssembly":        "🎞️ Final Assembly (最终合成)",
     "AFE_ProjectManager":       "📁 Project Manager (项目管理)",
+    # Part 10
+    "AFE_WanPromptOptimizer":    "⚡ Wan Prompt Optimizer (Wan提示词优化)",
+    "AFE_ShotEditor":            "✏️ Shot Editor (分镜编辑器)",
+    "AFE_ReferenceImageManager": "🖼️ Reference Image Manager (参考图管理)",
+    "AFE_ShotPromptComposer":    "📝 Shot Prompt Composer (提示词合成器)",
 }
 
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]

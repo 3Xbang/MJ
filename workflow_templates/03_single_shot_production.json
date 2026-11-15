@@ -1,252 +1,180 @@
 {
   "last_node_id": 12,
-  "last_link_id": 13,
-  "nodes": [
-    {
+  "last_link_id": 20,
+  "nodes": {
+    "1": {
       "id": 1,
-      "type": "AFE_ShotUnit",
-      "pos": [50, 250],
-      "size": {"0": 400, "1": 300},
-      "flags": {},
-      "order": 0,
-      "mode": 0,
-      "inputs": [
-        {"name": "shot_sequence", "type": "SHOT_SEQUENCE", "link": 13}
-      ],
-      "outputs": [
-        {"name": "positive_prompt", "type": "STRING", "links": [5], "slot_index": 0},
-        {"name": "negative_prompt", "type": "STRING", "links": [6], "slot_index": 1},
-        {"name": "seed", "type": "INT", "links": null, "slot_index": 2},
-        {"name": "width", "type": "INT", "links": null, "slot_index": 3},
-        {"name": "height", "type": "INT", "links": null, "slot_index": 4},
-        {"name": "frame_count", "type": "INT", "links": null, "slot_index": 5},
-        {"name": "shot_label", "type": "STRING", "links": null, "slot_index": 6}
-      ],
-      "properties": {"Node name for S&R": "AFE_ShotUnit"},
-      "widgets_values": ["shot_001", "first_pass_640x360", ""]
+      "class_type": "AFE_ShotBatchController",
+      "_meta": {"title": "🔄 Shot Batch Controller"},
+      "inputs": {
+        "shot_sequence": ["4", 0],
+        "current_index": 0,
+        "tail_frames_dir": "./projects/tail_frames",
+        "output_dir": "./projects/output"
+      }
     },
-    {
+    "2": {
       "id": 2,
-      "type": "CheckpointLoaderSimple",
-      "pos": [50, 550],
-      "size": {"0": 400, "1": 100},
-      "flags": {},
-      "order": 0,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {"name": "MODEL", "type": "MODEL", "links": [1], "slot_index": 0},
-        {"name": "CLIP", "type": "CLIP", "links": [2, 3], "slot_index": 1},
-        {"name": "VAE", "type": "VAE", "links": [4], "slot_index": 2}
-      ],
-      "properties": {"Node name for S&R": "CheckpointLoaderSimple"},
-      "widgets_values": ["v1-5-pruned-emaonly.ckpt"]
+      "class_type": "AFE_ShotUnit",
+      "_meta": {"title": "🎬 Shot Unit"},
+      "inputs": {
+        "shot_sequence": ["1", 0],
+        "shot_id": ["1", 1],
+        "render_pass": "first_pass_640x360"
+      }
     },
-    {
+    "3": {
       "id": 3,
-      "type": "CLIPTextEncode",
-      "pos": [500, 100],
-      "size": {"0": 400, "1": 100},
-      "flags": {},
-      "order": 1,
-      "mode": 0,
-      "inputs": [
-        {"name": "text", "type": "STRING", "link": 5, "widget": {"name": "text"}},
-        {"name": "clip", "type": "CLIP", "link": 2}
-      ],
-      "outputs": [
-        {"name": "CONDITIONING", "type": "CONDITIONING", "links": [7], "slot_index": 0}
-      ],
-      "properties": {"Node name for S&R": "CLIPTextEncode"},
-      "widgets_values": [""]
+      "class_type": "AFE_ShotPromptComposer",
+      "_meta": {"title": "📝 Shot Prompt Composer"},
+      "inputs": {
+        "shot_sequence": ["1", 0],
+        "shot_id": ["1", 1],
+        "director_notes_override": ""
+      }
     },
-    {
+    "4": {
       "id": 4,
-      "type": "CLIPTextEncode",
-      "pos": [500, 350],
-      "size": {"0": 400, "1": 100},
-      "flags": {},
-      "order": 1,
-      "mode": 0,
-      "inputs": [
-        {"name": "text", "type": "STRING", "link": 6, "widget": {"name": "text"}},
-        {"name": "clip", "type": "CLIP", "link": 3}
-      ],
-      "outputs": [
-        {"name": "CONDITIONING", "type": "CONDITIONING", "links": [8], "slot_index": 0}
-      ],
-      "properties": {"Node name for S&R": "CLIPTextEncode"},
-      "widgets_values": ["deformed, blurry, bad anatomy"]
+      "class_type": "AFE_ShotSequenceBuilder",
+      "_meta": {"title": "🎬 Shot Sequence Builder"},
+      "inputs": {
+        "script_json": "",
+        "default_duration": 5.0,
+        "default_render_pass": "first_pass_640x360"
+      }
     },
-    {
+    "5": {
       "id": 5,
-      "type": "EmptyLatentImage",
-      "pos": [500, 600],
-      "size": {"0": 300, "1": 100},
-      "flags": {},
-      "order": 0,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {"name": "LATENT", "type": "LATENT", "links": [9], "slot_index": 0}
-      ],
-      "properties": {"Node name for S&R": "EmptyLatentImage"},
-      "widgets_values": [640, 360, 1]
+      "class_type": "AFE_WanPromptOptimizer",
+      "_meta": {"title": "⚡ Wan Prompt Optimizer"},
+      "inputs": {
+        "shot_sequence": ["1", 0],
+        "shot_id": ["1", 1],
+        "optimization_mode": "rule_based",
+        "manual_override": ""
+      }
     },
-    {
+    "6": {
       "id": 6,
-      "type": "KSampler",
-      "pos": [900, 250],
-      "size": {"0": 350, "1": 250},
-      "flags": {},
-      "order": 2,
-      "mode": 0,
-      "inputs": [
-        {"name": "model", "type": "MODEL", "link": 1},
-        {"name": "positive", "type": "CONDITIONING", "link": 7},
-        {"name": "negative", "type": "CONDITIONING", "link": 8},
-        {"name": "latent_image", "type": "LATENT", "link": 9}
-      ],
-      "outputs": [
-        {"name": "LATENT", "type": "LATENT", "links": [10], "slot_index": 0}
-      ],
-      "properties": {"Node name for S&R": "KSampler"},
-      "widgets_values": [42, "randomize", 25, 7.0, "euler_ancestral", "normal", 1.0]
+      "class_type": "WanTextEncode",
+      "_meta": {"title": "WanTextEncode (Positive)"},
+      "inputs": {
+        "text": ["5", 0]
+      }
     },
-    {
+    "7": {
       "id": 7,
-      "type": "VAEDecode",
-      "pos": [1200, 250],
-      "size": {"0": 210, "1": 50},
-      "flags": {},
-      "order": 3,
-      "mode": 0,
-      "inputs": [
-        {"name": "samples", "type": "LATENT", "link": 10},
-        {"name": "vae", "type": "VAE", "link": 4}
-      ],
-      "outputs": [
-        {"name": "IMAGE", "type": "IMAGE", "links": [11, 12], "slot_index": 0}
-      ],
-      "properties": {"Node name for S&R": "VAEDecode"},
-      "widgets_values": []
+      "class_type": "WanTextEncode",
+      "_meta": {"title": "WanTextEncode (Negative)"},
+      "inputs": {
+        "text": ["5", 1]
+      }
     },
-    {
+    "8": {
       "id": 8,
-      "type": "AFE_ShotChain",
-      "pos": [1500, 250],
-      "size": {"0": 350, "1": 200},
-      "flags": {},
-      "order": 4,
-      "mode": 0,
-      "inputs": [
-        {"name": "rendered_frames", "type": "IMAGE", "link": 11},
-        {"name": "shot_sequence", "type": "SHOT_SEQUENCE", "link": null}
-      ],
-      "outputs": [
-        {"name": "tail_frame", "type": "IMAGE", "links": null, "slot_index": 0},
-        {"name": "next_shot_id", "type": "STRING", "links": null, "slot_index": 1},
-        {"name": "chain_status", "type": "STRING", "links": null, "slot_index": 2}
-      ],
-      "properties": {"Node name for S&R": "AFE_ShotChain"},
-      "widgets_values": ["shot_001", "./projects/tail_frames"]
+      "class_type": "AFE_ReferenceImageManager",
+      "_meta": {"title": "🖼️ Reference Image Manager"},
+      "inputs": {
+        "source_type": "character",
+        "view_type": "primary",
+        "fallback_to_blank": true
+      }
     },
-    {
+    "9": {
       "id": 9,
-      "type": "VHS_VideoCombine",
-      "pos": [1800, 250],
-      "size": {"0": 350, "1": 250},
-      "flags": {},
-      "order": 4,
-      "mode": 0,
-      "inputs": [
-        {"name": "images", "type": "IMAGE", "link": 12}
-      ],
-      "outputs": [
-        {"name": "Filenames", "type": "VHS_FILENAMES", "links": null, "slot_index": 0}
-      ],
-      "properties": {"Node name for S&R": "VHS_VideoCombine"},
-      "widgets_values": [24, 0, "AFE_shot", "video/h264-mp4", "yuv420p", 19, true, false, true]
+      "class_type": "WanImageToVideoLatent",
+      "_meta": {"title": "WanImageToVideoLatent"},
+      "inputs": {
+        "image": ["8", 0],
+        "width": 640,
+        "height": 360,
+        "length": 124,
+        "batch_size": 1
+      }
     },
-    {
+    "10": {
       "id": 10,
-      "type": "AFE_ProjectManager",
-      "pos": [50, 50],
-      "size": {"0": 380, "1": 130},
-      "flags": {},
-      "order": 0,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {"name": "project_root", "type": "STRING", "links": null, "slot_index": 0},
-        {"name": "assets_dir", "type": "STRING", "links": null, "slot_index": 1},
-        {"name": "shots_dir", "type": "STRING", "links": null, "slot_index": 2},
-        {"name": "audio_dir", "type": "STRING", "links": null, "slot_index": 3},
-        {"name": "project_status", "type": "STRING", "links": null, "slot_index": 4}
-      ],
-      "properties": {"Node name for S&R": "AFE_ProjectManager"},
-      "widgets_values": ["get_paths", "my_film_project", "./projects"]
+      "class_type": "KSamplerAdvanced",
+      "_meta": {"title": "KSamplerAdvanced"},
+      "inputs": {
+        "positive": ["6", 0],
+        "negative": ["7", 0],
+        "latent_image": ["9", 0],
+        "add_noise": "enable",
+        "noise_seed": 42,
+        "steps": 20,
+        "cfg": 6.0,
+        "sampler_name": "euler",
+        "scheduler": "karras",
+        "start_at_step": 0,
+        "end_at_step": 10000,
+        "return_with_leftover_noise": "disable"
+      }
     },
-    {
+    "11": {
       "id": 11,
-      "type": "AFE_ShotBatchController",
-      "pos": [50, 200],
-      "size": {"0": 380, "1": 200},
-      "flags": {},
-      "order": 0,
-      "mode": 0,
-      "inputs": [
-        {"name": "shot_sequence", "type": "SHOT_SEQUENCE", "link": null}
-      ],
-      "outputs": [
-        {"name": "shot_sequence", "type": "SHOT_SEQUENCE", "links": [13], "slot_index": 0},
-        {"name": "current_shot_id", "type": "STRING", "links": null, "slot_index": 1},
-        {"name": "tail_frame", "type": "IMAGE", "links": null, "slot_index": 2},
-        {"name": "batch_status", "type": "STRING", "links": null, "slot_index": 3},
-        {"name": "current_index", "type": "INT", "links": null, "slot_index": 4},
-        {"name": "total_shots", "type": "INT", "links": null, "slot_index": 5}
-      ],
-      "properties": {"Node name for S&R": "AFE_ShotBatchController"},
-      "widgets_values": [0, "./projects/tail_frames", "./projects/output"]
+      "class_type": "WanVideoVAEDecode",
+      "_meta": {"title": "WanVideoVAEDecode"},
+      "inputs": {
+        "samples": ["10", 0],
+        "enable_vae_tiling": true
+      }
     },
-    {
+    "12": {
       "id": 12,
-      "type": "AFE_CharacterConsistency",
-      "pos": [900, 50],
-      "size": {"0": 350, "1": 180},
-      "flags": {},
-      "order": 0,
-      "mode": 0,
-      "inputs": [
-        {"name": "character", "type": "CHARACTER_ASSET", "link": null}
-      ],
-      "outputs": [
-        {"name": "reference_image", "type": "IMAGE", "links": null, "slot_index": 0},
-        {"name": "weight", "type": "FLOAT", "links": null, "slot_index": 1},
-        {"name": "weight_type", "type": "STRING", "links": null, "slot_index": 2},
-        {"name": "consistency_status", "type": "STRING", "links": null, "slot_index": 3}
-      ],
-      "properties": {"Node name for S&R": "AFE_CharacterConsistency"},
-      "widgets_values": [0.6, "original", true]
+      "class_type": "AFE_ShotChain",
+      "_meta": {"title": "🔗 Shot Chain (尾帧接力)"},
+      "inputs": {
+        "rendered_frames": ["11", 0],
+        "shot_sequence": ["1", 0],
+        "current_shot_id": ["1", 1],
+        "tail_frames_dir": "./projects/tail_frames"
+      }
+    },
+    "13": {
+      "id": 13,
+      "class_type": "VHS_VideoCombine",
+      "_meta": {"title": "VHS_VideoCombine"},
+      "inputs": {
+        "images": ["11", 0],
+        "frame_rate": 24,
+        "loop_count": 0,
+        "filename_prefix": "AFE_shot",
+        "format": "video/h264-mp4",
+        "pix_fmt": "yuv420p",
+        "crf": 19,
+        "save_metadata": true,
+        "pingpong": false,
+        "save_output": true
+      }
     }
-  ],
+  },
   "links": [
-    [1, 2, 0, 6, 0, "MODEL"],
-    [2, 2, 1, 3, 1, "CLIP"],
-    [3, 2, 1, 4, 1, "CLIP"],
-    [4, 2, 2, 7, 1, "VAE"],
-    [5, 1, 0, 3, 0, "STRING"],
-    [6, 1, 1, 4, 0, "STRING"],
-    [7, 3, 0, 6, 1, "CONDITIONING"],
-    [8, 4, 0, 6, 2, "CONDITIONING"],
-    [9, 5, 0, 6, 3, "LATENT"],
-    [10, 6, 0, 7, 0, "LATENT"],
-    [11, 7, 0, 8, 0, "IMAGE"],
-    [12, 7, 0, 9, 0, "IMAGE"],
-    [13, 11, 0, 1, 0, "SHOT_SEQUENCE"]
+    [1,  "4", 0,  "1", 0, "SHOT_SEQUENCE"],
+    [2,  "1", 0,  "2", 0, "SHOT_SEQUENCE"],
+    [3,  "1", 1,  "2", 1, "STRING"],
+    [4,  "1", 0,  "3", 0, "SHOT_SEQUENCE"],
+    [5,  "1", 1,  "3", 1, "STRING"],
+    [6,  "1", 0,  "5", 0, "SHOT_SEQUENCE"],
+    [7,  "1", 1,  "5", 1, "STRING"],
+    [8,  "5", 0,  "6", 0, "STRING"],
+    [9,  "5", 1,  "7", 0, "STRING"],
+    [10, "8", 0,  "9", 0, "IMAGE"],
+    [11, "9", 0, "10", 2, "LATENT"],
+    [12, "6", 0, "10", 0, "CONDITIONING"],
+    [13, "7", 0, "10", 1, "CONDITIONING"],
+    [14, "10", 0, "11", 0, "LATENT"],
+    [15, "11", 0, "12", 0, "IMAGE"],
+    [16, "1",  0, "12", 1, "SHOT_SEQUENCE"],
+    [17, "1",  1, "12", 2, "STRING"],
+    [18, "11", 0, "13", 0, "IMAGE"]
   ],
   "groups": [],
   "config": {},
-  "extra": {"ds": {"scale": 0.8, "offset": [0, 0]}},
+  "extra": {
+    "ds": {"scale": 0.75, "offset": [0, 0]},
+    "afe_workflow_version": "1.0",
+    "afe_description": "Single shot production pipeline: ShotBatchController → ShotPromptComposer → WanPromptOptimizer → WanTextEncode → WanImageToVideoLatent → KSamplerAdvanced → WanVideoVAEDecode → ShotChain + VHS_VideoCombine"
+  },
   "version": 0.4
 }
