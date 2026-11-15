@@ -555,7 +555,7 @@
         "Node name for S&R": "CheckpointLoaderSimple"
       },
       "widgets_values": [
-        ""
+        "请选择模型"
       ]
     },
     {
@@ -1103,6 +1103,7 @@
         "ver": "main"
       },
       "widgets_values": [
+        "shot_001",
         ""
       ]
     },
@@ -1187,9 +1188,14 @@
         "ver": "main"
       },
       "widgets_values": [
+        "shot_001",
         "rule_based",
         "",
+        "",
+        "",
         "https://api.deepseek.com/v1",
+        "",
+        "",
         ""
       ]
     },
@@ -1255,7 +1261,7 @@
         "Node name for S&R": "CLIPLoader"
       },
       "widgets_values": [
-        "",
+        "请选择CLIP模型",
         "sd3"
       ]
     },
@@ -1515,10 +1521,10 @@
         81,
         1,
         42,
-        "euler",
-        "simple",
+        6.0,
         20,
-        6.5
+        "euler",
+        1.0
       ]
     },
     {
@@ -1915,6 +1921,7 @@
         "ver": "main"
       },
       "widgets_values": [
+        "shot_001",
         "晓晓(女)",
         -0.1,
         "./projects/audio",
