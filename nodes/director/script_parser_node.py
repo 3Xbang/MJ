@@ -1,153 +1,145 @@
 import json
-import asyncio
 from ai_film_editor_nodes.lib.utils.logger import get_logger
 
 logger = get_logger("AFE_ScriptParser")
 
-SYSTEM_PROMPT = (
-    "You are a film production assistant. Parse the provided film script into a structured list of shots. "
-    "Return a JSON array where each element has these fields: "
-    "shot_id (string, sequential like 'shot_001'), label (string, short description), "
-    "description (string, visual description of the shot), "
-    "character_names (array of strings), scene_name (string), "
-    "camera_motion (one of: static, pan_left, pan_right, zoom_in, zoom_out, tilt_up, tilt_down, orbit), "
-    "duration_hint (float seconds, estimate). "
-    "Return ONLY the JSON array, no markdown, no explanation."
-)
+SYSTEM_PROMPT_TEMPLATE = """你是一位专业影视分镜师。请将以下剧本解析为结构化分镜列表。
+
+要求：
+- 返回 JSON 数组格式
+- 每个分镜包含：shot_id, label, description, character_names, scene_name, camera_motion, duration_hint
+- camera_motion 只能是：static, pan_left, pan_right, zoom_in, zoom_out, tilt_up, tilt_down, orbit
+- duration_hint 单位为秒
+- 只返回 JSON，不要有其他文字
+
+剧本内容：
+{script_text}
+{chars_hint}{scenes_hint}"""
 
 
 class AFE_ScriptParser:
+    """
+    剧本解析节点。
+
+    两种用法：
+    1. 连接 LLM 节点输出（推荐）：llm_response 接收任意 LLM 节点的文本输出
+    2. 独立模式：填写 llm_api_key 直接调用 DeepSeek/OpenAI API
+    """
+
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "script_text": ("STRING", {"multiline": True, "default": "在这里输入剧本..."}),
-                "mode": (["api", "local_transformers"],),
+                "script_text": ("STRING", {
+                    "multiline": True,
+                    "default": "在这里输入剧本内容..."
+                }),
             },
             "optional": {
-                # API 模式
+                # ── 用法1：接收外部 LLM 节点的输出 ──
+                "llm_response": ("STRING", {
+                    "multiline": True,
+                    "default": "",
+                    "tooltip": "连接 ComfyUI-LLM-Party 等 LLM 节点的输出"
+                }),
+
+                # ── 用法2：直接调用 API（不连接 LLM 节点时使用）──
                 "llm_api_key":  ("STRING", {"default": ""}),
                 "llm_base_url": ("STRING", {"default": "https://api.deepseek.com/v1"}),
                 "llm_model":    ("STRING", {"default": "deepseek-chat"}),
-                # 本地模式
-                "local_model_name": ("STRING", {"default": "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B"}),
-                # 可选上下文
+
+                # ── 上下文提示 ──
                 "available_characters": ("STRING", {"default": ""}),
                 "available_scenes":     ("STRING", {"default": ""}),
             }
         }
 
-    RETURN_TYPES = ("SHOT_SEQUENCE", "INT", "STRING")
-    RETURN_NAMES = ("shot_sequence", "shot_count", "sequence_json")
+    RETURN_TYPES = ("SHOT_SEQUENCE", "INT", "STRING", "STRING")
+    RETURN_NAMES = ("shot_sequence", "shot_count", "sequence_json", "prompt_for_llm")
     FUNCTION = "parse_script"
     CATEGORY = "AI Film Editor/Director"
     OUTPUT_NODE = True
 
-    # 缓存本地模型，避免重复加载
-    _local_pipeline = None
-    _loaded_model_name = None
-
-    def parse_script(self, script_text, mode,
-                     llm_api_key="", llm_base_url="https://api.deepseek.com/v1",
-                     llm_model="deepseek-chat", local_model_name="deepseek-ai/DeepSeek-R1-Distill-Qwen-7B",
+    def parse_script(self, script_text,
+                     llm_response="", llm_api_key="",
+                     llm_base_url="https://api.deepseek.com/v1",
+                     llm_model="deepseek-chat",
                      available_characters="", available_scenes=""):
 
         if not script_text.strip():
             raise ValueError("script_text 不能为空")
 
-        chars_hint  = f" 可用角色：{available_characters}。" if available_characters.strip() else ""
-        scenes_hint = f" 可用场景：{available_scenes}。" if available_scenes.strip() else ""
-        system = SYSTEM_PROMPT + chars_hint + scenes_hint
+        chars_hint  = f"\n可用角色：{available_characters}" if available_characters.strip() else ""
+        scenes_hint = f"\n可用场景：{available_scenes}"   if available_scenes.strip()     else ""
 
-        if mode == "api":
-            raw = self._call_api(script_text, system, llm_api_key, llm_base_url, llm_model)
+        # 生成给 LLM 的提示词（无论哪种模式都输出，方便用户连接外部 LLM 节点）
+        prompt_for_llm = SYSTEM_PROMPT_TEMPLATE.format(
+            script_text=script_text,
+            chars_hint=chars_hint,
+            scenes_hint=scenes_hint,
+        )
+
+        # ── 决定使用哪个 LLM 响应 ──────────────────────────
+        if llm_response.strip():
+            # 用法1：使用外部 LLM 节点传入的响应
+            raw = llm_response
+            logger.info("使用外部 LLM 节点的响应")
+
+        elif llm_api_key.strip():
+            # 用法2：直接调用 API
+            raw = self._call_api(prompt_for_llm, llm_api_key, llm_base_url, llm_model)
+            logger.info(f"使用 API 模式：{llm_base_url}")
+
         else:
-            raw = self._call_local(script_text, system, local_model_name)
+            # 两种都没有：输出提示词供用户复制到 LLM 节点
+            hint = (
+                "⚠️ 请选择以下任一方式：\n"
+                "方式1：安装 ComfyUI-LLM-Party，把 LLM 节点的输出连接到 llm_response 输入\n"
+                "方式2：在 llm_api_key 填入 DeepSeek API Key\n\n"
+                "下方是给 LLM 的提示词（可手动复制使用）：\n\n"
+                + prompt_for_llm
+            )
+            logger.warning("未提供 LLM 响应或 API Key")
+            return ([], 0, hint, prompt_for_llm)
 
-        # 解析 JSON（兼容 LLM 返回 markdown 代码块的情况）
-        raw = raw.strip()
-        if raw.startswith("```"):
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-        bracket = raw.find("[")
-        if bracket > 0:
-            raw = raw[bracket:]
-
-        shots = json.loads(raw)
-        if not isinstance(shots, list):
-            raise ValueError(f"LLM 返回格式错误: {raw[:200]}")
-
+        # ── 解析 JSON ────────────────────────────────────────
+        shots = self._parse_json(raw)
         sequence_json = json.dumps(shots, ensure_ascii=False, indent=2)
         logger.info(f"解析完成：{len(shots)} 个分镜")
-        return (shots, len(shots), sequence_json)
+        return (shots, len(shots), sequence_json, prompt_for_llm)
 
-    # ── API 模式 ──────────────────────────────────────────
-    def _call_api(self, script_text, system, api_key, base_url, model):
-        if not api_key.strip():
-            raise ValueError("API 模式需要填写 llm_api_key（DeepSeek / OpenAI 等）")
-
+    def _call_api(self, prompt, api_key, base_url, model):
+        import asyncio
         async def _call():
             from openai import AsyncOpenAI
             client = AsyncOpenAI(api_key=api_key, base_url=base_url)
             resp = await client.chat.completions.create(
                 model=model,
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user",   "content": script_text},
-                ],
+                messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
                 timeout=60,
             )
             return resp.choices[0].message.content
-
         return asyncio.run(_call())
 
-    # ── 本地 transformers 模式 ────────────────────────────
-    def _call_local(self, script_text, system, model_name):
-        """
-        直接用 transformers pipeline 在本地 GPU 推理。
-        第一次调用会从 HuggingFace 下载模型（约 15GB），之后缓存复用。
-        """
-        import torch
-        from transformers import pipeline, AutoTokenizer, AutoModelForCausalLM
-
-        # 加载模型（缓存复用）
-        if AFE_ScriptParser._loaded_model_name != model_name:
-            logger.info(f"加载本地模型：{model_name}（首次加载需要下载，请耐心等待）")
-            tokenizer = AutoTokenizer.from_pretrained(model_name)
-            model = AutoModelForCausalLM.from_pretrained(
-                model_name,
-                torch_dtype=torch.float16,
-                device_map="auto",
-            )
-            AFE_ScriptParser._local_pipeline = pipeline(
-                "text-generation",
-                model=model,
-                tokenizer=tokenizer,
-            )
-            AFE_ScriptParser._loaded_model_name = model_name
-            logger.info("本地模型加载完成")
-
-        pipe = AFE_ScriptParser._local_pipeline
-        messages = [
-            {"role": "system", "content": system},
-            {"role": "user",   "content": script_text},
-        ]
-        # 使用 chat template
-        tokenizer = pipe.tokenizer
-        prompt = tokenizer.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=True
-        )
-        result = pipe(
-            prompt,
-            max_new_tokens=2048,
-            temperature=0.3,
-            do_sample=True,
-            pad_token_id=tokenizer.eos_token_id,
-        )
-        generated = result[0]["generated_text"]
-        # 只取新生成的部分
-        if generated.startswith(prompt):
-            generated = generated[len(prompt):]
-        return generated
+    def _parse_json(self, raw: str) -> list:
+        raw = raw.strip()
+        # 去掉 markdown 代码块
+        if "```" in raw:
+            parts = raw.split("```")
+            for part in parts:
+                if "[" in part:
+                    raw = part
+                    if raw.startswith("json"):
+                        raw = raw[4:]
+                    break
+        # 找到 JSON 数组起始位置
+        start = raw.find("[")
+        end   = raw.rfind("]")
+        if start == -1 or end == -1:
+            raise ValueError(f"LLM 响应中未找到 JSON 数组，响应内容：{raw[:300]}")
+        raw = raw[start:end+1]
+        shots = json.loads(raw)
+        if not isinstance(shots, list):
+            raise ValueError("解析结果不是列表格式")
+        return shots
