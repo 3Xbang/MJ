@@ -82,6 +82,14 @@ from ai_film_editor_nodes.nodes.consistency.multi_character_blend_node import AF
 from ai_film_editor_nodes.nodes.export.shot_video_audio_merge_node import AFE_ShotVideoAudioMerge
 from ai_film_editor_nodes.nodes.director.shot_preview_node import AFE_ShotPreview
 
+# Part 12 - Analyzers
+from ai_film_editor_nodes.nodes.analyzer.cast_analyzer_node import AFE_CastAnalyzer
+from ai_film_editor_nodes.nodes.analyzer.costume_analyzer_node import AFE_CostumeAnalyzer
+from ai_film_editor_nodes.nodes.analyzer.props_analyzer_node import AFE_PropsAnalyzer
+from ai_film_editor_nodes.nodes.analyzer.scene_analyzer_node import AFE_SceneAnalyzer
+from ai_film_editor_nodes.nodes.analyzer.shot_list_viewer_node import AFE_ShotListViewer
+from ai_film_editor_nodes.nodes.analyzer.asset_selector_node import AFE_AssetSelector
+
 NODE_CLASS_MAPPINGS = {
     # Part 1
     "AFE_CharacterAsset": AFE_CharacterAsset,
@@ -144,6 +152,13 @@ NODE_CLASS_MAPPINGS = {
     "AFE_MultiCharacterBlend":    AFE_MultiCharacterBlend,
     "AFE_ShotVideoAudioMerge":    AFE_ShotVideoAudioMerge,
     "AFE_ShotPreview":            AFE_ShotPreview,
+    # Part 12 - Analyzers
+    "AFE_CastAnalyzer":           AFE_CastAnalyzer,
+    "AFE_CostumeAnalyzer":        AFE_CostumeAnalyzer,
+    "AFE_PropsAnalyzer":          AFE_PropsAnalyzer,
+    "AFE_SceneAnalyzer":          AFE_SceneAnalyzer,
+    "AFE_ShotListViewer":         AFE_ShotListViewer,
+    "AFE_AssetSelector":          AFE_AssetSelector,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -207,6 +222,13 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AFE_MultiCharacterBlend": "\U0001f465 Multi Character Blend (多角色混合)",
     "AFE_ShotVideoAudioMerge": "\U0001f3ac Shot Video Audio Merge (音视频合并)",
     "AFE_ShotPreview":         "\U0001f441\ufe0f Shot Preview (分镜预览)",
+    # Part 12 - Analyzers
+    "AFE_CastAnalyzer":        "👥 Cast Analyzer (人物分析器)",
+    "AFE_CostumeAnalyzer":     "👗 Costume Analyzer (服装分析器)",
+    "AFE_PropsAnalyzer":       "🔧 Props Analyzer (道具分析器)",
+    "AFE_SceneAnalyzer":       "🌄 Scene Analyzer (场景分析器)",
+    "AFE_ShotListViewer":      "🎬 Shot List Viewer (分镜列表)",
+    "AFE_AssetSelector":       "🎯 Asset Selector (资产选择器)",
 }
 
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]
