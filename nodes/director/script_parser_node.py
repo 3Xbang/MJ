@@ -7,6 +7,13 @@ logger = get_logger("AFE_ScriptParser")
 # 角色表从 shots 数据中自动提取
 SYSTEM_PROMPT = """你是一位专业影视分镜师。请将以下剧本解析为分镜列表，只返回 JSON 数组，不要其他任何文字。
 
+严格规则（必须遵守）：
+1. 禁止写"同上"，每个分镜的 costume_description 必须写完整服装描述
+2. dialogue 字段必须从剧本提取实际台词，有台词写台词，真的没有才写"（无）"
+3. shot_description 控制在80字以内（英文），保持简洁
+4. duration_seconds 必须是数字（5秒=5.0）
+5. shot_description 必须用英文
+
 格式：
 [
   {
@@ -20,20 +27,18 @@ SYSTEM_PROMPT = """你是一位专业影视分镜师。请将以下剧本解析�
     "camera_angle": "medium",
     "camera_motion": "slow_push_in",
     "lighting_style": "冷色调霓虹灯",
-    "director_notes": "用冷色调表现孤独感",
-    "shot_description": "Medium shot. Character walks alone on a neon-lit city street at night. Cold blue tones. Cinematic.",
+    "director_notes": "表现孤独感",
+    "shot_description": "Medium shot. Man walks alone on neon-lit street at night. Cold blue tones. Cinematic.",
     "negative_prompt": "ugly, blurry, low quality",
-    "dialogue": "（无）"
+    "dialogue": "台词内容或（无）"
   }
 ]
 
 camera_angle 只能是：close_up, medium, wide, low_angle, high_angle, eye_level, dutch
 camera_motion 只能是：static, pan_left, pan_right, zoom_in, zoom_out, tilt_up, tilt_down, orbit, slow_push_in, slow_pull_back, tracking_shot, handheld
-duration_seconds 必须是数字（5秒=5.0，10秒=10.0）
-shot_description 必须用英文
 只返回 JSON 数组，不要解释。
 
-You are a professional film storyboard artist. Parse the script into a JSON array of shots. Return ONLY the JSON array, no other text."""
+You are a professional storyboard artist. NEVER use "同上". Always write complete costume descriptions. Extract actual dialogue from the script."""
 
 
 class AFE_ScriptParser:
