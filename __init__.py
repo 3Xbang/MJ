@@ -58,6 +58,12 @@ from ai_film_editor_nodes.nodes.director.shot_director_ai_node import AFE_ShotDi
 from ai_film_editor_nodes.nodes.dam.character_view_prompt_node import AFE_CharacterViewPrompt
 from ai_film_editor_nodes.nodes.director.shot_chain_node import AFE_ShotChain
 
+# Part 8 - Production Bible, Auto Asset Pipeline, TTS, Shot Status
+from ai_film_editor_nodes.nodes.director.production_bible_node import AFE_ProductionBible
+from ai_film_editor_nodes.nodes.dam.auto_asset_pipeline_node import AFE_AutoAssetPipeline
+from ai_film_editor_nodes.nodes.audio.tts_generator_node import AFE_TTSGenerator
+from ai_film_editor_nodes.nodes.director.shot_status_node import AFE_ShotStatusBoard
+
 NODE_CLASS_MAPPINGS = {
     # Part 1
     "AFE_CharacterAsset": AFE_CharacterAsset,
@@ -100,6 +106,11 @@ NODE_CLASS_MAPPINGS = {
     "AFE_ShotDirectorAI": AFE_ShotDirectorAI,
     "AFE_CharacterViewPrompt": AFE_CharacterViewPrompt,
     "AFE_ShotChain": AFE_ShotChain,
+    # Part 8 - Production Bible, Auto Asset Pipeline, TTS, Shot Status
+    "AFE_ProductionBible": AFE_ProductionBible,
+    "AFE_AutoAssetPipeline": AFE_AutoAssetPipeline,
+    "AFE_TTSGenerator": AFE_TTSGenerator,
+    "AFE_ShotStatusBoard": AFE_ShotStatusBoard,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -144,6 +155,11 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AFE_ShotDirectorAI": "🎬 Shot Director AI (专业导演建议)",
     "AFE_CharacterViewPrompt": "👁️ Character View Prompt (角色视图提示词)",
     "AFE_ShotChain": "🔗 Shot Chain (尾帧接力)",
+    # Part 8 - Production Bible, Auto Asset Pipeline, TTS, Shot Status
+    "AFE_ProductionBible": "📋 Production Bible (制作手册)",
+    "AFE_AutoAssetPipeline": "🏭 Auto Asset Pipeline (自动资产管线)",
+    "AFE_TTSGenerator": "🎙️ TTS Generator (语音合成)",
+    "AFE_ShotStatusBoard": "📊 Shot Status Board (分镜状态板)",
 }
 
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]

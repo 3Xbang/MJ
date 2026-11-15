@@ -1,0 +1,122 @@
+{
+  "last_node_id": 5,
+  "last_link_id": 5,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "AFE_ScriptParser",
+      "pos": [100, 250],
+      "size": {"0": 500, "1": 400},
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "shot_sequence", "type": "SHOT_SEQUENCE", "links": [3, 4], "slot_index": 0},
+        {"name": "cast_data", "type": "CAST_DATA", "links": [1, 2], "slot_index": 1},
+        {"name": "shot_count", "type": "INT", "links": null, "slot_index": 2},
+        {"name": "sequence_json", "type": "STRING", "links": null, "slot_index": 3},
+        {"name": "prompt_for_llm", "type": "STRING", "links": null, "slot_index": 4}
+      ],
+      "properties": {"Node name for S&R": "AFE_ScriptParser"},
+      "widgets_values": [
+        "Enter script here...",
+        "",
+        "",
+        "",
+        "https://api.deepseek.com/v1",
+        "deepseek-chat"
+      ]
+    },
+    {
+      "id": 2,
+      "type": "AFE_CastManager",
+      "pos": [700, 50],
+      "size": {"0": 400, "1": 200},
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {"name": "cast_data", "type": "CAST_DATA", "link": 1}
+      ],
+      "outputs": [
+        {"name": "character", "type": "CHARACTER_ASSET", "links": null, "slot_index": 0},
+        {"name": "character_id", "type": "STRING", "links": null, "slot_index": 1},
+        {"name": "cast_summary", "type": "STRING", "links": null, "slot_index": 2},
+        {"name": "character_json", "type": "STRING", "links": null, "slot_index": 3}
+      ],
+      "properties": {"Node name for S&R": "AFE_CastManager"},
+      "widgets_values": ["char_001", "all"]
+    },
+    {
+      "id": 3,
+      "type": "AFE_ProductionBible",
+      "pos": [700, 450],
+      "size": {"0": 400, "1": 200},
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {"name": "cast_data", "type": "CAST_DATA", "link": 2},
+        {"name": "shot_sequence", "type": "SHOT_SEQUENCE", "link": 3}
+      ],
+      "outputs": [
+        {"name": "cast_summary", "type": "STRING", "links": null, "slot_index": 0},
+        {"name": "shot_summary", "type": "STRING", "links": null, "slot_index": 1},
+        {"name": "full_bible", "type": "STRING", "links": null, "slot_index": 2}
+      ],
+      "properties": {"Node name for S&R": "AFE_ProductionBible"},
+      "widgets_values": ["My Film Project"]
+    },
+    {
+      "id": 4,
+      "type": "AFE_ShotDirectorAI",
+      "pos": [700, 700],
+      "size": {"0": 400, "1": 300},
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {"name": "shot_sequence", "type": "SHOT_SEQUENCE", "link": 4}
+      ],
+      "outputs": [
+        {"name": "enhanced_sequence", "type": "SHOT_SEQUENCE", "links": [5], "slot_index": 0},
+        {"name": "enhanced_prompt", "type": "STRING", "links": null, "slot_index": 1},
+        {"name": "enhanced_negative", "type": "STRING", "links": null, "slot_index": 2},
+        {"name": "director_report", "type": "STRING", "links": null, "slot_index": 3}
+      ],
+      "properties": {"Node name for S&R": "AFE_ShotDirectorAI"},
+      "widgets_values": ["shot_001", "", "", "", "https://api.deepseek.com/v1", "deepseek-chat"]
+    },
+    {
+      "id": 5,
+      "type": "AFE_ShotStatusBoard",
+      "pos": [1300, 450],
+      "size": {"0": 400, "1": 200},
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {"name": "shot_sequence", "type": "SHOT_SEQUENCE", "link": 5}
+      ],
+      "outputs": [
+        {"name": "status_board", "type": "STRING", "links": null, "slot_index": 0},
+        {"name": "completed_count", "type": "INT", "links": null, "slot_index": 1},
+        {"name": "pending_count", "type": "INT", "links": null, "slot_index": 2}
+      ],
+      "properties": {"Node name for S&R": "AFE_ShotStatusBoard"},
+      "widgets_values": ["./projects/output", true]
+    }
+  ],
+  "links": [
+    [1, 1, 1, 2, 0, "CAST_DATA"],
+    [2, 1, 1, 3, 0, "CAST_DATA"],
+    [3, 1, 0, 3, 1, "SHOT_SEQUENCE"],
+    [4, 1, 0, 4, 0, "SHOT_SEQUENCE"],
+    [5, 4, 0, 5, 0, "SHOT_SEQUENCE"]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {"ds": {"scale": 0.8, "offset": [0, 0]}},
+  "version": 0.4
+}
