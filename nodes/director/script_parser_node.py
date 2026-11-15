@@ -34,12 +34,6 @@ shot_description 必须用英文
 只返回 JSON 数组，不要解释。
 
 You are a professional film storyboard artist. Parse the script into a JSON array of shots. Return ONLY the JSON array, no other text."""
-4. 只返回 JSON，不要其他文字
-
-You are a professional film director. Analyze the script and output:
-1. Cast list with role hierarchy (lead/supporting/extras)
-2. Detailed shot breakdown with professional filmmaking notes
-Return ONLY valid JSON, no other text."""
 
 
 class AFE_ScriptParser:
