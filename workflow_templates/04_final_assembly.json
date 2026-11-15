@@ -1,0 +1,88 @@
+{
+  "last_node_id": 4,
+  "last_link_id": 2,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "AFE_ProjectManager",
+      "pos": [50, 250],
+      "size": {"0": 380, "1": 130},
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "project_root", "type": "STRING", "links": [1], "slot_index": 0},
+        {"name": "assets_dir", "type": "STRING", "links": null, "slot_index": 1},
+        {"name": "shots_dir", "type": "STRING", "links": [2], "slot_index": 2},
+        {"name": "audio_dir", "type": "STRING", "links": null, "slot_index": 3},
+        {"name": "project_status", "type": "STRING", "links": null, "slot_index": 4}
+      ],
+      "properties": {"Node name for S&R": "AFE_ProjectManager"},
+      "widgets_values": ["load_existing", "my_film_project", "./projects"]
+    },
+    {
+      "id": 2,
+      "type": "AFE_ShotStatusBoard",
+      "pos": [500, 100],
+      "size": {"0": 400, "1": 200},
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {"name": "shot_sequence", "type": "SHOT_SEQUENCE", "link": null},
+        {"name": "output_dir", "type": "STRING", "link": 2, "widget": {"name": "output_dir"}}
+      ],
+      "outputs": [
+        {"name": "status_report", "type": "STRING", "links": null, "slot_index": 0},
+        {"name": "ready_count", "type": "INT", "links": null, "slot_index": 1},
+        {"name": "total_count", "type": "INT", "links": null, "slot_index": 2}
+      ],
+      "properties": {"Node name for S&R": "AFE_ShotStatusBoard"},
+      "widgets_values": ["./projects/output"]
+    },
+    {
+      "id": 3,
+      "type": "AFE_FinalAssembly",
+      "pos": [500, 400],
+      "size": {"0": 400, "1": 220},
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {"name": "shot_sequence", "type": "SHOT_SEQUENCE", "link": null},
+        {"name": "output_dir", "type": "STRING", "link": 1, "widget": {"name": "output_dir"}}
+      ],
+      "outputs": [
+        {"name": "assembly_report", "type": "STRING", "links": null, "slot_index": 0},
+        {"name": "ffmpeg_command", "type": "STRING", "links": null, "slot_index": 1},
+        {"name": "ready_shots_count", "type": "INT", "links": null, "slot_index": 2}
+      ],
+      "properties": {"Node name for S&R": "AFE_FinalAssembly"},
+      "widgets_values": ["./projects/output", "third_pass", "final_movie", true, "./projects/audio"]
+    },
+    {
+      "id": 4,
+      "type": "Note",
+      "pos": [1000, 400],
+      "size": {"0": 400, "1": 200},
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "text": "🎞️ Final Assembly Workflow\n\n1. Set project_name in ProjectManager\n2. Set shot_sequence (from ShotSequenceBuilder)\n3. Run → check assembly_report\n4. Copy ffmpeg_command to terminal\n"
+      },
+      "widgets_values": ["🎞️ Final Assembly Workflow\n\n使用步骤:\n1. ProjectManager设置project_name\n2. 连接shot_sequence\n3. 运行查看assembly_report\n4. 复制ffmpeg_command到终端执行"]
+    }
+  ],
+  "links": [
+    [1, 1, 0, 3, 1, "STRING"],
+    [2, 1, 2, 2, 1, "STRING"]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {},
+  "version": 0.4
+}
