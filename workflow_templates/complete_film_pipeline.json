@@ -1,1113 +1,3934 @@
 {
-  "last_node_id": 117,
-  "last_link_id": 80,
+  "last_node_id": 127,
+  "last_link_id": 96,
   "nodes": [
     {
       "id": 101,
       "type": "LLM_local_loader",
-      "pos": [50, -900],
-      "size": {"0": 320, "1": 170},
+      "pos": [
+        50,
+        -900
+      ],
+      "size": {
+        "0": 320,
+        "1": 170
+      },
       "flags": {},
       "order": 0,
       "mode": 0,
       "inputs": [],
       "outputs": [
-        {"name": "model", "type": "CUSTOM", "links": [1], "slot_index": 0},
-        {"name": "tokenizer", "type": "CUSTOM", "links": [2], "slot_index": 1}
+        {
+          "name": "model",
+          "type": "CUSTOM",
+          "links": [
+            1
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "tokenizer",
+          "type": "CUSTOM",
+          "links": [
+            2
+          ],
+          "slot_index": 1
+        }
       ],
-      "properties": {"Node name for S&R": "LLM_local_loader"},
-      "widgets_values": ["Qwen/Qwen2.5-7B-Instruct", "cuda", "float16", false]
+      "properties": {
+        "Node name for S&R": "LLM_local_loader"
+      },
+      "widgets_values": [
+        "Qwen/Qwen2.5-7B-Instruct",
+        "cuda",
+        "float16",
+        false
+      ]
     },
     {
       "id": 102,
       "type": "LLM_local",
-      "pos": [450, -900],
-      "size": {"0": 400, "1": 500},
+      "pos": [
+        450,
+        -900
+      ],
+      "size": {
+        "0": 400,
+        "1": 500
+      },
       "flags": {},
       "order": 1,
       "mode": 0,
       "inputs": [
-        {"name": "model", "type": "CUSTOM", "link": 1},
-        {"name": "tokenizer", "type": "CUSTOM", "link": 2}
+        {
+          "name": "model",
+          "type": "CUSTOM",
+          "link": 1
+        },
+        {
+          "name": "tokenizer",
+          "type": "CUSTOM",
+          "link": 2
+        }
       ],
       "outputs": [
-        {"name": "assistant_response", "type": "STRING", "links": [3], "slot_index": 0},
-        {"name": "history", "type": "STRING", "links": null, "slot_index": 1}
+        {
+          "name": "assistant_response",
+          "type": "STRING",
+          "links": [
+            3
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "history",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 1
+        }
       ],
-      "properties": {"Node name for S&R": "LLM_local"},
+      "properties": {
+        "Node name for S&R": "LLM_local"
+      },
       "widgets_values": [
         "LLM",
         "你是一位专业影视导演和分镜师。请将以下剧本精确解析为结构化分镜列表。\n\n每个分镜必须包含以下字段：\n- shot_id: 顺序编号（shot_001, shot_002...）\n- label: 简短场景标签（如\"第01场-街道追逐\"）\n- duration_seconds: 精确时长（秒，如 5.0 表示5秒）\n- character_names: 该镜头出现的角色名字列表\n- costume_description: 角色服装描述（中文）\n- props_list: 该镜头使用的道具列表\n- scene_name: 场景名称（如\"夜晚城市街道-室外\"）\n- camera_motion: 镜头运动（只能是：static, pan_left, pan_right, zoom_in, zoom_out, tilt_up, tilt_down, orbit）\n- shot_description: 详细画面英文描述，用于AI图像生成（如 \"Medium shot. Character walks down a neon-lit street at night. Cinematic lighting.\"）\n- negative_prompt: 该镜头应避免的元素（英文，如 \"ugly, blurry, watermark\"）\n- dialogue: 台词（无台词填空字符串）\n\n重要规则：\n1. duration_seconds 必须是明确数字（5秒=5.0，10秒=10.0）\n2. shot_description 必须用英文写，详细描述构图、光线、人物动作\n3. 每个分镜独立完整，不依赖上下文\n4. 只返回 JSON 数组，不要其他任何文字\n\nYou are a professional film director and storyboard artist. Parse the script into structured shots.\nReturn ONLY a JSON array. Each shot must have: shot_id, label, duration_seconds, character_names, costume_description, props_list, scene_name, camera_motion, shot_description (English), negative_prompt (English), dialogue.",
         "在这里输入你的剧本内容...",
-        null, null, null, null,
-        0.3, 2048, "disable", "disable", 100, "", true, "enable"
+        null,
+        null,
+        null,
+        null,
+        0.3,
+        2048,
+        "disable",
+        "disable",
+        100,
+        "",
+        true,
+        "enable"
       ]
     },
     {
       "id": 103,
       "type": "AFE_ScriptParser",
-      "pos": [950, -900],
-      "size": {"0": 380, "1": 350},
+      "pos": [
+        950,
+        -900
+      ],
+      "size": {
+        "0": 380,
+        "1": 350
+      },
       "flags": {},
       "order": 2,
       "mode": 0,
       "inputs": [
-        {"name": "script_text", "type": "STRING", "link": 3}
+        {
+          "name": "script_text",
+          "type": "STRING",
+          "link": 3
+        }
       ],
       "outputs": [
-        {"name": "shot_sequence", "type": "SHOT_SEQUENCE", "links": [72, 80], "slot_index": 0},
-        {"name": "cast_data", "type": "CAST_DATA", "links": [79], "slot_index": 1},
-        {"name": "shot_count", "type": "INT", "links": null, "slot_index": 2},
-        {"name": "sequence_json", "type": "STRING", "links": [4], "slot_index": 3},
-        {"name": "prompt_for_llm", "type": "STRING", "links": null, "slot_index": 4}
+        {
+          "name": "shot_sequence",
+          "type": "SHOT_SEQUENCE",
+          "links": [
+            72,
+            80,
+            81,
+            95
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "cast_data",
+          "type": "CAST_DATA",
+          "links": [
+            79
+          ],
+          "slot_index": 1
+        },
+        {
+          "name": "shot_count",
+          "type": "INT",
+          "links": null,
+          "slot_index": 2
+        },
+        {
+          "name": "sequence_json",
+          "type": "STRING",
+          "links": [
+            4
+          ],
+          "slot_index": 3
+        },
+        {
+          "name": "prompt_for_llm",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 4
+        }
       ],
-      "properties": {"Node name for S&R": "AFE_ScriptParser"},
-      "widgets_values": ["", "", "", "", "https://api.deepseek.com/v1", "deepseek-chat"]
+      "properties": {
+        "Node name for S&R": "AFE_ScriptParser"
+      },
+      "widgets_values": [
+        "",
+        "",
+        "",
+        "",
+        "https://api.deepseek.com/v1",
+        "deepseek-chat"
+      ]
     },
     {
       "id": 104,
       "type": "Show Text",
-      "pos": [1400, -900],
-      "size": {"0": 400, "1": 500},
+      "pos": [
+        1400,
+        -900
+      ],
+      "size": {
+        "0": 400,
+        "1": 500
+      },
       "flags": {},
       "order": 3,
       "mode": 0,
       "inputs": [
-        {"name": "text", "type": "STRING", "link": 4}
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 4
+        }
       ],
       "outputs": [
-        {"name": "STRING", "type": "STRING", "links": null, "slot_index": 0}
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 0
+        }
       ],
-      "properties": {"Node name for S&R": "Show Text"},
-      "widgets_values": [""]
+      "properties": {
+        "Node name for S&R": "Show Text"
+      },
+      "widgets_values": [
+        ""
+      ]
     },
     {
       "id": 114,
       "type": "AFE_ModelChecker",
-      "pos": [-220, 50],
-      "size": {"0": 300, "1": 150},
+      "pos": [
+        -220,
+        50
+      ],
+      "size": {
+        "0": 300,
+        "1": 150
+      },
       "flags": {},
       "order": 4,
       "mode": 0,
       "inputs": [],
       "outputs": [
-        {"name": "status_report", "type": "STRING", "links": null, "slot_index": 0}
+        {
+          "name": "status_report",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 0
+        }
       ],
-      "properties": {"Node name for S&R": "AFE_ModelChecker"},
-      "widgets_values": ["全部检查"]
+      "properties": {
+        "Node name for S&R": "AFE_ModelChecker"
+      },
+      "widgets_values": [
+        "全部检查"
+      ]
     },
     {
       "id": 1,
       "type": "AFE_CharacterAsset",
-      "pos": [50, 50],
-      "size": {"0": 320, "1": 280},
+      "pos": [
+        50,
+        50
+      ],
+      "size": {
+        "0": 320,
+        "1": 280
+      },
       "flags": {},
       "order": 5,
       "mode": 0,
       "inputs": [],
       "outputs": [
-        {"name": "character", "type": "CHARACTER_ASSET", "links": [5, 6], "slot_index": 0},
-        {"name": "character_id", "type": "STRING", "links": null, "slot_index": 1}
+        {
+          "name": "character",
+          "type": "CHARACTER_ASSET",
+          "links": [
+            5,
+            6
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "character_id",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 1
+        }
       ],
-      "properties": {"Node name for S&R": "AFE_CharacterAsset"},
-      "widgets_values": ["主角", "a beautiful young woman, detailed face, film lighting", "ugly, blurry, low quality", -1, false, ""]
+      "properties": {
+        "Node name for S&R": "AFE_CharacterAsset"
+      },
+      "widgets_values": [
+        "主角",
+        "a beautiful young woman, detailed face, film lighting",
+        "ugly, blurry, low quality",
+        -1,
+        false,
+        ""
+      ]
     },
     {
       "id": 2,
       "type": "AFE_OutfitAsset",
-      "pos": [50, 400],
-      "size": {"0": 320, "1": 240},
+      "pos": [
+        50,
+        400
+      ],
+      "size": {
+        "0": 320,
+        "1": 240
+      },
       "flags": {},
       "order": 9,
       "mode": 0,
       "inputs": [
-        {"name": "character", "type": "CHARACTER_ASSET", "link": 5}
+        {
+          "name": "character",
+          "type": "CHARACTER_ASSET",
+          "link": 5
+        }
       ],
       "outputs": [
-        {"name": "outfit", "type": "OUTFIT_ASSET", "links": [7], "slot_index": 0},
-        {"name": "outfit_id", "type": "STRING", "links": null, "slot_index": 1}
+        {
+          "name": "outfit",
+          "type": "OUTFIT_ASSET",
+          "links": [
+            7
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "outfit_id",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 1
+        }
       ],
-      "properties": {"Node name for S&R": "AFE_OutfitAsset"},
-      "widgets_values": ["现代休闲装", "casual modern outfit, fabric detail", "ugly, torn", -1, false, ""]
+      "properties": {
+        "Node name for S&R": "AFE_OutfitAsset"
+      },
+      "widgets_values": [
+        "现代休闲装",
+        "casual modern outfit, fabric detail",
+        "ugly, torn",
+        -1,
+        false,
+        ""
+      ]
     },
     {
       "id": 3,
       "type": "AFE_SceneAsset",
-      "pos": [50, 700],
-      "size": {"0": 320, "1": 240},
+      "pos": [
+        50,
+        700
+      ],
+      "size": {
+        "0": 320,
+        "1": 240
+      },
       "flags": {},
       "order": 6,
       "mode": 0,
       "inputs": [],
       "outputs": [
-        {"name": "scene", "type": "SCENE_ASSET", "links": [8], "slot_index": 0},
-        {"name": "scene_id", "type": "STRING", "links": null, "slot_index": 1}
+        {
+          "name": "scene",
+          "type": "SCENE_ASSET",
+          "links": [
+            8
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "scene_id",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 1
+        }
       ],
-      "properties": {"Node name for S&R": "AFE_SceneAsset"},
-      "widgets_values": ["都市夜晚街道", "city street at night, neon lights, cinematic", "ugly, dark", "exterior", "neon_night", -1, false, ""]
+      "properties": {
+        "Node name for S&R": "AFE_SceneAsset"
+      },
+      "widgets_values": [
+        "都市夜晚街道",
+        "city street at night, neon lights, cinematic",
+        "ugly, dark",
+        "exterior",
+        "neon_night",
+        -1,
+        false,
+        ""
+      ]
     },
     {
       "id": 4,
       "type": "AFE_PropsAsset",
-      "pos": [50, 1000],
-      "size": {"0": 320, "1": 240},
+      "pos": [
+        50,
+        1000
+      ],
+      "size": {
+        "0": 320,
+        "1": 240
+      },
       "flags": {},
       "order": 7,
       "mode": 0,
       "inputs": [],
       "outputs": [
-        {"name": "props", "type": "PROPS_ASSET", "links": [9], "slot_index": 0},
-        {"name": "prop_id", "type": "STRING", "links": null, "slot_index": 1}
+        {
+          "name": "props",
+          "type": "PROPS_ASSET",
+          "links": [
+            9
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "prop_id",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 1
+        }
       ],
-      "properties": {"Node name for S&R": "AFE_PropsAsset"},
-      "widgets_values": ["手机", "smartphone glowing screen", "", "accessory", -1, false, ""]
+      "properties": {
+        "Node name for S&R": "AFE_PropsAsset"
+      },
+      "widgets_values": [
+        "手机",
+        "smartphone glowing screen",
+        "",
+        "accessory",
+        -1,
+        false,
+        ""
+      ]
     },
     {
       "id": 5,
       "type": "AFE_VideoModelAdapter",
-      "pos": [430, 200],
-      "size": {"0": 340, "1": 320},
+      "pos": [
+        430,
+        200
+      ],
+      "size": {
+        "0": 340,
+        "1": 320
+      },
       "flags": {},
       "order": 10,
       "mode": 0,
       "inputs": [
-        {"name": "character", "type": "CHARACTER_ASSET", "link": 6},
-        {"name": "outfit", "type": "OUTFIT_ASSET", "link": 7},
-        {"name": "scene", "type": "SCENE_ASSET", "link": 8},
-        {"name": "props", "type": "PROPS_ASSET", "link": 9}
+        {
+          "name": "character",
+          "type": "CHARACTER_ASSET",
+          "link": 6
+        },
+        {
+          "name": "outfit",
+          "type": "OUTFIT_ASSET",
+          "link": 7
+        },
+        {
+          "name": "scene",
+          "type": "SCENE_ASSET",
+          "link": 8
+        },
+        {
+          "name": "props",
+          "type": "PROPS_ASSET",
+          "link": 9
+        }
       ],
       "outputs": [
-        {"name": "positive_prompt", "type": "STRING", "links": [10], "slot_index": 0},
-        {"name": "negative_prompt", "type": "STRING", "links": [11], "slot_index": 1},
-        {"name": "seed", "type": "INT", "links": [12], "slot_index": 2},
-        {"name": "width", "type": "INT", "links": [13], "slot_index": 3},
-        {"name": "height", "type": "INT", "links": [14], "slot_index": 4}
+        {
+          "name": "positive_prompt",
+          "type": "STRING",
+          "links": [
+            10
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "negative_prompt",
+          "type": "STRING",
+          "links": [
+            11
+          ],
+          "slot_index": 1
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": [
+            12
+          ],
+          "slot_index": 2
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "links": [
+            13
+          ],
+          "slot_index": 3
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "links": [
+            14
+          ],
+          "slot_index": 4
+        }
       ],
-      "properties": {"Node name for S&R": "AFE_VideoModelAdapter"},
-      "widgets_values": ["主角在夜晚都市中行走", "static", "", 640, 360, 42]
+      "properties": {
+        "Node name for S&R": "AFE_VideoModelAdapter"
+      },
+      "widgets_values": [
+        "主角在夜晚都市中行走",
+        "static",
+        "",
+        640,
+        360,
+        42
+      ]
     },
     {
       "id": 6,
       "type": "AFE_PromptPreview",
-      "pos": [430, 600],
-      "size": {"0": 340, "1": 200},
+      "pos": [
+        430,
+        600
+      ],
+      "size": {
+        "0": 340,
+        "1": 200
+      },
       "flags": {},
       "order": 11,
       "mode": 0,
       "inputs": [
-        {"name": "positive", "type": "STRING", "link": 10},
-        {"name": "negative", "type": "STRING", "link": 11},
-        {"name": "seed", "type": "INT", "link": 12},
-        {"name": "width", "type": "INT", "link": 13},
-        {"name": "height", "type": "INT", "link": 14}
+        {
+          "name": "positive",
+          "type": "STRING",
+          "link": 10
+        },
+        {
+          "name": "negative",
+          "type": "STRING",
+          "link": 11
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "link": 12
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "link": 13
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "link": 14
+        }
       ],
       "outputs": [
-        {"name": "positive", "type": "STRING", "links": [15, 35], "slot_index": 0},
-        {"name": "negative", "type": "STRING", "links": [16, 36], "slot_index": 1},
-        {"name": "seed", "type": "INT", "links": null, "slot_index": 2},
-        {"name": "width", "type": "INT", "links": [17], "slot_index": 3},
-        {"name": "height", "type": "INT", "links": [18], "slot_index": 4}
+        {
+          "name": "positive",
+          "type": "STRING",
+          "links": [
+            15,
+            35
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "negative",
+          "type": "STRING",
+          "links": [
+            16,
+            36
+          ],
+          "slot_index": 1
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": null,
+          "slot_index": 2
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "links": [
+            17
+          ],
+          "slot_index": 3
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "links": [
+            18
+          ],
+          "slot_index": 4
+        }
       ],
-      "properties": {"Node name for S&R": "AFE_PromptPreview"},
+      "properties": {
+        "Node name for S&R": "AFE_PromptPreview"
+      },
       "widgets_values": []
     },
     {
       "id": 7,
       "type": "CheckpointLoaderSimple",
-      "pos": [840, 50],
-      "size": {"0": 315, "1": 100},
+      "pos": [
+        840,
+        50
+      ],
+      "size": {
+        "0": 315,
+        "1": 100
+      },
       "flags": {},
       "order": 8,
       "mode": 0,
       "inputs": [],
       "outputs": [
-        {"name": "MODEL", "type": "MODEL", "links": [19, 49], "slot_index": 0},
-        {"name": "CLIP", "type": "CLIP", "links": [20, 21, 50, 51], "slot_index": 1},
-        {"name": "VAE", "type": "VAE", "links": [22, 47, 60], "slot_index": 2}
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            19,
+            49,
+            87
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            20,
+            21,
+            50,
+            51,
+            84,
+            86
+          ],
+          "slot_index": 1
+        },
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            22,
+            47,
+            60,
+            92
+          ],
+          "slot_index": 2
+        }
       ],
-      "properties": {"Node name for S&R": "CheckpointLoaderSimple"},
-      "widgets_values": [""]
+      "properties": {
+        "Node name for S&R": "CheckpointLoaderSimple"
+      },
+      "widgets_values": [
+        ""
+      ]
     },
     {
       "id": 8,
       "type": "CLIPTextEncode",
-      "pos": [840, 200],
-      "size": {"0": 315, "1": 120},
+      "pos": [
+        840,
+        200
+      ],
+      "size": {
+        "0": 315,
+        "1": 120
+      },
       "flags": {},
       "order": 12,
       "mode": 0,
       "inputs": [
-        {"name": "text", "type": "STRING", "link": 15},
-        {"name": "clip", "type": "CLIP", "link": 20}
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 15
+        },
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 20
+        }
       ],
       "outputs": [
-        {"name": "CONDITIONING", "type": "CONDITIONING", "links": [23], "slot_index": 0}
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            23
+          ],
+          "slot_index": 0
+        }
       ],
-      "properties": {"Node name for S&R": "CLIPTextEncode"},
+      "properties": {
+        "Node name for S&R": "CLIPTextEncode"
+      },
       "widgets_values": []
     },
     {
       "id": 9,
       "type": "CLIPTextEncode",
-      "pos": [840, 380],
-      "size": {"0": 315, "1": 120},
+      "pos": [
+        840,
+        380
+      ],
+      "size": {
+        "0": 315,
+        "1": 120
+      },
       "flags": {},
       "order": 13,
       "mode": 0,
       "inputs": [
-        {"name": "text", "type": "STRING", "link": 16},
-        {"name": "clip", "type": "CLIP", "link": 21}
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 16
+        },
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 21
+        }
       ],
       "outputs": [
-        {"name": "CONDITIONING", "type": "CONDITIONING", "links": [24], "slot_index": 0}
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            24
+          ],
+          "slot_index": 0
+        }
       ],
-      "properties": {"Node name for S&R": "CLIPTextEncode"},
+      "properties": {
+        "Node name for S&R": "CLIPTextEncode"
+      },
       "widgets_values": []
     },
     {
       "id": 10,
       "type": "EmptyLatentImage",
-      "pos": [840, 550],
-      "size": {"0": 315, "1": 110},
+      "pos": [
+        840,
+        550
+      ],
+      "size": {
+        "0": 315,
+        "1": 110
+      },
       "flags": {},
       "order": 14,
       "mode": 0,
       "inputs": [
-        {"name": "width", "type": "INT", "link": 17},
-        {"name": "height", "type": "INT", "link": 18}
+        {
+          "name": "width",
+          "type": "INT",
+          "link": 17
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "link": 18
+        }
       ],
       "outputs": [
-        {"name": "LATENT", "type": "LATENT", "links": [25], "slot_index": 0}
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            25
+          ],
+          "slot_index": 0
+        }
       ],
-      "properties": {"Node name for S&R": "EmptyLatentImage"},
-      "widgets_values": [1]
+      "properties": {
+        "Node name for S&R": "EmptyLatentImage"
+      },
+      "widgets_values": [
+        1
+      ]
     },
     {
       "id": 11,
       "type": "KSampler",
-      "pos": [1220, 200],
-      "size": {"0": 315, "1": 260},
+      "pos": [
+        1220,
+        200
+      ],
+      "size": {
+        "0": 315,
+        "1": 260
+      },
       "flags": {},
       "order": 15,
       "mode": 0,
       "inputs": [
-        {"name": "model", "type": "MODEL", "link": 19},
-        {"name": "positive", "type": "CONDITIONING", "link": 23},
-        {"name": "negative", "type": "CONDITIONING", "link": 24},
-        {"name": "latent_image", "type": "LATENT", "link": 25}
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 19
+        },
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 23
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 24
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 25
+        }
       ],
       "outputs": [
-        {"name": "LATENT", "type": "LATENT", "links": [26], "slot_index": 0}
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            26
+          ],
+          "slot_index": 0
+        }
       ],
-      "properties": {"Node name for S&R": "KSampler"},
-      "widgets_values": [42, "fixed", 20, 7.0, "euler", "karras", 1.0]
+      "properties": {
+        "Node name for S&R": "KSampler"
+      },
+      "widgets_values": [
+        42,
+        "fixed",
+        20,
+        7.0,
+        "euler",
+        "karras",
+        1.0
+      ]
     },
     {
       "id": 12,
       "type": "VAEDecode",
-      "pos": [1620, 200],
-      "size": {"0": 210, "1": 110},
+      "pos": [
+        1620,
+        200
+      ],
+      "size": {
+        "0": 210,
+        "1": 110
+      },
       "flags": {},
       "order": 16,
       "mode": 0,
       "inputs": [
-        {"name": "samples", "type": "LATENT", "link": 26},
-        {"name": "vae", "type": "VAE", "link": 22}
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 26
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 22
+        }
       ],
       "outputs": [
-        {"name": "IMAGE", "type": "IMAGE", "links": [27], "slot_index": 0}
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            27
+          ],
+          "slot_index": 0
+        }
       ],
-      "properties": {"Node name for S&R": "VAEDecode"},
+      "properties": {
+        "Node name for S&R": "VAEDecode"
+      },
       "widgets_values": []
     },
     {
       "id": 13,
       "type": "SaveImage",
-      "pos": [1620, 380],
-      "size": {"0": 210, "1": 80},
+      "pos": [
+        1620,
+        380
+      ],
+      "size": {
+        "0": 210,
+        "1": 80
+      },
       "flags": {},
       "order": 17,
       "mode": 0,
       "inputs": [
-        {"name": "images", "type": "IMAGE", "link": 27}
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 27
+        }
       ],
       "outputs": [],
-      "properties": {"Node name for S&R": "SaveImage"},
-      "widgets_values": ["AFE_Asset"]
+      "properties": {
+        "Node name for S&R": "SaveImage"
+      },
+      "widgets_values": [
+        "AFE_Asset"
+      ]
     },
     {
       "id": 20,
       "type": "LoadImage",
-      "pos": [2050, 50],
-      "size": {"0": 315, "1": 100},
+      "pos": [
+        2050,
+        50
+      ],
+      "size": {
+        "0": 315,
+        "1": 100
+      },
       "flags": {},
       "order": 18,
       "mode": 0,
       "inputs": [],
       "outputs": [
-        {"name": "IMAGE", "type": "IMAGE", "links": [28], "slot_index": 0},
-        {"name": "MASK", "type": "MASK", "links": null, "slot_index": 1}
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            28
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null,
+          "slot_index": 1
+        }
       ],
-      "properties": {"Node name for S&R": "LoadImage"},
-      "widgets_values": ["tail_frame.png", "image"]
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "tail_frame.png",
+        "image"
+      ]
     },
     {
       "id": 21,
       "type": "AFE_ToneCompensation",
-      "pos": [2050, 220],
-      "size": {"0": 320, "1": 180},
+      "pos": [
+        2050,
+        220
+      ],
+      "size": {
+        "0": 320,
+        "1": 180
+      },
       "flags": {},
       "order": 23,
       "mode": 0,
       "inputs": [
-        {"name": "current_image", "type": "IMAGE", "link": 28}
+        {
+          "name": "current_image",
+          "type": "IMAGE",
+          "link": 28
+        }
       ],
       "outputs": [
-        {"name": "compensated_image", "type": "IMAGE", "links": [29], "slot_index": 0}
+        {
+          "name": "compensated_image",
+          "type": "IMAGE",
+          "links": [
+            29
+          ],
+          "slot_index": 0
+        }
       ],
-      "properties": {"Node name for S&R": "AFE_ToneCompensation"},
-      "widgets_values": [0.3, true]
+      "properties": {
+        "Node name for S&R": "AFE_ToneCompensation"
+      },
+      "widgets_values": [
+        0.3,
+        true
+      ]
     },
     {
       "id": 22,
       "type": "AFE_ShotDuration",
-      "pos": [2050, 480],
-      "size": {"0": 320, "1": 160},
+      "pos": [
+        2050,
+        480
+      ],
+      "size": {
+        "0": 320,
+        "1": 160
+      },
       "flags": {},
       "order": 19,
       "mode": 0,
       "inputs": [],
       "outputs": [
-        {"name": "total_frames", "type": "INT", "links": [30], "slot_index": 0},
-        {"name": "fps", "type": "INT", "links": null, "slot_index": 1},
-        {"name": "duration_seconds", "type": "FLOAT", "links": null, "slot_index": 2}
+        {
+          "name": "total_frames",
+          "type": "INT",
+          "links": [
+            30
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "fps",
+          "type": "INT",
+          "links": null,
+          "slot_index": 1
+        },
+        {
+          "name": "duration_seconds",
+          "type": "FLOAT",
+          "links": null,
+          "slot_index": 2
+        }
       ],
-      "properties": {"Node name for S&R": "AFE_ShotDuration"},
-      "widgets_values": [124, 24, 0.0]
+      "properties": {
+        "Node name for S&R": "AFE_ShotDuration"
+      },
+      "widgets_values": [
+        124,
+        24,
+        0.0
+      ]
     },
     {
       "id": 23,
       "type": "WanVideoModelLoader",
-      "pos": [2460, 50],
-      "size": {"0": 315, "1": 120},
+      "pos": [
+        2460,
+        50
+      ],
+      "size": {
+        "0": 315,
+        "1": 120
+      },
       "flags": {},
       "order": 20,
       "mode": 0,
       "inputs": [],
       "outputs": [
-        {"name": "MODEL", "type": "MODEL", "links": [31], "slot_index": 0}
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            31
+          ],
+          "slot_index": 0
+        }
       ],
-      "properties": {"Node name for S&R": "WanVideoModelLoader"},
-      "widgets_values": [""]
+      "properties": {
+        "Node name for S&R": "WanVideoModelLoader"
+      },
+      "widgets_values": [
+        ""
+      ]
     },
     {
       "id": 24,
       "type": "CLIPLoader",
-      "pos": [2460, 230],
-      "size": {"0": 315, "1": 100},
+      "pos": [
+        2460,
+        230
+      ],
+      "size": {
+        "0": 315,
+        "1": 100
+      },
       "flags": {},
       "order": 21,
       "mode": 0,
       "inputs": [],
       "outputs": [
-        {"name": "CLIP", "type": "CLIP", "links": [32], "slot_index": 0}
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            32
+          ],
+          "slot_index": 0
+        }
       ],
-      "properties": {"Node name for S&R": "CLIPLoader"},
-      "widgets_values": ["", "sd3"]
+      "properties": {
+        "Node name for S&R": "CLIPLoader"
+      },
+      "widgets_values": [
+        "",
+        "sd3"
+      ]
     },
     {
       "id": 25,
       "type": "VAELoader",
-      "pos": [2460, 390],
-      "size": {"0": 315, "1": 100},
+      "pos": [
+        2460,
+        390
+      ],
+      "size": {
+        "0": 315,
+        "1": 100
+      },
       "flags": {},
       "order": 22,
       "mode": 0,
       "inputs": [],
       "outputs": [
-        {"name": "VAE", "type": "VAE", "links": [33, 34], "slot_index": 0}
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            33,
+            34
+          ],
+          "slot_index": 0
+        }
       ],
-      "properties": {"Node name for S&R": "VAELoader"},
-      "widgets_values": [""]
+      "properties": {
+        "Node name for S&R": "VAELoader"
+      },
+      "widgets_values": [
+        ""
+      ]
     },
     {
       "id": 26,
       "type": "WanTextEncode",
-      "pos": [2460, 550],
-      "size": {"0": 315, "1": 180},
+      "pos": [
+        2460,
+        550
+      ],
+      "size": {
+        "0": 315,
+        "1": 180
+      },
       "flags": {},
       "order": 24,
       "mode": 0,
       "inputs": [
-        {"name": "clip", "type": "CLIP", "link": 32},
-        {"name": "positive", "type": "STRING", "link": 35},
-        {"name": "negative", "type": "STRING", "link": 36}
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 32
+        },
+        {
+          "name": "positive",
+          "type": "STRING",
+          "link": 35
+        },
+        {
+          "name": "negative",
+          "type": "STRING",
+          "link": 36
+        }
       ],
       "outputs": [
-        {"name": "positive", "type": "CONDITIONING", "links": [37], "slot_index": 0},
-        {"name": "negative", "type": "CONDITIONING", "links": [38], "slot_index": 1}
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "links": [
+            37
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "links": [
+            38
+          ],
+          "slot_index": 1
+        }
       ],
-      "properties": {"Node name for S&R": "WanTextEncode"},
+      "properties": {
+        "Node name for S&R": "WanTextEncode"
+      },
       "widgets_values": []
     },
     {
       "id": 27,
       "type": "WanImageToVideoLatent",
-      "pos": [2460, 800],
-      "size": {"0": 315, "1": 160},
+      "pos": [
+        2460,
+        800
+      ],
+      "size": {
+        "0": 315,
+        "1": 160
+      },
       "flags": {},
       "order": 25,
       "mode": 0,
       "inputs": [
-        {"name": "vae", "type": "VAE", "link": 34},
-        {"name": "image", "type": "IMAGE", "link": 29},
-        {"name": "width", "type": "INT", "link": null},
-        {"name": "height", "type": "INT", "link": null},
-        {"name": "length", "type": "INT", "link": 30}
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 34
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 29
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "link": null
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "link": null
+        },
+        {
+          "name": "length",
+          "type": "INT",
+          "link": 30
+        }
       ],
       "outputs": [
-        {"name": "LATENT", "type": "LATENT", "links": [39], "slot_index": 0}
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            39
+          ],
+          "slot_index": 0
+        }
       ],
-      "properties": {"Node name for S&R": "WanImageToVideoLatent"},
-      "widgets_values": [832, 480, 1]
+      "properties": {
+        "Node name for S&R": "WanImageToVideoLatent"
+      },
+      "widgets_values": [
+        832,
+        480,
+        1
+      ]
     },
     {
       "id": 28,
       "type": "KSamplerAdvanced",
-      "pos": [2870, 200],
-      "size": {"0": 315, "1": 260},
+      "pos": [
+        2870,
+        200
+      ],
+      "size": {
+        "0": 315,
+        "1": 260
+      },
       "flags": {},
       "order": 26,
       "mode": 0,
       "inputs": [
-        {"name": "model", "type": "MODEL", "link": 31},
-        {"name": "positive", "type": "CONDITIONING", "link": 37},
-        {"name": "negative", "type": "CONDITIONING", "link": 38},
-        {"name": "latent_image", "type": "LATENT", "link": 39}
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 31
+        },
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 37
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 38
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 39
+        }
       ],
       "outputs": [
-        {"name": "LATENT", "type": "LATENT", "links": [40], "slot_index": 0}
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            40
+          ],
+          "slot_index": 0
+        }
       ],
-      "properties": {"Node name for S&R": "KSamplerAdvanced"},
-      "widgets_values": ["enable", 42, 20, 6.0, "euler", "simple", 0, 10000, "disable"]
+      "properties": {
+        "Node name for S&R": "KSamplerAdvanced"
+      },
+      "widgets_values": [
+        "enable",
+        42,
+        20,
+        6.0,
+        "euler",
+        "simple",
+        0,
+        10000,
+        "disable"
+      ]
     },
     {
       "id": 29,
       "type": "WanVideoVAEDecode",
-      "pos": [3270, 200],
-      "size": {"0": 315, "1": 200},
+      "pos": [
+        3270,
+        200
+      ],
+      "size": {
+        "0": 315,
+        "1": 200
+      },
       "flags": {},
       "order": 27,
       "mode": 0,
       "inputs": [
-        {"name": "samples", "type": "LATENT", "link": 40},
-        {"name": "vae", "type": "VAE", "link": 33}
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 40
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 33
+        }
       ],
       "outputs": [
-        {"name": "IMAGE", "type": "IMAGE", "links": [41, 42, 45], "slot_index": 0}
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            41,
+            42,
+            45,
+            94
+          ],
+          "slot_index": 0
+        }
       ],
-      "properties": {"Node name for S&R": "WanVideoVAEDecode"},
-      "widgets_values": [false]
+      "properties": {
+        "Node name for S&R": "WanVideoVAEDecode"
+      },
+      "widgets_values": [
+        false
+      ]
     },
     {
       "id": 30,
       "type": "AFE_TailFrameExtractor",
-      "pos": [3270, 480],
-      "size": {"0": 320, "1": 180},
+      "pos": [
+        3270,
+        480
+      ],
+      "size": {
+        "0": 320,
+        "1": 180
+      },
       "flags": {},
       "order": 28,
       "mode": 0,
       "inputs": [
-        {"name": "images", "type": "IMAGE", "link": 41}
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 41
+        }
       ],
       "outputs": [
-        {"name": "frame", "type": "IMAGE", "links": [43], "slot_index": 0}
+        {
+          "name": "frame",
+          "type": "IMAGE",
+          "links": [
+            43
+          ],
+          "slot_index": 0
+        }
       ],
-      "properties": {"Node name for S&R": "AFE_TailFrameExtractor"},
-      "widgets_values": ["last_frame"]
+      "properties": {
+        "Node name for S&R": "AFE_TailFrameExtractor"
+      },
+      "widgets_values": [
+        "last_frame"
+      ]
     },
     {
       "id": 31,
       "type": "SaveImage",
-      "pos": [3270, 730],
-      "size": {"0": 210, "1": 80},
+      "pos": [
+        3270,
+        730
+      ],
+      "size": {
+        "0": 210,
+        "1": 80
+      },
       "flags": {},
       "order": 29,
       "mode": 0,
       "inputs": [
-        {"name": "images", "type": "IMAGE", "link": 43}
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 43
+        }
       ],
       "outputs": [],
-      "properties": {"Node name for S&R": "SaveImage"},
-      "widgets_values": ["AFE_tail_"]
+      "properties": {
+        "Node name for S&R": "SaveImage"
+      },
+      "widgets_values": [
+        "AFE_tail_"
+      ]
     },
     {
       "id": 32,
       "type": "VHS_VideoCombine",
-      "pos": [3680, 200],
-      "size": {"0": 315, "1": 200},
+      "pos": [
+        3680,
+        200
+      ],
+      "size": {
+        "0": 315,
+        "1": 200
+      },
       "flags": {},
       "order": 30,
       "mode": 0,
       "inputs": [
-        {"name": "images", "type": "IMAGE", "link": 42}
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 42
+        }
       ],
       "outputs": [],
-      "properties": {"Node name for S&R": "VHS_VideoCombine"},
-      "widgets_values": [24.0, 0, "AFE_shot_01", "video/h264-mp4", true, "default", {}]
+      "properties": {
+        "Node name for S&R": "VHS_VideoCombine"
+      },
+      "widgets_values": [
+        24.0,
+        0,
+        "AFE_shot_01",
+        "video/h264-mp4",
+        true,
+        "default",
+        {}
+      ]
     },
     {
       "id": 40,
       "type": "AFE_RefinementConfig",
-      "pos": [2050, 1420],
-      "size": {"0": 315, "1": 200},
+      "pos": [
+        2050,
+        1420
+      ],
+      "size": {
+        "0": 315,
+        "1": 200
+      },
       "flags": {},
       "order": 31,
       "mode": 0,
       "inputs": [],
       "outputs": [
-        {"name": "config", "type": "REFINEMENT_CONFIG", "links": [44], "slot_index": 0}
+        {
+          "name": "config",
+          "type": "REFINEMENT_CONFIG",
+          "links": [
+            44
+          ],
+          "slot_index": 0
+        }
       ],
-      "properties": {"Node name for S&R": "AFE_RefinementConfig"},
-      "widgets_values": ["second_pass", 1280, 720, 0.55, 25, 6.0]
+      "properties": {
+        "Node name for S&R": "AFE_RefinementConfig"
+      },
+      "widgets_values": [
+        "second_pass",
+        1280,
+        720,
+        0.55,
+        25,
+        6.0
+      ]
     },
     {
       "id": 41,
       "type": "AFE_SecondPassAdapter",
-      "pos": [2460, 1420],
-      "size": {"0": 315, "1": 280},
+      "pos": [
+        2460,
+        1420
+      ],
+      "size": {
+        "0": 315,
+        "1": 280
+      },
       "flags": {},
       "order": 32,
       "mode": 0,
       "inputs": [
-        {"name": "images", "type": "IMAGE", "link": 45},
-        {"name": "config", "type": "REFINEMENT_CONFIG", "link": 44}
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 45
+        },
+        {
+          "name": "config",
+          "type": "REFINEMENT_CONFIG",
+          "link": 44
+        }
       ],
       "outputs": [
-        {"name": "images_scaled", "type": "IMAGE", "links": [46], "slot_index": 0},
-        {"name": "width", "type": "INT", "links": null, "slot_index": 1},
-        {"name": "height", "type": "INT", "links": null, "slot_index": 2},
-        {"name": "denoise", "type": "FLOAT", "links": [56], "slot_index": 3},
-        {"name": "steps", "type": "INT", "links": [57], "slot_index": 4},
-        {"name": "cfg", "type": "FLOAT", "links": [58], "slot_index": 5},
-        {"name": "positive", "type": "STRING", "links": [52], "slot_index": 6},
-        {"name": "negative", "type": "STRING", "links": [53], "slot_index": 7}
+        {
+          "name": "images_scaled",
+          "type": "IMAGE",
+          "links": [
+            46
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "links": null,
+          "slot_index": 1
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "links": null,
+          "slot_index": 2
+        },
+        {
+          "name": "denoise",
+          "type": "FLOAT",
+          "links": [
+            56
+          ],
+          "slot_index": 3
+        },
+        {
+          "name": "steps",
+          "type": "INT",
+          "links": [
+            57
+          ],
+          "slot_index": 4
+        },
+        {
+          "name": "cfg",
+          "type": "FLOAT",
+          "links": [
+            58
+          ],
+          "slot_index": 5
+        },
+        {
+          "name": "positive",
+          "type": "STRING",
+          "links": [
+            52
+          ],
+          "slot_index": 6
+        },
+        {
+          "name": "negative",
+          "type": "STRING",
+          "links": [
+            53
+          ],
+          "slot_index": 7
+        }
       ],
-      "properties": {"Node name for S&R": "AFE_SecondPassAdapter"},
-      "widgets_values": ["", ""]
+      "properties": {
+        "Node name for S&R": "AFE_SecondPassAdapter"
+      },
+      "widgets_values": [
+        "",
+        ""
+      ]
     },
     {
       "id": 46,
       "type": "VAEEncode",
-      "pos": [2870, 1380],
-      "size": {"0": 210, "1": 46},
+      "pos": [
+        2870,
+        1380
+      ],
+      "size": {
+        "0": 210,
+        "1": 46
+      },
       "flags": {},
       "order": 33,
       "mode": 0,
       "inputs": [
-        {"name": "pixels", "type": "IMAGE", "link": 46},
-        {"name": "vae", "type": "VAE", "link": 47}
+        {
+          "name": "pixels",
+          "type": "IMAGE",
+          "link": 46
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 47
+        }
       ],
       "outputs": [
-        {"name": "LATENT", "type": "LATENT", "links": [48], "slot_index": 0}
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            48
+          ],
+          "slot_index": 0
+        }
       ],
-      "properties": {"Node name for S&R": "VAEEncode"},
+      "properties": {
+        "Node name for S&R": "VAEEncode"
+      },
       "widgets_values": []
     },
     {
       "id": 47,
       "type": "CLIPTextEncode",
-      "pos": [2870, 1480],
-      "size": {"0": 315, "1": 150},
+      "pos": [
+        2870,
+        1480
+      ],
+      "size": {
+        "0": 315,
+        "1": 150
+      },
       "flags": {},
       "order": 34,
       "mode": 0,
       "inputs": [
-        {"name": "text", "type": "STRING", "link": 52},
-        {"name": "clip", "type": "CLIP", "link": 50}
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 52
+        },
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 50
+        }
       ],
       "outputs": [
-        {"name": "CONDITIONING", "type": "CONDITIONING", "links": [54], "slot_index": 0}
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            54
+          ],
+          "slot_index": 0
+        }
       ],
-      "properties": {"Node name for S&R": "CLIPTextEncode"},
+      "properties": {
+        "Node name for S&R": "CLIPTextEncode"
+      },
       "widgets_values": []
     },
     {
       "id": 48,
       "type": "CLIPTextEncode",
-      "pos": [2870, 1680],
-      "size": {"0": 315, "1": 150},
+      "pos": [
+        2870,
+        1680
+      ],
+      "size": {
+        "0": 315,
+        "1": 150
+      },
       "flags": {},
       "order": 35,
       "mode": 0,
       "inputs": [
-        {"name": "text", "type": "STRING", "link": 53},
-        {"name": "clip", "type": "CLIP", "link": 51}
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 53
+        },
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 51
+        }
       ],
       "outputs": [
-        {"name": "CONDITIONING", "type": "CONDITIONING", "links": [55], "slot_index": 0}
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            55
+          ],
+          "slot_index": 0
+        }
       ],
-      "properties": {"Node name for S&R": "CLIPTextEncode"},
+      "properties": {
+        "Node name for S&R": "CLIPTextEncode"
+      },
       "widgets_values": []
     },
     {
       "id": 44,
       "type": "KSamplerAdvanced",
-      "pos": [3270, 1450],
-      "size": {"0": 315, "1": 300},
+      "pos": [
+        3270,
+        1450
+      ],
+      "size": {
+        "0": 315,
+        "1": 300
+      },
       "flags": {},
       "order": 36,
       "mode": 0,
       "inputs": [
-        {"name": "model", "type": "MODEL", "link": 49},
-        {"name": "positive", "type": "CONDITIONING", "link": 54},
-        {"name": "negative", "type": "CONDITIONING", "link": 55},
-        {"name": "latent_image", "type": "LATENT", "link": 48},
-        {"name": "steps", "type": "INT", "link": 57, "widget": {"name": "steps"}},
-        {"name": "cfg", "type": "FLOAT", "link": 58, "widget": {"name": "cfg"}},
-        {"name": "denoise", "type": "FLOAT", "link": 56, "widget": {"name": "denoise"}}
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 49
+        },
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 54
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 55
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 48
+        },
+        {
+          "name": "steps",
+          "type": "INT",
+          "link": 57,
+          "widget": {
+            "name": "steps"
+          }
+        },
+        {
+          "name": "cfg",
+          "type": "FLOAT",
+          "link": 58,
+          "widget": {
+            "name": "cfg"
+          }
+        },
+        {
+          "name": "denoise",
+          "type": "FLOAT",
+          "link": 56,
+          "widget": {
+            "name": "denoise"
+          }
+        }
       ],
       "outputs": [
-        {"name": "LATENT", "type": "LATENT", "links": [59], "slot_index": 0}
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            59
+          ],
+          "slot_index": 0
+        }
       ],
-      "properties": {"Node name for S&R": "KSamplerAdvanced"},
-      "widgets_values": ["enable", 42, "dpmpp_2m", "karras", "enable", 20, 7.0, 0.55]
+      "properties": {
+        "Node name for S&R": "KSamplerAdvanced"
+      },
+      "widgets_values": [
+        "enable",
+        42,
+        "dpmpp_2m",
+        "karras",
+        "enable",
+        20,
+        7.0,
+        0.55
+      ]
     },
     {
       "id": 49,
       "type": "VAEDecode",
-      "pos": [3680, 1450],
-      "size": {"0": 210, "1": 110},
+      "pos": [
+        3680,
+        1450
+      ],
+      "size": {
+        "0": 210,
+        "1": 110
+      },
       "flags": {},
       "order": 37,
       "mode": 0,
       "inputs": [
-        {"name": "samples", "type": "LATENT", "link": 59},
-        {"name": "vae", "type": "VAE", "link": 60}
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 59
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 60
+        }
       ],
       "outputs": [
-        {"name": "IMAGE", "type": "IMAGE", "links": [61], "slot_index": 0}
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            61
+          ],
+          "slot_index": 0
+        }
       ],
-      "properties": {"Node name for S&R": "VAEDecode"},
+      "properties": {
+        "Node name for S&R": "VAEDecode"
+      },
       "widgets_values": []
     },
     {
       "id": 42,
       "type": "AFE_FaceEnhancer",
-      "pos": [3680, 1620],
-      "size": {"0": 315, "1": 150},
+      "pos": [
+        3680,
+        1620
+      ],
+      "size": {
+        "0": 315,
+        "1": 150
+      },
       "flags": {},
       "order": 38,
       "mode": 0,
       "inputs": [
-        {"name": "images", "type": "IMAGE", "link": 61}
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 61
+        }
       ],
       "outputs": [
-        {"name": "enhanced_images", "type": "IMAGE", "links": [62], "slot_index": 0}
+        {
+          "name": "enhanced_images",
+          "type": "IMAGE",
+          "links": [
+            62
+          ],
+          "slot_index": 0
+        }
       ],
-      "properties": {"Node name for S&R": "AFE_FaceEnhancer"},
-      "widgets_values": [0.5, true]
+      "properties": {
+        "Node name for S&R": "AFE_FaceEnhancer"
+      },
+      "widgets_values": [
+        0.5,
+        true
+      ]
     },
     {
       "id": 43,
       "type": "AFE_VideoUpscaler",
-      "pos": [3680, 1850],
-      "size": {"0": 315, "1": 150},
+      "pos": [
+        3680,
+        1850
+      ],
+      "size": {
+        "0": 315,
+        "1": 150
+      },
       "flags": {},
       "order": 39,
       "mode": 0,
       "inputs": [
-        {"name": "images", "type": "IMAGE", "link": 62}
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 62
+        }
       ],
       "outputs": [
-        {"name": "upscaled_images", "type": "IMAGE", "links": [63, 65], "slot_index": 0}
+        {
+          "name": "upscaled_images",
+          "type": "IMAGE",
+          "links": [
+            63,
+            65
+          ],
+          "slot_index": 0
+        }
       ],
-      "properties": {"Node name for S&R": "AFE_VideoUpscaler"},
-      "widgets_values": ["2x", "bicubic", true]
+      "properties": {
+        "Node name for S&R": "AFE_VideoUpscaler"
+      },
+      "widgets_values": [
+        "2x",
+        "bicubic",
+        true
+      ]
     },
     {
       "id": 45,
       "type": "VHS_VideoCombine",
-      "pos": [4080, 1600],
-      "size": {"0": 315, "1": 200},
+      "pos": [
+        4080,
+        1600
+      ],
+      "size": {
+        "0": 315,
+        "1": 200
+      },
       "flags": {},
       "order": 40,
       "mode": 0,
       "inputs": [
-        {"name": "images", "type": "IMAGE", "link": 63}
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 63
+        }
       ],
       "outputs": [],
-      "properties": {"Node name for S&R": "VHS_VideoCombine"},
-      "widgets_values": [24, 0, "AFE_shot_01_refined", "video/h264-mp4", true, "default", {}]
+      "properties": {
+        "Node name for S&R": "VHS_VideoCombine"
+      },
+      "widgets_values": [
+        24,
+        0,
+        "AFE_shot_01_refined",
+        "video/h264-mp4",
+        true,
+        "default",
+        {}
+      ]
     },
     {
       "id": 50,
       "type": "AFE_AudioAsset",
-      "pos": [4280, 100],
-      "size": {"0": 315, "1": 200},
+      "pos": [
+        4280,
+        100
+      ],
+      "size": {
+        "0": 315,
+        "1": 200
+      },
       "flags": {},
       "order": 41,
       "mode": 0,
       "inputs": [],
       "outputs": [
-        {"name": "audio", "type": "AUDIO_ASSET", "links": [64, 67], "slot_index": 0},
-        {"name": "asset_id", "type": "STRING", "links": null, "slot_index": 1},
-        {"name": "transcript", "type": "STRING", "links": null, "slot_index": 2}
+        {
+          "name": "audio",
+          "type": "AUDIO_ASSET",
+          "links": [
+            64,
+            67
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "asset_id",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 1
+        },
+        {
+          "name": "transcript",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 2
+        }
       ],
-      "properties": {"Node name for S&R": "AFE_AudioAsset"},
-      "widgets_values": ["角色台词", "dialogue", "zh", "", "", false, ""]
+      "properties": {
+        "Node name for S&R": "AFE_AudioAsset"
+      },
+      "widgets_values": [
+        "角色台词",
+        "dialogue",
+        "zh",
+        "",
+        "",
+        false,
+        ""
+      ]
     },
     {
       "id": 51,
       "type": "AFE_LipSyncConfig",
-      "pos": [4280, 380],
-      "size": {"0": 315, "1": 200},
+      "pos": [
+        4280,
+        380
+      ],
+      "size": {
+        "0": 315,
+        "1": 200
+      },
       "flags": {},
       "order": 42,
       "mode": 0,
       "inputs": [
-        {"name": "images", "type": "IMAGE", "link": 65},
-        {"name": "audio", "type": "AUDIO_ASSET", "link": 64}
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 65
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO_ASSET",
+          "link": 64
+        }
       ],
       "outputs": [
-        {"name": "images", "type": "IMAGE", "links": [66], "slot_index": 0},
-        {"name": "audio_path", "type": "STRING", "links": [71], "slot_index": 1},
-        {"name": "sync_model", "type": "STRING", "links": null, "slot_index": 2}
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "links": [
+            66
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "audio_path",
+          "type": "STRING",
+          "links": [
+            71
+          ],
+          "slot_index": 1
+        },
+        {
+          "name": "sync_model",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 2
+        }
       ],
-      "properties": {"Node name for S&R": "AFE_LipSyncConfig"},
-      "widgets_values": ["LatentSync", 0.9, true, true]
+      "properties": {
+        "Node name for S&R": "AFE_LipSyncConfig"
+      },
+      "widgets_values": [
+        "LatentSync",
+        0.9,
+        true,
+        true
+      ]
     },
     {
       "id": 52,
       "type": "AFE_AudioVideoSync",
-      "pos": [4680, 250],
-      "size": {"0": 315, "1": 200},
+      "pos": [
+        4680,
+        250
+      ],
+      "size": {
+        "0": 315,
+        "1": 200
+      },
       "flags": {},
       "order": 43,
       "mode": 0,
       "inputs": [
-        {"name": "images", "type": "IMAGE", "link": 66},
-        {"name": "audio", "type": "AUDIO_ASSET", "link": 67},
-        {"name": "audio_path", "type": "STRING", "link": 71}
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 66
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO_ASSET",
+          "link": 67
+        },
+        {
+          "name": "audio_path",
+          "type": "STRING",
+          "link": 71
+        }
       ],
       "outputs": [
-        {"name": "images", "type": "IMAGE", "links": [68, 74], "slot_index": 0},
-        {"name": "frame_rate", "type": "FLOAT", "links": [69], "slot_index": 1},
-        {"name": "audio_path", "type": "STRING", "links": [70, 78], "slot_index": 2}
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "links": [
+            68,
+            74
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "frame_rate",
+          "type": "FLOAT",
+          "links": [
+            69
+          ],
+          "slot_index": 1
+        },
+        {
+          "name": "audio_path",
+          "type": "STRING",
+          "links": [
+            70,
+            78
+          ],
+          "slot_index": 2
+        }
       ],
-      "properties": {"Node name for S&R": "AFE_AudioVideoSync"},
-      "widgets_values": [24.0, 0.0, true]
+      "properties": {
+        "Node name for S&R": "AFE_AudioVideoSync"
+      },
+      "widgets_values": [
+        24.0,
+        0.0,
+        true
+      ]
     },
     {
       "id": 53,
       "type": "VHS_VideoCombine",
-      "pos": [5080, 250],
-      "size": {"0": 315, "1": 200},
+      "pos": [
+        5080,
+        250
+      ],
+      "size": {
+        "0": 315,
+        "1": 200
+      },
       "flags": {},
       "order": 44,
       "mode": 0,
       "inputs": [
-        {"name": "images", "type": "IMAGE", "link": 68},
-        {"name": "frame_rate", "type": "FLOAT", "link": 69},
-        {"name": "audio", "type": "STRING", "link": 70}
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 68
+        },
+        {
+          "name": "frame_rate",
+          "type": "FLOAT",
+          "link": 69
+        },
+        {
+          "name": "audio",
+          "type": "STRING",
+          "link": 70
+        }
       ],
       "outputs": [],
-      "properties": {"Node name for S&R": "VHS_VideoCombine"},
-      "widgets_values": [24, 0, "AFE_shot_01_audio", "video/h264-mp4", true, "default", {}]
+      "properties": {
+        "Node name for S&R": "VHS_VideoCombine"
+      },
+      "widgets_values": [
+        24,
+        0,
+        "AFE_shot_01_audio",
+        "video/h264-mp4",
+        true,
+        "default",
+        {}
+      ]
     },
     {
       "id": 60,
       "type": "AFE_ShotSequenceBuilder",
-      "pos": [5780, 100],
-      "size": {"0": 315, "1": 150},
+      "pos": [
+        5780,
+        100
+      ],
+      "size": {
+        "0": 315,
+        "1": 150
+      },
       "flags": {},
       "order": 45,
       "mode": 0,
       "inputs": [
-        {"name": "shot_sequence", "type": "SHOT_SEQUENCE", "link": 72}
+        {
+          "name": "shot_sequence",
+          "type": "SHOT_SEQUENCE",
+          "link": 72
+        }
       ],
       "outputs": [
-        {"name": "sequence_manifest_path", "type": "STRING", "links": [73], "slot_index": 0},
-        {"name": "total_shots", "type": "INT", "links": null, "slot_index": 1},
-        {"name": "total_duration_seconds", "type": "FLOAT", "links": null, "slot_index": 2}
+        {
+          "name": "sequence_manifest_path",
+          "type": "STRING",
+          "links": [
+            73
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "total_shots",
+          "type": "INT",
+          "links": null,
+          "slot_index": 1
+        },
+        {
+          "name": "total_duration_seconds",
+          "type": "FLOAT",
+          "links": null,
+          "slot_index": 2
+        }
       ],
-      "properties": {"Node name for S&R": "AFE_ShotSequenceBuilder"},
-      "widgets_values": ["./output/final", "我的影片", false]
+      "properties": {
+        "Node name for S&R": "AFE_ShotSequenceBuilder"
+      },
+      "widgets_values": [
+        "./output/final",
+        "我的影片",
+        false
+      ]
     },
     {
       "id": 61,
       "type": "AFE_ProjectExport",
-      "pos": [5780, 350],
-      "size": {"0": 315, "1": 200},
+      "pos": [
+        5780,
+        350
+      ],
+      "size": {
+        "0": 315,
+        "1": 200
+      },
       "flags": {},
       "order": 46,
       "mode": 0,
       "inputs": [
-        {"name": "sequence_manifest_path", "type": "STRING", "link": 73}
+        {
+          "name": "sequence_manifest_path",
+          "type": "STRING",
+          "link": 73
+        }
       ],
       "outputs": [
-        {"name": "export_config_json", "type": "STRING", "links": null, "slot_index": 0}
+        {
+          "name": "export_config_json",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 0
+        }
       ],
-      "properties": {"Node name for S&R": "AFE_ProjectExport"},
-      "widgets_values": ["mp4_h264", "1080p", "high", 24.0, true, "我的影片"]
+      "properties": {
+        "Node name for S&R": "AFE_ProjectExport"
+      },
+      "widgets_values": [
+        "mp4_h264",
+        "1080p",
+        "high",
+        24.0,
+        true,
+        "我的影片"
+      ]
     },
     {
       "id": 62,
       "type": "AFE_ColorGrade",
-      "pos": [6180, 100],
-      "size": {"0": 315, "1": 150},
+      "pos": [
+        6180,
+        100
+      ],
+      "size": {
+        "0": 315,
+        "1": 150
+      },
       "flags": {},
       "order": 47,
       "mode": 0,
       "inputs": [
-        {"name": "images", "type": "IMAGE", "link": 74}
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 74
+        }
       ],
       "outputs": [
-        {"name": "images", "type": "IMAGE", "links": [75], "slot_index": 0}
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "links": [
+            75
+          ],
+          "slot_index": 0
+        }
       ],
-      "properties": {"Node name for S&R": "AFE_ColorGrade"},
-      "widgets_values": ["cinematic_cool"]
+      "properties": {
+        "Node name for S&R": "AFE_ColorGrade"
+      },
+      "widgets_values": [
+        "cinematic_cool"
+      ]
     },
     {
       "id": 63,
       "type": "AFE_SubtitleOverlay",
-      "pos": [6180, 320],
-      "size": {"0": 315, "1": 150},
+      "pos": [
+        6180,
+        320
+      ],
+      "size": {
+        "0": 315,
+        "1": 150
+      },
       "flags": {},
       "order": 48,
       "mode": 0,
       "inputs": [
-        {"name": "images", "type": "IMAGE", "link": 75}
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 75
+        }
       ],
       "outputs": [
-        {"name": "images", "type": "IMAGE", "links": [76], "slot_index": 0}
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "links": [
+            76
+          ],
+          "slot_index": 0
+        }
       ],
-      "properties": {"Node name for S&R": "AFE_SubtitleOverlay"},
-      "widgets_values": [false, ""]
+      "properties": {
+        "Node name for S&R": "AFE_SubtitleOverlay"
+      },
+      "widgets_values": [
+        false,
+        ""
+      ]
     },
     {
       "id": 64,
       "type": "AFE_Watermark",
-      "pos": [6180, 530],
-      "size": {"0": 315, "1": 200},
+      "pos": [
+        6180,
+        530
+      ],
+      "size": {
+        "0": 315,
+        "1": 200
+      },
       "flags": {},
       "order": 49,
       "mode": 0,
       "inputs": [
-        {"name": "images", "type": "IMAGE", "link": 76}
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 76
+        }
       ],
       "outputs": [
-        {"name": "images", "type": "IMAGE", "links": [77], "slot_index": 0}
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "links": [
+            77
+          ],
+          "slot_index": 0
+        }
       ],
-      "properties": {"Node name for S&R": "AFE_Watermark"},
-      "widgets_values": ["AI Film Editor", "bottom_right", 0.3, false, 24, "#FFFFFF"]
+      "properties": {
+        "Node name for S&R": "AFE_Watermark"
+      },
+      "widgets_values": [
+        "AI Film Editor",
+        "bottom_right",
+        0.3,
+        false,
+        24,
+        "#FFFFFF"
+      ]
     },
     {
       "id": 65,
       "type": "VHS_VideoCombine",
-      "pos": [6580, 320],
-      "size": {"0": 315, "1": 200},
+      "pos": [
+        6580,
+        320
+      ],
+      "size": {
+        "0": 315,
+        "1": 200
+      },
       "flags": {},
       "order": 50,
       "mode": 0,
       "inputs": [
-        {"name": "images", "type": "IMAGE", "link": 77},
-        {"name": "audio", "type": "STRING", "link": 78}
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 77
+        },
+        {
+          "name": "audio",
+          "type": "STRING",
+          "link": 78
+        }
       ],
       "outputs": [],
-      "properties": {"Node name for S&R": "VHS_VideoCombine"},
-      "widgets_values": [24, 0, "AFE_FINAL", "video/h264-mp4", true, "default", {}]
+      "properties": {
+        "Node name for S&R": "VHS_VideoCombine"
+      },
+      "widgets_values": [
+        24,
+        0,
+        "AFE_FINAL",
+        "video/h264-mp4",
+        true,
+        "default",
+        {}
+      ]
     },
     {
       "id": 115,
       "type": "AFE_CastManager",
-      "pos": [950, -600],
-      "size": {"0": 380, "1": 220},
+      "pos": [
+        950,
+        -600
+      ],
+      "size": {
+        "0": 380,
+        "1": 220
+      },
       "flags": {},
       "order": 51,
       "mode": 0,
       "inputs": [
-        {"name": "cast_data", "type": "CAST_DATA", "link": 79}
+        {
+          "name": "cast_data",
+          "type": "CAST_DATA",
+          "link": 79
+        }
       ],
       "outputs": [
-        {"name": "character", "type": "CHARACTER_ASSET", "links": null, "slot_index": 0},
-        {"name": "character_id", "type": "STRING", "links": null, "slot_index": 1},
-        {"name": "cast_summary", "type": "STRING", "links": null, "slot_index": 2},
-        {"name": "character_json", "type": "STRING", "links": null, "slot_index": 3}
+        {
+          "name": "character",
+          "type": "CHARACTER_ASSET",
+          "links": [
+            82
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "character_id",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 1
+        },
+        {
+          "name": "cast_summary",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 2
+        },
+        {
+          "name": "character_json",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 3
+        }
       ],
-      "properties": {"Node name for S&R": "AFE_CastManager"},
-      "widgets_values": ["char_001", "all"]
+      "properties": {
+        "Node name for S&R": "AFE_CastManager"
+      },
+      "widgets_values": [
+        "char_001",
+        "all"
+      ]
     },
     {
       "id": 116,
       "type": "AFE_ExpressionSheet",
-      "pos": [1400, -600],
-      "size": {"0": 380, "1": 200},
+      "pos": [
+        1400,
+        -600
+      ],
+      "size": {
+        "0": 380,
+        "1": 200
+      },
       "flags": {},
       "order": 52,
       "mode": 0,
       "inputs": [
-        {"name": "character", "type": "CHARACTER_ASSET", "link": null}
+        {
+          "name": "character",
+          "type": "CHARACTER_ASSET",
+          "link": null
+        }
       ],
       "outputs": [
-        {"name": "positive_prompt", "type": "STRING", "links": null, "slot_index": 0},
-        {"name": "negative_prompt", "type": "STRING", "links": null, "slot_index": 1},
-        {"name": "expression_count", "type": "INT", "links": null, "slot_index": 2}
+        {
+          "name": "positive_prompt",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 0
+        },
+        {
+          "name": "negative_prompt",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 1
+        },
+        {
+          "name": "expression_count",
+          "type": "INT",
+          "links": null,
+          "slot_index": 2
+        }
       ],
-      "properties": {"Node name for S&R": "AFE_ExpressionSheet"},
-      "widgets_values": ["全套(喜怒哀乐惊恐)", "", "面部特写"]
+      "properties": {
+        "Node name for S&R": "AFE_ExpressionSheet"
+      },
+      "widgets_values": [
+        "全套(喜怒哀乐惊恐)",
+        "",
+        "面部特写"
+      ]
     },
     {
       "id": 117,
       "type": "AFE_ShotUnit",
-      "pos": [950, -300],
-      "size": {"0": 380, "1": 280},
+      "pos": [
+        950,
+        -300
+      ],
+      "size": {
+        "0": 380,
+        "1": 280
+      },
       "flags": {},
       "order": 53,
       "mode": 0,
       "inputs": [
-        {"name": "shot_sequence", "type": "SHOT_SEQUENCE", "link": 80}
+        {
+          "name": "shot_sequence",
+          "type": "SHOT_SEQUENCE",
+          "link": 80
+        }
       ],
       "outputs": [
-        {"name": "positive_prompt", "type": "STRING", "links": null, "slot_index": 0},
-        {"name": "negative_prompt", "type": "STRING", "links": null, "slot_index": 1},
-        {"name": "seed", "type": "INT", "links": null, "slot_index": 2},
-        {"name": "width", "type": "INT", "links": null, "slot_index": 3},
-        {"name": "height", "type": "INT", "links": null, "slot_index": 4},
-        {"name": "frame_count", "type": "INT", "links": null, "slot_index": 5},
-        {"name": "shot_label", "type": "STRING", "links": null, "slot_index": 6}
+        {
+          "name": "positive_prompt",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 0
+        },
+        {
+          "name": "negative_prompt",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 1
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": null,
+          "slot_index": 2
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "links": null,
+          "slot_index": 3
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "links": null,
+          "slot_index": 4
+        },
+        {
+          "name": "frame_count",
+          "type": "INT",
+          "links": null,
+          "slot_index": 5
+        },
+        {
+          "name": "shot_label",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 6
+        }
       ],
-      "properties": {"Node name for S&R": "AFE_ShotUnit"},
-      "widgets_values": ["shot_001", "first_pass_640x360", ""]
+      "properties": {
+        "Node name for S&R": "AFE_ShotUnit"
+      },
+      "widgets_values": [
+        "shot_001",
+        "first_pass_640x360",
+        ""
+      ]
+    },
+    {
+      "id": 118,
+      "type": "AFE_ShotDirectorAI",
+      "pos": [
+        1800,
+        -800
+      ],
+      "size": {
+        "0": 400,
+        "1": 320
+      },
+      "flags": {},
+      "order": 54,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "shot_sequence",
+          "type": "SHOT_SEQUENCE",
+          "link": 81
+        }
+      ],
+      "outputs": [
+        {
+          "name": "enhanced_sequence",
+          "type": "SHOT_SEQUENCE",
+          "links": null,
+          "slot_index": 0
+        },
+        {
+          "name": "enhanced_prompt",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 1
+        },
+        {
+          "name": "enhanced_negative",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 2
+        },
+        {
+          "name": "director_report",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AFE_ShotDirectorAI"
+      },
+      "widgets_values": [
+        "shot_001",
+        "",
+        "",
+        "",
+        "https://api.deepseek.com/v1",
+        "deepseek-chat"
+      ]
+    },
+    {
+      "id": 119,
+      "type": "AFE_CharacterViewPrompt",
+      "pos": [
+        1800,
+        -550
+      ],
+      "size": {
+        "0": 380,
+        "1": 240
+      },
+      "flags": {},
+      "order": 55,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "character",
+          "type": "CHARACTER_ASSET",
+          "link": 82
+        }
+      ],
+      "outputs": [
+        {
+          "name": "positive_prompt",
+          "type": "STRING",
+          "links": [
+            83
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "negative_prompt",
+          "type": "STRING",
+          "links": [
+            85
+          ],
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AFE_CharacterViewPrompt"
+      },
+      "widgets_values": [
+        "front_full",
+        "",
+        "photorealistic, 8K, studio lighting, white background"
+      ]
+    },
+    {
+      "id": 120,
+      "type": "CLIPTextEncode",
+      "pos": [
+        2250,
+        -600
+      ],
+      "size": {
+        "0": 315,
+        "1": 120
+      },
+      "flags": {},
+      "order": 56,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 83
+        },
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 84
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            88
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPTextEncode"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 121,
+      "type": "CLIPTextEncode",
+      "pos": [
+        2250,
+        -450
+      ],
+      "size": {
+        "0": 315,
+        "1": 120
+      },
+      "flags": {},
+      "order": 57,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 85
+        },
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 86
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            89
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPTextEncode"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 122,
+      "type": "EmptyLatentImage",
+      "pos": [
+        2250,
+        -300
+      ],
+      "size": {
+        "0": 315,
+        "1": 110
+      },
+      "flags": {},
+      "order": 58,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            90
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "EmptyLatentImage"
+      },
+      "widgets_values": [
+        512,
+        768,
+        1
+      ]
+    },
+    {
+      "id": 123,
+      "type": "KSampler",
+      "pos": [
+        2650,
+        -500
+      ],
+      "size": {
+        "0": 315,
+        "1": 260
+      },
+      "flags": {},
+      "order": 59,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 87
+        },
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 88
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 89
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 90
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            91
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "KSampler"
+      },
+      "widgets_values": [
+        42,
+        "fixed",
+        20,
+        7.0,
+        "euler",
+        "karras",
+        1.0
+      ]
+    },
+    {
+      "id": 124,
+      "type": "VAEDecode",
+      "pos": [
+        3050,
+        -500
+      ],
+      "size": {
+        "0": 210,
+        "1": 110
+      },
+      "flags": {},
+      "order": 60,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 91
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 92
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            93
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecode"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 125,
+      "type": "SaveImage",
+      "pos": [
+        3050,
+        -350
+      ],
+      "size": {
+        "0": 210,
+        "1": 80
+      },
+      "flags": {},
+      "order": 61,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 93
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "SaveImage"
+      },
+      "widgets_values": [
+        "AFE_CharView"
+      ]
+    },
+    {
+      "id": 126,
+      "type": "AFE_ShotChain",
+      "pos": [
+        3680,
+        480
+      ],
+      "size": {
+        "0": 380,
+        "1": 220
+      },
+      "flags": {},
+      "order": 62,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "rendered_frames",
+          "type": "IMAGE",
+          "link": 94
+        },
+        {
+          "name": "shot_sequence",
+          "type": "SHOT_SEQUENCE",
+          "link": 95
+        }
+      ],
+      "outputs": [
+        {
+          "name": "tail_frame",
+          "type": "IMAGE",
+          "links": null,
+          "slot_index": 0
+        },
+        {
+          "name": "next_shot_id",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 1
+        },
+        {
+          "name": "chain_status",
+          "type": "STRING",
+          "links": [
+            96
+          ],
+          "slot_index": 2
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AFE_ShotChain"
+      },
+      "widgets_values": [
+        "shot_001",
+        "./projects/tail_frames"
+      ]
+    },
+    {
+      "id": 127,
+      "type": "Show Text",
+      "pos": [
+        4080,
+        480
+      ],
+      "size": {
+        "0": 400,
+        "1": 200
+      },
+      "flags": {},
+      "order": 63,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 96
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "Show Text"
+      },
+      "widgets_values": [
+        ""
+      ]
     }
   ],
   "links": [
-    [1,  101, 0, 102, 0, "CUSTOM"],
-    [2,  101, 1, 102, 1, "CUSTOM"],
-    [3,  102, 0, 103, 0, "STRING"],
-    [4,  103, 3, 104, 0, "STRING"],
-    [5,  1,   0, 2,   0, "CHARACTER_ASSET"],
-    [6,  1,   0, 5,   0, "CHARACTER_ASSET"],
-    [7,  2,   0, 5,   1, "OUTFIT_ASSET"],
-    [8,  3,   0, 5,   2, "SCENE_ASSET"],
-    [9,  4,   0, 5,   3, "PROPS_ASSET"],
-    [10, 5,   0, 6,   0, "STRING"],
-    [11, 5,   1, 6,   1, "STRING"],
-    [12, 5,   2, 6,   2, "INT"],
-    [13, 5,   3, 6,   3, "INT"],
-    [14, 5,   4, 6,   4, "INT"],
-    [15, 6,   0, 8,   0, "STRING"],
-    [16, 6,   1, 9,   0, "STRING"],
-    [17, 6,   3, 10,  0, "INT"],
-    [18, 6,   4, 10,  1, "INT"],
-    [19, 7,   0, 11,  0, "MODEL"],
-    [20, 7,   1, 8,   1, "CLIP"],
-    [21, 7,   1, 9,   1, "CLIP"],
-    [22, 7,   2, 12,  1, "VAE"],
-    [23, 8,   0, 11,  1, "CONDITIONING"],
-    [24, 9,   0, 11,  2, "CONDITIONING"],
-    [25, 10,  0, 11,  3, "LATENT"],
-    [26, 11,  0, 12,  0, "LATENT"],
-    [27, 12,  0, 13,  0, "IMAGE"],
-    [28, 20,  0, 21,  0, "IMAGE"],
-    [29, 21,  0, 27,  1, "IMAGE"],
-    [30, 22,  0, 27,  4, "INT"],
-    [31, 23,  0, 28,  0, "MODEL"],
-    [32, 24,  0, 26,  0, "CLIP"],
-    [33, 25,  0, 29,  1, "VAE"],
-    [34, 25,  0, 27,  0, "VAE"],
-    [35, 6,   0, 26,  1, "STRING"],
-    [36, 6,   1, 26,  2, "STRING"],
-    [37, 26,  0, 28,  1, "CONDITIONING"],
-    [38, 26,  1, 28,  2, "CONDITIONING"],
-    [39, 27,  0, 28,  3, "LATENT"],
-    [40, 28,  0, 29,  0, "LATENT"],
-    [41, 29,  0, 30,  0, "IMAGE"],
-    [42, 29,  0, 32,  0, "IMAGE"],
-    [43, 30,  0, 31,  0, "IMAGE"],
-    [44, 40,  0, 41,  1, "REFINEMENT_CONFIG"],
-    [45, 29,  0, 41,  0, "IMAGE"],
-    [46, 41,  0, 46,  0, "IMAGE"],
-    [47, 7,   2, 46,  1, "VAE"],
-    [48, 46,  0, 44,  3, "LATENT"],
-    [49, 7,   0, 44,  0, "MODEL"],
-    [50, 7,   1, 47,  1, "CLIP"],
-    [51, 7,   1, 48,  1, "CLIP"],
-    [52, 41,  6, 47,  0, "STRING"],
-    [53, 41,  7, 48,  0, "STRING"],
-    [54, 47,  0, 44,  1, "CONDITIONING"],
-    [55, 48,  0, 44,  2, "CONDITIONING"],
-    [56, 41,  3, 44,  6, "FLOAT"],
-    [57, 41,  4, 44,  4, "INT"],
-    [58, 41,  5, 44,  5, "FLOAT"],
-    [59, 44,  0, 49,  0, "LATENT"],
-    [60, 7,   2, 49,  1, "VAE"],
-    [61, 49,  0, 42,  0, "IMAGE"],
-    [62, 42,  0, 43,  0, "IMAGE"],
-    [63, 43,  0, 45,  0, "IMAGE"],
-    [64, 50,  0, 51,  1, "AUDIO_ASSET"],
-    [65, 43,  0, 51,  0, "IMAGE"],
-    [66, 51,  0, 52,  0, "IMAGE"],
-    [67, 50,  0, 52,  1, "AUDIO_ASSET"],
-    [68, 52,  0, 53,  0, "IMAGE"],
-    [69, 52,  1, 53,  1, "FLOAT"],
-    [70, 52,  2, 53,  2, "STRING"],
-    [71, 51,  1, 52,  2, "STRING"],
-    [72, 103, 0, 60,  0, "SHOT_SEQUENCE"],
-    [73, 60,  0, 61,  0, "STRING"],
-    [74, 52,  0, 62,  0, "IMAGE"],
-    [75, 62,  0, 63,  0, "IMAGE"],
-    [76, 63,  0, 64,  0, "IMAGE"],
-    [77, 64,  0, 65,  0, "IMAGE"],
-    [78, 52,  2, 65,  1, "STRING"],
-    [79, 103, 1, 115, 0, "CAST_DATA"],
-    [80, 103, 0, 117, 0, "SHOT_SEQUENCE"]
+    [
+      1,
+      101,
+      0,
+      102,
+      0,
+      "CUSTOM"
+    ],
+    [
+      2,
+      101,
+      1,
+      102,
+      1,
+      "CUSTOM"
+    ],
+    [
+      3,
+      102,
+      0,
+      103,
+      0,
+      "STRING"
+    ],
+    [
+      4,
+      103,
+      3,
+      104,
+      0,
+      "STRING"
+    ],
+    [
+      5,
+      1,
+      0,
+      2,
+      0,
+      "CHARACTER_ASSET"
+    ],
+    [
+      6,
+      1,
+      0,
+      5,
+      0,
+      "CHARACTER_ASSET"
+    ],
+    [
+      7,
+      2,
+      0,
+      5,
+      1,
+      "OUTFIT_ASSET"
+    ],
+    [
+      8,
+      3,
+      0,
+      5,
+      2,
+      "SCENE_ASSET"
+    ],
+    [
+      9,
+      4,
+      0,
+      5,
+      3,
+      "PROPS_ASSET"
+    ],
+    [
+      10,
+      5,
+      0,
+      6,
+      0,
+      "STRING"
+    ],
+    [
+      11,
+      5,
+      1,
+      6,
+      1,
+      "STRING"
+    ],
+    [
+      12,
+      5,
+      2,
+      6,
+      2,
+      "INT"
+    ],
+    [
+      13,
+      5,
+      3,
+      6,
+      3,
+      "INT"
+    ],
+    [
+      14,
+      5,
+      4,
+      6,
+      4,
+      "INT"
+    ],
+    [
+      15,
+      6,
+      0,
+      8,
+      0,
+      "STRING"
+    ],
+    [
+      16,
+      6,
+      1,
+      9,
+      0,
+      "STRING"
+    ],
+    [
+      17,
+      6,
+      3,
+      10,
+      0,
+      "INT"
+    ],
+    [
+      18,
+      6,
+      4,
+      10,
+      1,
+      "INT"
+    ],
+    [
+      19,
+      7,
+      0,
+      11,
+      0,
+      "MODEL"
+    ],
+    [
+      20,
+      7,
+      1,
+      8,
+      1,
+      "CLIP"
+    ],
+    [
+      21,
+      7,
+      1,
+      9,
+      1,
+      "CLIP"
+    ],
+    [
+      22,
+      7,
+      2,
+      12,
+      1,
+      "VAE"
+    ],
+    [
+      23,
+      8,
+      0,
+      11,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      24,
+      9,
+      0,
+      11,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      25,
+      10,
+      0,
+      11,
+      3,
+      "LATENT"
+    ],
+    [
+      26,
+      11,
+      0,
+      12,
+      0,
+      "LATENT"
+    ],
+    [
+      27,
+      12,
+      0,
+      13,
+      0,
+      "IMAGE"
+    ],
+    [
+      28,
+      20,
+      0,
+      21,
+      0,
+      "IMAGE"
+    ],
+    [
+      29,
+      21,
+      0,
+      27,
+      1,
+      "IMAGE"
+    ],
+    [
+      30,
+      22,
+      0,
+      27,
+      4,
+      "INT"
+    ],
+    [
+      31,
+      23,
+      0,
+      28,
+      0,
+      "MODEL"
+    ],
+    [
+      32,
+      24,
+      0,
+      26,
+      0,
+      "CLIP"
+    ],
+    [
+      33,
+      25,
+      0,
+      29,
+      1,
+      "VAE"
+    ],
+    [
+      34,
+      25,
+      0,
+      27,
+      0,
+      "VAE"
+    ],
+    [
+      35,
+      6,
+      0,
+      26,
+      1,
+      "STRING"
+    ],
+    [
+      36,
+      6,
+      1,
+      26,
+      2,
+      "STRING"
+    ],
+    [
+      37,
+      26,
+      0,
+      28,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      38,
+      26,
+      1,
+      28,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      39,
+      27,
+      0,
+      28,
+      3,
+      "LATENT"
+    ],
+    [
+      40,
+      28,
+      0,
+      29,
+      0,
+      "LATENT"
+    ],
+    [
+      41,
+      29,
+      0,
+      30,
+      0,
+      "IMAGE"
+    ],
+    [
+      42,
+      29,
+      0,
+      32,
+      0,
+      "IMAGE"
+    ],
+    [
+      43,
+      30,
+      0,
+      31,
+      0,
+      "IMAGE"
+    ],
+    [
+      44,
+      40,
+      0,
+      41,
+      1,
+      "REFINEMENT_CONFIG"
+    ],
+    [
+      45,
+      29,
+      0,
+      41,
+      0,
+      "IMAGE"
+    ],
+    [
+      46,
+      41,
+      0,
+      46,
+      0,
+      "IMAGE"
+    ],
+    [
+      47,
+      7,
+      2,
+      46,
+      1,
+      "VAE"
+    ],
+    [
+      48,
+      46,
+      0,
+      44,
+      3,
+      "LATENT"
+    ],
+    [
+      49,
+      7,
+      0,
+      44,
+      0,
+      "MODEL"
+    ],
+    [
+      50,
+      7,
+      1,
+      47,
+      1,
+      "CLIP"
+    ],
+    [
+      51,
+      7,
+      1,
+      48,
+      1,
+      "CLIP"
+    ],
+    [
+      52,
+      41,
+      6,
+      47,
+      0,
+      "STRING"
+    ],
+    [
+      53,
+      41,
+      7,
+      48,
+      0,
+      "STRING"
+    ],
+    [
+      54,
+      47,
+      0,
+      44,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      55,
+      48,
+      0,
+      44,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      56,
+      41,
+      3,
+      44,
+      6,
+      "FLOAT"
+    ],
+    [
+      57,
+      41,
+      4,
+      44,
+      4,
+      "INT"
+    ],
+    [
+      58,
+      41,
+      5,
+      44,
+      5,
+      "FLOAT"
+    ],
+    [
+      59,
+      44,
+      0,
+      49,
+      0,
+      "LATENT"
+    ],
+    [
+      60,
+      7,
+      2,
+      49,
+      1,
+      "VAE"
+    ],
+    [
+      61,
+      49,
+      0,
+      42,
+      0,
+      "IMAGE"
+    ],
+    [
+      62,
+      42,
+      0,
+      43,
+      0,
+      "IMAGE"
+    ],
+    [
+      63,
+      43,
+      0,
+      45,
+      0,
+      "IMAGE"
+    ],
+    [
+      64,
+      50,
+      0,
+      51,
+      1,
+      "AUDIO_ASSET"
+    ],
+    [
+      65,
+      43,
+      0,
+      51,
+      0,
+      "IMAGE"
+    ],
+    [
+      66,
+      51,
+      0,
+      52,
+      0,
+      "IMAGE"
+    ],
+    [
+      67,
+      50,
+      0,
+      52,
+      1,
+      "AUDIO_ASSET"
+    ],
+    [
+      68,
+      52,
+      0,
+      53,
+      0,
+      "IMAGE"
+    ],
+    [
+      69,
+      52,
+      1,
+      53,
+      1,
+      "FLOAT"
+    ],
+    [
+      70,
+      52,
+      2,
+      53,
+      2,
+      "STRING"
+    ],
+    [
+      71,
+      51,
+      1,
+      52,
+      2,
+      "STRING"
+    ],
+    [
+      72,
+      103,
+      0,
+      60,
+      0,
+      "SHOT_SEQUENCE"
+    ],
+    [
+      73,
+      60,
+      0,
+      61,
+      0,
+      "STRING"
+    ],
+    [
+      74,
+      52,
+      0,
+      62,
+      0,
+      "IMAGE"
+    ],
+    [
+      75,
+      62,
+      0,
+      63,
+      0,
+      "IMAGE"
+    ],
+    [
+      76,
+      63,
+      0,
+      64,
+      0,
+      "IMAGE"
+    ],
+    [
+      77,
+      64,
+      0,
+      65,
+      0,
+      "IMAGE"
+    ],
+    [
+      78,
+      52,
+      2,
+      65,
+      1,
+      "STRING"
+    ],
+    [
+      79,
+      103,
+      1,
+      115,
+      0,
+      "CAST_DATA"
+    ],
+    [
+      80,
+      103,
+      0,
+      117,
+      0,
+      "SHOT_SEQUENCE"
+    ],
+    [
+      81,
+      103,
+      0,
+      118,
+      0,
+      "SHOT_SEQUENCE"
+    ],
+    [
+      82,
+      115,
+      0,
+      119,
+      0,
+      "CHARACTER_ASSET"
+    ],
+    [
+      83,
+      119,
+      0,
+      120,
+      0,
+      "STRING"
+    ],
+    [
+      84,
+      7,
+      1,
+      120,
+      1,
+      "CLIP"
+    ],
+    [
+      85,
+      119,
+      1,
+      121,
+      0,
+      "STRING"
+    ],
+    [
+      86,
+      7,
+      1,
+      121,
+      1,
+      "CLIP"
+    ],
+    [
+      87,
+      7,
+      0,
+      123,
+      0,
+      "MODEL"
+    ],
+    [
+      88,
+      120,
+      0,
+      123,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      89,
+      121,
+      0,
+      123,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      90,
+      122,
+      0,
+      123,
+      3,
+      "LATENT"
+    ],
+    [
+      91,
+      123,
+      0,
+      124,
+      0,
+      "LATENT"
+    ],
+    [
+      92,
+      7,
+      2,
+      124,
+      1,
+      "VAE"
+    ],
+    [
+      93,
+      124,
+      0,
+      125,
+      0,
+      "IMAGE"
+    ],
+    [
+      94,
+      29,
+      0,
+      126,
+      0,
+      "IMAGE"
+    ],
+    [
+      95,
+      103,
+      0,
+      126,
+      1,
+      "SHOT_SEQUENCE"
+    ],
+    [
+      96,
+      126,
+      2,
+      127,
+      0,
+      "STRING"
+    ]
   ],
   "groups": [
     {
       "title": "🎬 第一步：剧本解析 → 分镜列表",
-      "bounding": [-50, -1000, 1900, 700],
+      "bounding": [
+        -50,
+        -1000,
+        1900,
+        700
+      ],
       "color": "#3f789e",
       "font_size": 24,
       "flags": {}
     },
     {
       "title": "🎭 第二步：资产创建（角色/服装/场景/道具）",
-      "bounding": [-280, -50, 2200, 1200],
+      "bounding": [
+        -280,
+        -50,
+        2200,
+        1200
+      ],
       "color": "#7e5f3f",
       "font_size": 24,
       "flags": {}
     },
     {
       "title": "🎥 第三步：一采视频生成（Wan I2V）",
-      "bounding": [1980, -50, 2100, 1150],
+      "bounding": [
+        1980,
+        -50,
+        2100,
+        1150
+      ],
       "color": "#3f7e5f",
       "font_size": 24,
       "flags": {}
     },
     {
       "title": "✨ 第四步：二采精修（高清+人脸增强）",
-      "bounding": [1980, 1350, 2500, 750],
+      "bounding": [
+        1980,
+        1350,
+        2500,
+        750
+      ],
       "color": "#5f3f7e",
       "font_size": 24,
       "flags": {}
     },
     {
       "title": "🎵 第五步：音频与唇形同步",
-      "bounding": [4200, -50, 1450, 900],
+      "bounding": [
+        4200,
+        -50,
+        1450,
+        900
+      ],
       "color": "#7e6f3f",
       "font_size": 24,
       "flags": {}
     },
     {
       "title": "📤 第六步：最终调色导出",
-      "bounding": [5700, -50, 1250, 900],
+      "bounding": [
+        5700,
+        -50,
+        1250,
+        900
+      ],
       "color": "#7e3f3f",
+      "font_size": 24,
+      "flags": {}
+    },
+    {
+      "title": "🎬 导演 AI & 尾帧接力",
+      "bounding": [
+        1750,
+        -900,
+        2800,
+        1500
+      ],
+      "color": "#3f5f7e",
       "font_size": 24,
       "flags": {}
     }
   ],
   "config": {},
-  "extra": {"ds": {"scale": 0.4, "offset": [200, 500]}},
+  "extra": {
+    "ds": {
+      "scale": 0.4,
+      "offset": [
+        200,
+        500
+      ]
+    }
+  },
   "version": 0.4
 }

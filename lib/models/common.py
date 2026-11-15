@@ -87,6 +87,7 @@ class RoleType(StrEnum):
     """Character role hierarchy in a film production."""
     LEAD         = "lead"
     SUPPORTING   = "supporting"
+    EXTRA        = "extra"
     EXTRA_A      = "extra_a"
     EXTRA_B      = "extra_b"
     EXTRA_OTHER  = "extra_other"

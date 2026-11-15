@@ -6,7 +6,7 @@ from uuid import uuid4
 from pydantic import BaseModel, Field, computed_field
 
 from ai_film_editor_nodes.lib.models.assets import Resolution
-from ai_film_editor_nodes.lib.models.common import CameraMotion, RenderStatus, RenderTier
+from ai_film_editor_nodes.lib.models.common import CameraMotion, CameraMotionEx, RenderStatus, RenderTier
 
 
 class ShotDuration(BaseModel):
@@ -48,7 +48,7 @@ class ShotItem(BaseModel):
     scene_id: str | None = None
     shot_prompt: str = ""
     negative_prompt: str = ""
-    camera_motion: CameraMotion = CameraMotion.STATIC
+    camera_motion: CameraMotionEx = CameraMotionEx.STATIC
     character_ids: list[str] = Field(default_factory=list)
     costume_per_character: dict[str, str] = Field(default_factory=dict)
     camera_angle: str = "medium"

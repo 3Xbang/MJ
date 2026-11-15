@@ -41,7 +41,8 @@ SYSTEM_PROMPT = """你是一位专业影视导演和制片人。请分析以下�
   ]
 }
 
-camera_motion 只能是：static, pan_left, pan_right, zoom_in, zoom_out, tilt_up, tilt_down, orbit, slow_push_in, slow_pull_back, tracking_shot
+camera_angle 只能是：close_up, medium, wide, low_angle, high_angle, eye_level, dutch
+camera_motion 只能是：static, pan_left, pan_right, zoom_in, zoom_out, tilt_up, tilt_down, orbit, slow_push_in, slow_pull_back, tracking_shot, crane_up, crane_down, handheld
 
 规则：
 1. character_ids 只填 cast 中出现的 character_id

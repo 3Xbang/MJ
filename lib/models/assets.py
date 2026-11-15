@@ -6,7 +6,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
-from ai_film_editor_nodes.lib.models.common import AssetStatus, SceneType, ViewType
+from ai_film_editor_nodes.lib.models.common import AssetStatus, RoleType, SceneType, ViewType
 
 
 class PropType(StrEnum):
@@ -84,7 +84,7 @@ class CharacterAsset(BaseModel):
     views: list[GeneratedView] = Field(default_factory=list)
     version_history: list[AssetVersion] = Field(default_factory=list)
     current_version_id: str | None = None
-    role_type: str = "supporting"
+    role_type: RoleType = RoleType.SUPPORTING
     character_id_code: str = ""
     age_range: str = ""
     personality: str = ""

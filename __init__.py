@@ -53,6 +53,11 @@ from ai_film_editor_nodes.nodes.dam.cast_manager_node import AFE_CastManager
 from ai_film_editor_nodes.nodes.dam.expression_sheet_node import AFE_ExpressionSheet
 from ai_film_editor_nodes.nodes.director.shot_unit_node import AFE_ShotUnit
 
+# Part 7 - Director AI & Shot Chain
+from ai_film_editor_nodes.nodes.director.shot_director_ai_node import AFE_ShotDirectorAI
+from ai_film_editor_nodes.nodes.dam.character_view_prompt_node import AFE_CharacterViewPrompt
+from ai_film_editor_nodes.nodes.director.shot_chain_node import AFE_ShotChain
+
 NODE_CLASS_MAPPINGS = {
     # Part 1
     "AFE_CharacterAsset": AFE_CharacterAsset,
@@ -91,6 +96,10 @@ NODE_CLASS_MAPPINGS = {
     "AFE_CastManager": AFE_CastManager,
     "AFE_ExpressionSheet": AFE_ExpressionSheet,
     "AFE_ShotUnit": AFE_ShotUnit,
+    # Part 7 - Director AI & Shot Chain
+    "AFE_ShotDirectorAI": AFE_ShotDirectorAI,
+    "AFE_CharacterViewPrompt": AFE_CharacterViewPrompt,
+    "AFE_ShotChain": AFE_ShotChain,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -131,6 +140,10 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AFE_CastManager": "🎭 Cast Manager (演员表)",
     "AFE_ExpressionSheet": "😊 Expression Sheet (表情包)",
     "AFE_ShotUnit": "🎬 Shot Unit (单分镜控制器)",
+    # Part 7 - Director AI & Shot Chain
+    "AFE_ShotDirectorAI": "🎬 Shot Director AI (专业导演建议)",
+    "AFE_CharacterViewPrompt": "👁️ Character View Prompt (角色视图提示词)",
+    "AFE_ShotChain": "🔗 Shot Chain (尾帧接力)",
 }
 
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]

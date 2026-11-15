@@ -1,5 +1,5 @@
 from __future__ import annotations
-import random
+import hashlib
 from ai_film_editor_nodes.lib.utils.logger import get_logger
 
 logger = get_logger("AFE_ShotUnit")
@@ -45,6 +45,11 @@ class AFE_ShotUnit:
     FUNCTION = "prepare_shot"
     CATEGORY = "AI Film Editor/Director"
     OUTPUT_NODE = True
+
+    def _get_deterministic_seed(self, shot_id: str, shot_seed: int) -> int:
+        if shot_seed != -1:
+            return shot_seed
+        return int(hashlib.md5(shot_id.encode()).hexdigest()[:8], 16) % (2**31)
 
     def prepare_shot(self, shot_id, shot_sequence, render_pass,
                      character=None, scene=None, outfit=None, props=None,
@@ -97,7 +102,8 @@ class AFE_ShotUnit:
                 parts.append(f"({director_notes})")
             positive_prompt = ", ".join(p for p in parts if p)
 
-        seed = random.randint(0, 2**31 - 1)
+        shot_seed = int(_get(shot_data, "seed", -1))
+        seed = self._get_deterministic_seed(shot_id, shot_seed)
         shot_label = f"{label} | {pass_label} | {cfg['width']}×{cfg['height']} | {duration_sec}秒"
         logger.info(f"ShotUnit: {shot_id} → {pass_label} {cfg['width']}×{cfg['height']}")
         return (
