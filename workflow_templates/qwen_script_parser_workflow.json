@@ -4,8 +4,8 @@
   "nodes": [
     {
       "id": 1,
-      "type": "LocalLLM",
-      "pos": [50, 200],
+      "type": "LLM_local_loader",
+      "pos": [50, 300],
       "size": {"0": 320, "1": 200},
       "flags": {},
       "order": 0,
@@ -15,16 +15,16 @@
         {"name": "model", "type": "CUSTOM", "links": [1], "slot_index": 0},
         {"name": "tokenizer", "type": "CUSTOM", "links": [2], "slot_index": 1}
       ],
-      "properties": {"Node name for S&R": "LocalLLM"},
+      "properties": {"Node name for S&R": "LLM_local_loader"},
       "widgets_values": ["Qwen/Qwen2.5-7B-Instruct", "cuda", "float16", false]
     },
     {
       "id": 2,
-      "type": "LLM",
-      "pos": [450, 200],
+      "type": "LLM_local",
+      "pos": [450, 300],
       "size": {"0": 350, "1": 300},
       "flags": {},
-      "order": 1,
+      "order": 2,
       "mode": 0,
       "inputs": [
         {"name": "model", "type": "CUSTOM", "link": 1},
@@ -34,16 +34,16 @@
       "outputs": [
         {"name": "text", "type": "STRING", "links": [4], "slot_index": 0}
       ],
-      "properties": {"Node name for S&R": "LLM"},
-      "widgets_values": ["你是一位专业影视分镜师。", 0.7, 2048, true, false]
+      "properties": {"Node name for S&R": "LLM_local"},
+      "widgets_values": ["你是一位专业影视分镜师，请将剧本解析为JSON格式的分镜列表。", 0.3, 2048, true, false]
     },
     {
       "id": 3,
       "type": "AFE_ScriptParser",
       "pos": [50, 50],
-      "size": {"0": 400, "1": 350},
+      "size": {"0": 400, "1": 380},
       "flags": {},
-      "order": 2,
+      "order": 1,
       "mode": 0,
       "inputs": [
         {"name": "llm_response", "type": "STRING", "link": 4}
@@ -65,23 +65,6 @@
         "",
         ""
       ]
-    },
-    {
-      "id": 4,
-      "type": "ShowText|pysssss",
-      "pos": [900, 200],
-      "size": {"0": 400, "1": 300},
-      "flags": {},
-      "order": 3,
-      "mode": 0,
-      "inputs": [
-        {"name": "text", "type": "STRING", "link": null}
-      ],
-      "outputs": [
-        {"name": "STRING", "type": "STRING", "links": null, "slot_index": 0}
-      ],
-      "properties": {"Node name for S&R": "ShowText|pysssss"},
-      "widgets_values": [""]
     }
   ],
   "links": [
