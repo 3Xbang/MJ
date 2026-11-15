@@ -84,6 +84,12 @@ class CharacterAsset(BaseModel):
     views: list[GeneratedView] = Field(default_factory=list)
     version_history: list[AssetVersion] = Field(default_factory=list)
     current_version_id: str | None = None
+    role_type: str = "supporting"
+    character_id_code: str = ""
+    age_range: str = ""
+    personality: str = ""
+    appearance_description: str = ""
+    appearance_description_en: str = ""
     tags: list[str] = Field(default_factory=list)
     status: AssetStatus = AssetStatus.DRAFT
     created_at: datetime = Field(default_factory=datetime.utcnow)

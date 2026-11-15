@@ -1,87 +1,70 @@
-# folder_paths-driven model dropdowns across AFE nodes
+# Fix commit: folder_paths review findings resolved
 
-This change replaces every hardcoded STRING model input across the AFE node package with `folder_paths`-driven dropdowns backed by a new `get_model_list` utility. A companion `AFE_ModelChecker` node surfaces installation status per-mode with ✅/❌ reporting, pulling from an enumerated `MODEL_REQUIREMENTS` dict of nine model keys and their ComfyUI Manager search hints. The package now registers 28 nodes total. Watch for: `face_model` dropdown in `AFE_FaceEnhancer` is wired to the UI but not passed to the CodeFormer enhancer call — the selection has no effect on what model runs (confirmed); `image_checkpoint` is accepted but silently discarded in outfit, scene, and props nodes (confirmed).
+This commit addresses all five findings from the initial review pass. `AFE_FaceEnhancer` now passes `face_model` to `CodeFormerEnhance.enhance()`; outfit, scene, and props nodes persist `image_checkpoint` as `base_model_logical_name` with a placeholder guard; `AFE_ModelChecker` caches `check_requirement` results in a single pass; `AFE_VideoModelAdapter` calls `require_model` to fail fast when no diffusion model is installed. All five prior blocking concerns are resolved.
 
-**Verdict**: CHANGES_REQUESTED
+Watch for: `CodeFormerEnhance.enhance()` accepting `face_model` as a kwarg cannot be verified without reading the ComfyUI_CodeFormer source — if the kwarg is unexpected, every CodeFormer call silently falls back to passthrough with a warning and the model selection has no effect (possible). `require_model("wan_i2v_model")` always references Wan2.1 I2V in its error message even when the user's diffusion_models folder is empty for non-Wan reasons (confirmed minor).
+
+**Verdict**: APPROVED
 
 ## High-level view
 
-`get_model_list` in `lib/utils/model_checker.py` wraps `folder_paths.get_filename_list()` with a guarded import and a placeholder fallback. All eight modified nodes call it inside their `INPUT_TYPES` classmethod, which ComfyUI invokes at startup to populate dropdowns. This means model lists reflect whatever is installed when ComfyUI starts; installing a new model requires a restart.
+The face_model fix is effective when the external CodeFormer API accepts the kwarg; a broad `except Exception` prevents crashes if it doesn't. If `CodeFormerEnhance.enhance()` rejects `face_model`, the user sees "CodeFormer is installed but enhancement failed" for every run — identifiable but potentially confusing until the ComfyUI_CodeFormer API is confirmed.
 
-`AFE_ModelChecker` is a pure output utility: `OUTPUT_NODE=True`, no generation, formats a text report for the ComfyUI display area. The `check_mode` dropdown routes to one of four key subsets. The node calls `check_requirement` twice per key — once in the report loop, again in the installed-count sum — a minor confirmed inefficiency.
-
-`AFE_VideoModelAdapter` replaces the old hardcoded type-selector with a live `diffusion_models` dropdown. `_detect_model_type` infers model family from the filename. When no diffusion model is installed, the placeholder string flows through `_detect_model_type`, matches nothing, and falls back to `"generic"` prompt formatting silently.
-
-`AFE_FaceEnhancer` adds `face_model` to the dropdown but the CodeFormer `enhance()` call receives only `fidelity_weight` and `only_center_face`. The selected filename is never passed; the model CodeFormer loads is unaffected by the user's selection.
-
-In the three DAM nodes that received `image_checkpoint` as an optional field — outfit, scene, props — the value arrives in the function signature and is immediately dropped. `character_node.py` correctly maps it to `base_model_logical_name`, establishing the right pattern that the other three don't follow.
+`require_model("wan_i2v_model")` is hardcoded, so a user with an empty `diffusion_models` folder who intended a Kling workflow gets an error message pointing them to Wan2.1 I2V. The message is technically inaccurate for non-Wan use cases, though it only fires when all diffusion models are absent.
 
 <details>
-<summary>Issues (5)</summary>
+<summary>Issues (2)</summary>
 
-1. **face_model inert in AFE_FaceEnhancer** — `face_model` is received by `enhance_faces()` but never passed to `enhancer.enhance()`. The dropdown is misleading: the user's selection has zero effect on what CodeFormer loads. Pass the model filename to the enhancer call, or remove the dropdown until the integration is complete.
+1. **`face_model` kwarg unverified against external CodeFormer API** (possible) — If `CodeFormerEnhance.enhance()` doesn't accept `face_model`, the broad `except Exception` block swallows the `TypeError` and returns passthrough with a warning. Users will see "CodeFormer is installed but enhancement failed" for every run, with no clear indication the kwarg was rejected. Verify the parameter name against the ComfyUI_CodeFormer source before shipping.
 
-2. **image_checkpoint discarded in outfit/scene/props** — All three nodes accept `image_checkpoint` in their function signature but never store or forward it. Character node correctly stores it as `base_model_logical_name`. Apply the same pattern to outfit, scene, and props, or remove the parameter until it has a use.
-
-3. **Placeholder stored as base_model_logical_name in DB** — When no checkpoints are installed, `get_model_list` returns the placeholder string as the first (and only) list entry. That string becomes the default selection and gets written to `CharacterORM.base_model_logical_name`. Add a guard in `create_or_load_character` to treat the placeholder as `None` before storing.
-
-4. **Double check_requirement calls per key** — `check_models` calls `check_requirement(key)` once in the report loop and once in the installed-count `sum()`. Cache the results from the first pass rather than querying `folder_paths` twice per key.
-
-5. **require_model defined but never called** — The `require_model` function in `model_checker.py` raises a `ValueError` with an install tip if a required model is missing, which would give fail-fast validation at execution time. No node currently calls it. Consider using it in nodes where the model is strictly required (e.g., `AFE_VideoModelAdapter`).
+2. **`require_model("wan_i2v_model")` misleading message for non-Wan placeholder** (confirmed) — When `video_model.startswith("(")`, the error always tells the user to install Wan2.1 I2V regardless of what video model family they intended. A user building a Kling workflow gets incorrect guidance. Consider a generic message, or accept any valid model requirement key rather than hardcoding `wan_i2v_model`.
 
 </details>
 
 <details>
 <summary>Details</summary>
 
-### face_model selection has no effect on CodeFormer execution
-
-`face_enhancer_node.py` adds `face_model` to `INPUT_TYPES` from `get_model_list("facerestore_models", ...)` and receives it in `enhance_faces(self, images, face_model, ...)`. The CodeFormer invocation:
+### face_model kwarg to external CodeFormerEnhance API
 
 ```python
 result = enhancer.enhance(
     images=images,
+    face_model=face_model,
     fidelity_weight=fidelity_weight,
     only_center_face=only_center_face,
 )
 ```
 
-`face_model` is absent. Whatever ComfyUI_CodeFormer's default model loading behavior is, the user's dropdown selection doesn't influence it. A user selecting `codeformer.pth` over any other facerestore model in the list gets the same execution result regardless.
+`CodeFormerEnhance` is loaded at runtime via `importlib.import_module("custom_nodes.ComfyUI_CodeFormer.codeformer_node")`. The parameter signature of its `enhance()` method is external and cannot be verified here. If `face_model` is not an accepted kwarg, Python raises `TypeError: enhance() got an unexpected keyword argument 'face_model'`; the `except Exception` block catches it and returns passthrough with a logger warning. The worst-case path is passthrough plus a confusing "enhancement failed" warning on every run rather than a crash.
 
-### image_checkpoint discarded in outfit, scene, and props
-
-`character_node.py` stores the selection:
+### require_model key hardcoded to Wan I2V
 
 ```python
-asset = CharacterAsset(
-    ...
-    base_model_logical_name=image_checkpoint,
-    ...
-)
+if video_model.startswith("("):
+    require_model("wan_i2v_model")
 ```
 
-In `outfit_node.py`, `scene_node.py`, and `props_node.py`, the parameter appears in the signature (`image_checkpoint=None`) but no corresponding field on the ORM row or asset model is set. The OutfitAsset, SceneAsset, and PropsAsset data models may not have a `base_model_logical_name` equivalent, but if the intent is to record which checkpoint should be used for downstream generation of these assets, the value needs to be persisted somewhere.
+`require_model("wan_i2v_model")` raises with the message:
 
-### Placeholder value contaminating the database
-
-`get_model_list` returns `["(未安装图片模型，ComfyUI Manager 搜索 flux1-dev)"]` when the `checkpoints` folder is empty. This string becomes the first entry in the dropdown and the ComfyUI default value for new nodes. In `character_node.py`, it flows directly into `CharacterORM.base_model_logical_name` without any sanitization. Any query later trying to map logical names to actual checkpoint files will encounter this garbage value.
-
-### _detect_model_type silent fallback on placeholder
-
-If a user has no models installed and executes `AFE_VideoModelAdapter`, `video_model` will be the placeholder string. `_detect_model_type` checks for `"wan"` and `"i2v"` substrings (case-folded), finds neither, and returns `"generic"`. Prompt formatting proceeds as if the model is some unknown generic video model. No warning is logged, no error is raised. This is a silent degradation.
-
-### Double check_requirement calls
-
-```python
-# First pass: build the report
-for key in keys:
-    installed, msg = check_requirement(key)   # call #1
-
-# Second pass: count installs
-installed_count = sum(1 for k in keys if check_requirement(k)[0])  # call #2
+```
+❌ Wan 2.1 图生视频主模型 未安装。请在 ComfyUI Manager 中搜索 "Wan2.1 I2V" 下载。
+（需要此模型的节点: AFE_VideoModelAdapter (wan_i2v 模式)）
 ```
 
-Each `check_requirement` call invokes `folder_paths.get_filename_list(folder)`. For a 9-key full check, that's 18 calls instead of 9. The fix is to collect results in a dict during the first pass and reuse them for the count.
+The placeholder fires whenever `diffusion_models` is empty, regardless of the target model family. For a Kling or generic video workflow with no models installed, the message incorrectly prescribes Wan2.1 I2V. The simplest fix is replacing the hardcoded key with a broader message, or adding a `MODEL_REQUIREMENTS` entry for a generic video model requirement.
+
+</details>
+
+<details>
+<summary>Prior review findings — resolution status</summary>
+
+| Finding | Status |
+|---------|--------|
+| face_model inert in AFE_FaceEnhancer | ✅ Resolved — `face_model` now passed to `enhancer.enhance()` |
+| image_checkpoint discarded in outfit/scene/props | ✅ Resolved — stored as `base_model_logical_name` with placeholder guard |
+| Placeholder stored as base_model_logical_name in DB | ✅ Resolved — `startswith("(")` guard in all four DAM nodes |
+| Double check_requirement calls per key | ✅ Resolved — single-pass dict cache in `AFE_ModelChecker.check_models` |
+| require_model defined but never called | ✅ Resolved — called in `AFE_VideoModelAdapter.adapt_for_model` |
 
 </details>
 
@@ -90,19 +73,13 @@ Each `check_requirement` call invokes `folder_paths.get_filename_list(folder)`. 
 
 | File | Change |
 |------|--------|
-| `lib/utils/model_checker.py` | New — `MODEL_REQUIREMENTS` (9 keys), `find_model`, `get_model_list`, `check_requirement`, `require_model`, `check_all_requirements`; guarded `folder_paths` import |
-| `nodes/utils/model_checker_node.py` | New — `AFE_ModelChecker`, `OUTPUT_NODE=True`, check_mode dropdown, ✅/❌ report |
-| `nodes/dam/character_node.py` | `base_model` STRING → `image_checkpoint` dropdown; `base_model_logical_name` wired correctly |
-| `nodes/dam/outfit_node.py` | `image_checkpoint` optional dropdown added; value not stored |
-| `nodes/dam/scene_node.py` | `image_checkpoint` optional dropdown added; value not stored |
-| `nodes/dam/props_node.py` | `image_checkpoint` optional dropdown added; value not stored |
-| `nodes/adapters/video_adapter_node.py` | `target_model` hardcoded → `video_model` dropdown from `diffusion_models`; `_detect_model_type` added |
-| `nodes/refinement/face_enhancer_node.py` | `face_model` dropdown added; not passed to CodeFormer |
-| `nodes/consistency/ipadapter_node.py` | `ipadapter_model` + `clip_vision` dropdowns added; both stored in config dict |
-| `nodes/consistency/controlnet_node.py` | `controlnet_model` dropdown added; stored in config dict |
-| `__init__.py` | `AFE_ModelChecker` imported and registered; 28 total entries |
-| `workflow_templates/first_pass_video_workflow.json` | `AFE_ModelChecker` node id=18 added; all orders +1; `last_node_id=18` |
-| `workflow_templates/asset_generation_workflow.json` | `AFE_ModelChecker` node id=14 added; all orders +1; `last_node_id=14` |
+| `nodes/refinement/face_enhancer_node.py` | `face_model` now passed to `enhancer.enhance()` |
+| `nodes/dam/outfit_node.py` | `image_checkpoint` persisted as `base_model_logical_name`; placeholder guard |
+| `nodes/dam/scene_node.py` | `image_checkpoint` persisted as `base_model_logical_name`; placeholder guard |
+| `nodes/dam/props_node.py` | `image_checkpoint` persisted as `base_model_logical_name`; placeholder guard |
+| `nodes/dam/character_node.py` | Placeholder guard tightened; fallback to `wan_i2v_14b_480p` explicit |
+| `nodes/adapters/video_adapter_node.py` | `require_model` imported and called on placeholder detection |
+| `nodes/utils/model_checker_node.py` | Single-pass `results` dict replaces double `check_requirement` calls |
 
 Full diff: `git -C e:\MJ\ai_film_editor_nodes diff HEAD~1 HEAD`
 

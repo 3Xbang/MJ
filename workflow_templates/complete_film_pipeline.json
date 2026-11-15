@@ -1,6 +1,6 @@
 {
-  "last_node_id": 114,
-  "last_link_id": 78,
+  "last_node_id": 117,
+  "last_link_id": 80,
   "nodes": [
     {
       "id": 101,
@@ -55,10 +55,11 @@
         {"name": "script_text", "type": "STRING", "link": 3}
       ],
       "outputs": [
-        {"name": "shot_sequence", "type": "SHOT_SEQUENCE", "links": [72], "slot_index": 0},
-        {"name": "shot_count", "type": "INT", "links": null, "slot_index": 1},
-        {"name": "sequence_json", "type": "STRING", "links": [4], "slot_index": 2},
-        {"name": "prompt_for_llm", "type": "STRING", "links": null, "slot_index": 3}
+        {"name": "shot_sequence", "type": "SHOT_SEQUENCE", "links": [72, 80], "slot_index": 0},
+        {"name": "cast_data", "type": "CAST_DATA", "links": [79], "slot_index": 1},
+        {"name": "shot_count", "type": "INT", "links": null, "slot_index": 2},
+        {"name": "sequence_json", "type": "STRING", "links": [4], "slot_index": 3},
+        {"name": "prompt_for_llm", "type": "STRING", "links": null, "slot_index": 4}
       ],
       "properties": {"Node name for S&R": "AFE_ScriptParser"},
       "widgets_values": ["", "", "", "", "https://api.deepseek.com/v1", "deepseek-chat"]
@@ -916,13 +917,75 @@
       "outputs": [],
       "properties": {"Node name for S&R": "VHS_VideoCombine"},
       "widgets_values": [24, 0, "AFE_FINAL", "video/h264-mp4", true, "default", {}]
+    },
+    {
+      "id": 115,
+      "type": "AFE_CastManager",
+      "pos": [950, -600],
+      "size": {"0": 380, "1": 220},
+      "flags": {},
+      "order": 51,
+      "mode": 0,
+      "inputs": [
+        {"name": "cast_data", "type": "CAST_DATA", "link": 79}
+      ],
+      "outputs": [
+        {"name": "character", "type": "CHARACTER_ASSET", "links": null, "slot_index": 0},
+        {"name": "character_id", "type": "STRING", "links": null, "slot_index": 1},
+        {"name": "cast_summary", "type": "STRING", "links": null, "slot_index": 2},
+        {"name": "character_json", "type": "STRING", "links": null, "slot_index": 3}
+      ],
+      "properties": {"Node name for S&R": "AFE_CastManager"},
+      "widgets_values": ["char_001", "all"]
+    },
+    {
+      "id": 116,
+      "type": "AFE_ExpressionSheet",
+      "pos": [1400, -600],
+      "size": {"0": 380, "1": 200},
+      "flags": {},
+      "order": 52,
+      "mode": 0,
+      "inputs": [
+        {"name": "character", "type": "CHARACTER_ASSET", "link": null}
+      ],
+      "outputs": [
+        {"name": "positive_prompt", "type": "STRING", "links": null, "slot_index": 0},
+        {"name": "negative_prompt", "type": "STRING", "links": null, "slot_index": 1},
+        {"name": "expression_count", "type": "INT", "links": null, "slot_index": 2}
+      ],
+      "properties": {"Node name for S&R": "AFE_ExpressionSheet"},
+      "widgets_values": ["全套(喜怒哀乐惊恐)", "", "面部特写"]
+    },
+    {
+      "id": 117,
+      "type": "AFE_ShotUnit",
+      "pos": [950, -300],
+      "size": {"0": 380, "1": 280},
+      "flags": {},
+      "order": 53,
+      "mode": 0,
+      "inputs": [
+        {"name": "shot_sequence", "type": "SHOT_SEQUENCE", "link": 80}
+      ],
+      "outputs": [
+        {"name": "positive_prompt", "type": "STRING", "links": null, "slot_index": 0},
+        {"name": "negative_prompt", "type": "STRING", "links": null, "slot_index": 1},
+        {"name": "seed", "type": "INT", "links": null, "slot_index": 2},
+        {"name": "width", "type": "INT", "links": null, "slot_index": 3},
+        {"name": "height", "type": "INT", "links": null, "slot_index": 4},
+        {"name": "frame_count", "type": "INT", "links": null, "slot_index": 5},
+        {"name": "shot_label", "type": "STRING", "links": null, "slot_index": 6}
+      ],
+      "properties": {"Node name for S&R": "AFE_ShotUnit"},
+      "widgets_values": ["shot_001", "first_pass_640x360", ""]
     }
   ],
   "links": [
     [1,  101, 0, 102, 0, "CUSTOM"],
     [2,  101, 1, 102, 1, "CUSTOM"],
     [3,  102, 0, 103, 0, "STRING"],
-    [4,  103, 2, 104, 0, "STRING"],
+    [4,  103, 3, 104, 0, "STRING"],
     [5,  1,   0, 2,   0, "CHARACTER_ASSET"],
     [6,  1,   0, 5,   0, "CHARACTER_ASSET"],
     [7,  2,   0, 5,   1, "OUTFIT_ASSET"],
@@ -996,7 +1059,9 @@
     [75, 62,  0, 63,  0, "IMAGE"],
     [76, 63,  0, 64,  0, "IMAGE"],
     [77, 64,  0, 65,  0, "IMAGE"],
-    [78, 52,  2, 65,  1, "STRING"]
+    [78, 52,  2, 65,  1, "STRING"],
+    [79, 103, 1, 115, 0, "CAST_DATA"],
+    [80, 103, 0, 117, 0, "SHOT_SEQUENCE"]
   ],
   "groups": [
     {

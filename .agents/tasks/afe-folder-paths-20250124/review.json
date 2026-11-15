@@ -1,11 +1,8 @@
 {
-  "verdict": "CHANGES_REQUESTED",
+  "verdict": "APPROVED",
   "findings": [
-    "face_model inert in AFE_FaceEnhancer — face_model is received by enhance_faces() but never passed to enhancer.enhance(). The user's dropdown selection has zero effect on what CodeFormer loads. Pass the model filename to the enhancer call, or remove the dropdown until the integration is complete.",
-    "image_checkpoint discarded in outfit/scene/props — All three nodes accept image_checkpoint in their function signature but never store or forward it. Apply the same base_model_logical_name pattern as character_node.py, or remove the parameter until it has a use.",
-    "Placeholder stored as base_model_logical_name in DB — When no checkpoints are installed, the placeholder string becomes the default selection and is written to CharacterORM.base_model_logical_name. Add a guard in create_or_load_character to treat the placeholder as None before storing.",
-    "Double check_requirement calls per key — check_models calls check_requirement(key) twice per key (once in the report loop, once in the installed-count sum). Cache results from the first pass to avoid 2× folder_paths queries.",
-    "require_model defined but never called — The require_model function provides fail-fast validation at execution time but no node calls it. Consider using it in nodes where the model is strictly required (e.g., AFE_VideoModelAdapter)."
+    "`face_model` kwarg unverified against external CodeFormer API (possible) — If `CodeFormerEnhance.enhance()` doesn't accept `face_model`, the broad except block swallows the TypeError and returns passthrough with a warning. Users see 'CodeFormer is installed but enhancement failed' for every run. Verify the parameter name against the ComfyUI_CodeFormer source before shipping.",
+    "`require_model(\"wan_i2v_model\")` misleading message for non-Wan placeholder (confirmed) — When all diffusion_models are absent, the error always tells the user to install Wan2.1 I2V regardless of intended model family. A Kling workflow user gets incorrect guidance. Use a generic message or add a broader MODEL_REQUIREMENTS entry."
   ],
   "reviewDoc": "e:\\MJ\\ai_film_editor_nodes\\.agents\\tasks\\afe-folder-paths-20250124\\review.md"
 }

@@ -49,6 +49,13 @@ class ShotItem(BaseModel):
     shot_prompt: str = ""
     negative_prompt: str = ""
     camera_motion: CameraMotion = CameraMotion.STATIC
+    character_ids: list[str] = Field(default_factory=list)
+    costume_per_character: dict[str, str] = Field(default_factory=dict)
+    camera_angle: str = "medium"
+    lighting_style: str = ""
+    director_notes: str = ""
+    shot_description: str = ""
+    dialogue: str = ""
     seed: int = -1
     render_tier: RenderTier = RenderTier.FIRST_PASS
     resolution: Resolution = Field(default_factory=lambda: Resolution(width=640, height=360))

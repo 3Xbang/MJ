@@ -3,29 +3,56 @@ from ai_film_editor_nodes.lib.utils.logger import get_logger
 
 logger = get_logger("AFE_ScriptParser")
 
-SYSTEM_PROMPT = """你是一位专业影视导演和分镜师。请将以下剧本精确解析为结构化分镜列表。
+SYSTEM_PROMPT = """你是一位专业影视导演和制片人。请分析以下剧本，输出两部分内容：
 
-每个分镜必须包含以下字段：
-- shot_id: 顺序编号（shot_001, shot_002...）
-- label: 简短场景标签（如"第01场-街道追逐"）
-- duration_seconds: 精确时长（秒，如 5.0 表示5秒）
-- character_names: 该镜头出现的角色名字列表
-- costume_description: 角色服装描述（中文）
-- props_list: 该镜头使用的道具列表
-- scene_name: 场景名称（如"夜晚城市街道-室外"）
-- camera_motion: 镜头运动（只能是：static, pan_left, pan_right, zoom_in, zoom_out, tilt_up, tilt_down, orbit）
-- shot_description: 详细画面英文描述，用于AI图像生成（如 "Medium shot. Character walks down a neon-lit street at night. Cinematic lighting."）
-- negative_prompt: 该镜头应避免的元素（英文，如 "ugly, blurry, watermark"）
-- dialogue: 台词（无台词填空字符串）
+=== 第一部分：角色表 ===
+返回一个 JSON 对象（不是数组），格式如下：
+{
+  "cast": [
+    {
+      "character_id": "char_001",
+      "name": "角色姓名",
+      "role_type": "lead",
+      "gender": "male/female/unknown",
+      "age_range": "25-30岁",
+      "appearance": "外貌描述（发型、体型、面部特征等）",
+      "personality": "性格特点",
+      "costume_default": "默认服装描述",
+      "appearance_en": "English appearance description for AI image generation"
+    }
+  ],
+  "shots": [
+    {
+      "shot_id": "shot_001",
+      "label": "第01场-开场",
+      "duration_seconds": 5.0,
+      "character_ids": ["char_001"],
+      "costume_per_character": {"char_001": "黑色西装，领带松散"},
+      "props_list": ["手机", "公文包"],
+      "scene_name": "夜晚城市街道-室外",
+      "camera_angle": "中景略低角仰拍",
+      "camera_motion": "slow_push_in",
+      "lighting_style": "冷色调，霓虹灯补光",
+      "director_notes": "用冷色调表现孤独感，霓虹灯制造反差",
+      "shot_description": "Medium shot, slightly low angle. Character walks alone on a neon-lit city street at night. Cold blue tones, neon reflections on wet pavement. Cinematic.",
+      "negative_prompt": "ugly, blurry, low quality, watermark",
+      "dialogue": "（无）"
+    }
+  ]
+}
 
-重要规则：
-1. duration_seconds 必须是明确数字（5秒=5.0，10秒=10.0）
-2. shot_description 必须用英文写，详细描述构图、光线、人物动作
-3. 每个分镜独立完整，不依赖上下文
-4. 只返回 JSON 数组，不要其他任何文字
+camera_motion 只能是：static, pan_left, pan_right, zoom_in, zoom_out, tilt_up, tilt_down, orbit, slow_push_in, slow_pull_back, tracking_shot
 
-You are a professional film director and storyboard artist. Parse the script into structured shots.
-Return ONLY a JSON array. Each shot must have: shot_id, label, duration_seconds, character_names, costume_description, props_list, scene_name, camera_motion, shot_description (English), negative_prompt (English), dialogue."""
+规则：
+1. character_ids 只填 cast 中出现的 character_id
+2. duration_seconds 必须是明确数字（5秒=5.0）
+3. shot_description 用英文，专业摄影语言
+4. 只返回 JSON，不要其他文字
+
+You are a professional film director. Analyze the script and output:
+1. Cast list with role hierarchy (lead/supporting/extras)
+2. Detailed shot breakdown with professional filmmaking notes
+Return ONLY valid JSON, no other text."""
 
 
 class AFE_ScriptParser:
@@ -61,8 +88,8 @@ class AFE_ScriptParser:
             }
         }
 
-    RETURN_TYPES = ("SHOT_SEQUENCE", "INT", "STRING", "STRING")
-    RETURN_NAMES = ("shot_sequence", "shot_count", "sequence_json", "prompt_for_llm")
+    RETURN_TYPES = ("SHOT_SEQUENCE", "CAST_DATA", "INT", "STRING", "STRING")
+    RETURN_NAMES = ("shot_sequence", "cast_data", "shot_count", "sequence_json", "prompt_for_llm")
     FUNCTION = "parse_script"
     CATEGORY = "AI Film Editor/Director"
     OUTPUT_NODE = True
@@ -109,13 +136,13 @@ class AFE_ScriptParser:
                 "LLM 提示词：\n\n" + prompt_for_llm
             )
             logger.warning("未提供 LLM 响应或 API Key")
-            return ([], 0, hint, prompt_for_llm)
+            return ([], [], 0, hint, prompt_for_llm)
 
         # ── 解析 JSON ────────────────────────────────────────
-        shots = self._parse_json(raw)
+        cast_list, shots = self._parse_json(raw)
         sequence_json = json.dumps(shots, ensure_ascii=False, indent=2)
-        logger.info(f"解析完成：{len(shots)} 个分镜")
-        return (shots, len(shots), sequence_json, prompt_for_llm)
+        logger.info(f"解析完成：{len(shots)} 个分镜，{len(cast_list)} 个角色")
+        return (shots, cast_list, len(shots), sequence_json, prompt_for_llm)
 
     def _call_api(self, prompt, api_key, base_url, model):
         import asyncio
@@ -131,24 +158,43 @@ class AFE_ScriptParser:
             return resp.choices[0].message.content
         return asyncio.run(_call())
 
-    def _parse_json(self, raw: str) -> list:
+    def _parse_json(self, raw: str) -> tuple[list, list]:
+        """Parse LLM response. Returns (cast_list, shots_list).
+        New format: {"cast": [...], "shots": [...]}
+        Old format: [...] (shots array only, cast=[])
+        """
         raw = raw.strip()
-        # 去掉 markdown 代码块
+        # Remove markdown code blocks
         if "```" in raw:
             parts = raw.split("```")
             for part in parts:
-                if "[" in part:
+                if "[" in part or "{" in part:
                     raw = part
                     if raw.startswith("json"):
                         raw = raw[4:]
                     break
-        # 找到 JSON 数组起始位置
+        raw = raw.strip()
+        # Try new dict format first
+        obj_start = raw.find("{")
+        arr_start = raw.find("[")
+        if obj_start != -1 and (arr_start == -1 or obj_start < arr_start):
+            end = raw.rfind("}")
+            if end != -1:
+                try:
+                    data = json.loads(raw[obj_start:end + 1])
+                    if isinstance(data, dict):
+                        cast_list = data.get("cast", [])
+                        shots_list = data.get("shots", [])
+                        if isinstance(shots_list, list):
+                            return (cast_list, shots_list)
+                except json.JSONDecodeError:
+                    pass
+        # Fallback: old array format
         start = raw.find("[")
-        end   = raw.rfind("]")
+        end = raw.rfind("]")
         if start == -1 or end == -1:
-            raise ValueError(f"LLM 响应中未找到 JSON 数组，响应内容：{raw[:300]}")
-        raw = raw[start:end+1]
-        shots = json.loads(raw)
+            raise ValueError(f"LLM 响应中未找到 JSON，响应内容：{raw[:300]}")
+        shots = json.loads(raw[start:end + 1])
         if not isinstance(shots, list):
             raise ValueError("解析结果不是列表格式")
-        return shots
+        return ([], shots)

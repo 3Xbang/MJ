@@ -48,6 +48,11 @@ from ai_film_editor_nodes.nodes.production.colorgrade_node import AFE_ColorGrade
 from ai_film_editor_nodes.nodes.production.quality_gate_node import AFE_QualityGate
 from ai_film_editor_nodes.nodes.production.shot_report_node import AFE_ShotReport
 
+# Part 6 - Cast & Shot Management
+from ai_film_editor_nodes.nodes.dam.cast_manager_node import AFE_CastManager
+from ai_film_editor_nodes.nodes.dam.expression_sheet_node import AFE_ExpressionSheet
+from ai_film_editor_nodes.nodes.director.shot_unit_node import AFE_ShotUnit
+
 NODE_CLASS_MAPPINGS = {
     # Part 1
     "AFE_CharacterAsset": AFE_CharacterAsset,
@@ -82,6 +87,10 @@ NODE_CLASS_MAPPINGS = {
     "AFE_ColorGrade": AFE_ColorGrade,
     "AFE_QualityGate": AFE_QualityGate,
     "AFE_ShotReport": AFE_ShotReport,
+    # Part 6 - Cast & Shot Management
+    "AFE_CastManager": AFE_CastManager,
+    "AFE_ExpressionSheet": AFE_ExpressionSheet,
+    "AFE_ShotUnit": AFE_ShotUnit,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -118,6 +127,10 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AFE_ColorGrade": "🎨 Color Grade",
     "AFE_QualityGate": "✅ Quality Gate",
     "AFE_ShotReport": "📋 Shot Report",
+    # Part 6 - Cast & Shot Management
+    "AFE_CastManager": "🎭 Cast Manager (演员表)",
+    "AFE_ExpressionSheet": "😊 Expression Sheet (表情包)",
+    "AFE_ShotUnit": "🎬 Shot Unit (单分镜控制器)",
 }
 
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]
