@@ -76,6 +76,11 @@ from ai_film_editor_nodes.nodes.director.shot_editor_node import AFE_ShotEditor
 from ai_film_editor_nodes.nodes.dam.reference_image_manager_node import AFE_ReferenceImageManager
 from ai_film_editor_nodes.nodes.director.shot_prompt_composer_node import AFE_ShotPromptComposer
 
+# Part 11 - Multi Character, Audio-Video Merge, Shot Preview
+from ai_film_editor_nodes.nodes.consistency.multi_character_blend_node import AFE_MultiCharacterBlend
+from ai_film_editor_nodes.nodes.export.shot_video_audio_merge_node import AFE_ShotVideoAudioMerge
+from ai_film_editor_nodes.nodes.director.shot_preview_node import AFE_ShotPreview
+
 NODE_CLASS_MAPPINGS = {
     # Part 1
     "AFE_CharacterAsset": AFE_CharacterAsset,
@@ -133,6 +138,10 @@ NODE_CLASS_MAPPINGS = {
     "AFE_ShotEditor":            AFE_ShotEditor,
     "AFE_ReferenceImageManager": AFE_ReferenceImageManager,
     "AFE_ShotPromptComposer":    AFE_ShotPromptComposer,
+    # Part 11
+    "AFE_MultiCharacterBlend":    AFE_MultiCharacterBlend,
+    "AFE_ShotVideoAudioMerge":    AFE_ShotVideoAudioMerge,
+    "AFE_ShotPreview":            AFE_ShotPreview,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -191,6 +200,10 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AFE_ShotEditor":            "✏️ Shot Editor (分镜编辑器)",
     "AFE_ReferenceImageManager": "🖼️ Reference Image Manager (参考图管理)",
     "AFE_ShotPromptComposer":    "📝 Shot Prompt Composer (提示词合成器)",
+    # Part 11
+    "AFE_MultiCharacterBlend": "\U0001f465 Multi Character Blend (多角色混合)",
+    "AFE_ShotVideoAudioMerge": "\U0001f3ac Shot Video Audio Merge (音视频合并)",
+    "AFE_ShotPreview":         "\U0001f441\ufe0f Shot Preview (分镜预览)",
 }
 
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]
