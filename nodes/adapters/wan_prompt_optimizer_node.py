@@ -39,6 +39,11 @@ class AFE_WanPromptOptimizer:
                                       "tooltip": "rule_based=快速规则优化（无需LLM），llm_enhanced=LLM深度优化"}),
             },
             "optional": {
+                # 接收 AFE_ShotPromptComposer 的输出（优先级高于 shot_sequence 自动提取）
+                "pre_composed_prompt": ("STRING", {"default": "",
+                                                   "tooltip": "连接 AFE_ShotPromptComposer 的 composed_prompt 输出"}),
+                "pre_composed_negative": ("STRING", {"default": "",
+                                                     "tooltip": "连接 AFE_ShotPromptComposer 的 negative_prompt 输出"}),
                 "character":      ("CHARACTER_ASSET",),
                 "outfit":         ("OUTFIT_ASSET",),
                 "scene":          ("SCENE_ASSET",),
@@ -56,6 +61,7 @@ class AFE_WanPromptOptimizer:
     OUTPUT_NODE = True
 
     def optimize_prompt(self, shot_sequence, shot_id, optimization_mode="rule_based",
+                        pre_composed_prompt="", pre_composed_negative="",
                         character=None, outfit=None, scene=None,
                         llm_api_key="", llm_base_url="", manual_override=""):
         # --- helpers ---
@@ -72,8 +78,14 @@ class AFE_WanPromptOptimizer:
             if not shot_data:
                 logger.warning(f"WanPromptOptimizer: shot_id '{shot_id}' not found")
 
+        # 优先级：manual_override > pre_composed_prompt > shot_description
         original_desc = _get(shot_data, "shot_description", "") or _get(shot_data, "shot_prompt", "")
-        wan_negative   = _get(shot_data, "negative_prompt", "") or self.WAN_DEFAULT_NEGATIVE
+        if pre_composed_prompt.strip():
+            original_desc = pre_composed_prompt.strip()
+
+        wan_negative = (pre_composed_negative.strip() or
+                        _get(shot_data, "negative_prompt", "") or
+                        self.WAN_DEFAULT_NEGATIVE)
 
         # 2. manual_override takes priority
         if manual_override.strip():
