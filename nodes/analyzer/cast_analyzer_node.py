@@ -49,8 +49,8 @@ class AFE_CastAnalyzer:
             },
         }
 
-    RETURN_TYPES = ("STRING", "INT", "STRING")
-    RETURN_NAMES = ("characters_json", "characters_count", "cast_report")
+    RETURN_TYPES = ("STRING", "INT")
+    RETURN_NAMES = ("characters_json", "characters_count")
     FUNCTION = "analyze_cast"
     CATEGORY = "AI Film Editor/Analyzers"
     OUTPUT_NODE = True
@@ -144,4 +144,4 @@ class AFE_CastAnalyzer:
         characters_json = json.dumps(characters, ensure_ascii=False)
 
         logger.info(f"CastAnalyzer: found {len(characters)} characters in {len(shots)} shots")
-        return (characters_json, len(characters), cast_report)
+        return {"ui": {"text": [cast_report]}, "result": (characters_json, len(characters))}
