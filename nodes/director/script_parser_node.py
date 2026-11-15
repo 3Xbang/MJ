@@ -170,17 +170,67 @@ class AFE_ScriptParser:
                             return (cast_list, shots_list)
                 except json.JSONDecodeError:
                     pass
-        # Fallback: old array format
+        # Fallback: array format (possibly truncated)
         start = raw.find("[")
+        if start == -1:
+            raise ValueError(f"LLM 响应中未找到 JSON 数组，响应内容：{raw[:300]}")
+
+        # 1. 先尝试完整解析
         end = raw.rfind("]")
-        if start == -1 or end == -1:
-            raise ValueError(f"LLM 响应中未找到 JSON，响应内容：{raw[:300]}")
-        shots = json.loads(raw[start:end + 1])
-        if not isinstance(shots, list):
-            raise ValueError("解析结果不是列表格式")
-        # 从 shots 数据自动提取角色表（当没有单独 cast 数据时）
-        cast_list = self._extract_cast_from_shots(shots)
-        return (cast_list, shots)
+        if end != -1:
+            try:
+                shots = json.loads(raw[start:end + 1])
+                if isinstance(shots, list):
+                    cast_list = self._extract_cast_from_shots(shots)
+                    return (cast_list, shots)
+            except json.JSONDecodeError:
+                pass
+
+        # 2. JSON 被截断，用 json_repair 修复
+        try:
+            from json_repair import repair_json
+            truncated = raw[start:]
+            if not truncated.rstrip().endswith("]"):
+                truncated = truncated.rstrip() + "]"
+            repaired = repair_json(truncated)
+            shots = json.loads(repaired)
+            if isinstance(shots, list) and shots:
+                logger.info(f"截断JSON修复成功：恢复 {len(shots)} 个分镜")
+                cast_list = self._extract_cast_from_shots(shots)
+                return (cast_list, shots)
+        except Exception as e:
+            logger.warning(f"json_repair 失败：{e}")
+
+        # 3. 最后手段：手动提取完整对象
+        shots = self._extract_complete_objects(raw[start:])
+        if shots:
+            logger.info(f"手动提取完整分镜：{len(shots)} 个")
+            cast_list = self._extract_cast_from_shots(shots)
+            return (cast_list, shots)
+
+        raise ValueError(f"LLM 响应中未找到 JSON 数组，响应内容：{raw[:300]}")
+
+    def _extract_complete_objects(self, raw: str) -> list:
+        """从截断的 JSON 数组字符串中提取所有完整的 JSON 对象"""
+        shots = []
+        depth = 0
+        obj_start = None
+        for i, c in enumerate(raw):
+            if c == '{':
+                if depth == 0:
+                    obj_start = i
+                depth += 1
+            elif c == '}':
+                depth -= 1
+                if depth == 0 and obj_start is not None:
+                    try:
+                        obj = json.loads(raw[obj_start:i + 1])
+                        if isinstance(obj, dict):
+                            shots.append(obj)
+                    except Exception:
+                        pass
+                    obj_start = None
+        return shots
 
     def _extract_cast_from_shots(self, shots: list) -> list:
         """从分镜数据中提取角色名，自动生成基础角色表"""
