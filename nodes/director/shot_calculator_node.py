@@ -49,8 +49,8 @@ class AFE_ShotCalculator:
             }
         }
 
-    RETURN_TYPES = ("INT", "INT", "STRING", "STRING")
-    RETURN_NAMES = ("shot_count", "seconds_per_shot", "enabled_shot_ids", "summary")
+    RETURN_TYPES = ("INT", "INT")
+    RETURN_NAMES = ("shot_count", "seconds_per_shot")
     FUNCTION = "calculate"
     CATEGORY = "AI Film Editor/Director"
     OUTPUT_NODE = True
@@ -69,7 +69,7 @@ class AFE_ShotCalculator:
                 if part.isdigit():
                     disabled_set.add(int(part))
 
-        # 生成开关状态
+        # 生成开关状态显示
         enabled_ids = []
         rows = []
         row  = []
@@ -87,8 +87,6 @@ class AFE_ShotCalculator:
         if row:
             rows.append("  ".join(row))
 
-        enabled_shot_ids = ",".join(str(i) for i in enabled_ids)
-
         lines = [
             "🧮 分镜计算结果",
             "━━━━━━━━━━━━━━━━━━━━━━",
@@ -96,13 +94,14 @@ class AFE_ShotCalculator:
             f"分镜总数：{shot_count} 个",
         ]
         if remainder > 0:
-            lines.append(f"剩余：{remainder}秒（最后一段可调整）")
+            lines.append(f"剩余：{remainder}秒")
         lines.append(f"启用：{len(enabled_ids)} 个  跳过：{len(disabled_set)} 个")
         if start_from > 1:
             lines.append(f"从第 {start_from} 个开始")
         lines.append("━━━━━━━━━━━━━━━━━━━━━━")
         lines.extend(rows)
 
-        summary = "\n".join(lines)
+        # 在节点内部显示（不需要外部输出口）
+        print("\n".join(lines))
         logger.info(f"分镜计算：{total_seconds}s ÷ {seconds_per_shot}s = {shot_count}个，启用{len(enabled_ids)}个")
-        return (shot_count, seconds_per_shot, enabled_shot_ids, summary)
+        return (shot_count, seconds_per_shot)
