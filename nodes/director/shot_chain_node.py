@@ -35,6 +35,8 @@ class AFE_ShotChain:
     def process_chain(self, current_shot_id, rendered_frames, shot_sequence,
                       output_dir="./projects/tail_frames"):
         # rendered_frames is a [B,H,W,C] float32 torch tensor (values 0-1)
+        if rendered_frames.shape[0] == 0:
+            raise ValueError("rendered_frames is empty — cannot extract tail frame")
         tail_tensor = rendered_frames[-1:]  # shape [1,H,W,C]
 
         os.makedirs(output_dir, exist_ok=True)

@@ -68,12 +68,14 @@ class AFE_ShotDirectorAI:
         def _get(d, key, default=""):
             return d.get(key, default) if isinstance(d, dict) else getattr(d, key, default)
 
+        original_description = ""
         try:
             # 1. Find shot_data for given shot_id
             shot_data = None
             for s in shot_sequence:
                 if _get(s, "shot_id", "") == shot_id:
                     shot_data = s
+                    original_description = _get(s, "shot_description", "")
                     break
 
             if shot_data is None:
@@ -166,4 +168,4 @@ class AFE_ShotDirectorAI:
 
         except Exception as e:
             logger.error(f"ShotDirectorAI error: {e}")
-            return (shot_sequence, "", "", f"Error: {e}")
+            return (shot_sequence, original_description, "", f"Error: {e}")
