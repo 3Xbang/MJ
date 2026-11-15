@@ -1614,8 +1614,9 @@
       "widgets_values": [
         24.0,
         0,
-        "AFE_shot_001",
+        "AFE_output",
         "video/h264-mp4",
+        false,
         true
       ]
     },
@@ -1858,8 +1859,9 @@
       "widgets_values": [
         24.0,
         0,
-        "AFE_shot_001_refined",
+        "AFE_output",
         "video/h264-mp4",
+        false,
         true
       ]
     },
