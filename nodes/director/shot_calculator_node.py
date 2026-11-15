@@ -49,8 +49,8 @@ class AFE_ShotCalculator:
             }
         }
 
-    RETURN_TYPES = ("INT", "INT")
-    RETURN_NAMES = ("shot_count", "seconds_per_shot")
+    RETURN_TYPES = ("INT", "INT", "STRING")
+    RETURN_NAMES = ("shot_count", "seconds_per_shot", "instruction_text")
     FUNCTION = "calculate"
     CATEGORY = "AI Film Editor/Director"
     OUTPUT_NODE = True
@@ -87,8 +87,16 @@ class AFE_ShotCalculator:
         if row:
             rows.append("  ".join(row))
 
+        # 生成给 LLM 的分镜指令（连接到 LLM 的 user_prompt_input）
+        instruction_text = (
+            f"【分镜要求】请将以下剧本精确拆分为 {shot_count} 个分镜，"
+            f"每个分镜时长固定为 {seconds_per_shot} 秒"
+            f"（duration_seconds={seconds_per_shot}.0）。\n\n"
+            f"以下是剧本内容：\n"
+        )
+
         lines = [
-            "🧮 分镜计算结果",
+            "🧮 分镜管理器",
             "━━━━━━━━━━━━━━━━━━━━━━",
             f"总时长：{total_seconds}秒  每段：{seconds_per_shot}秒",
             f"分镜总数：{shot_count} 个",
@@ -96,12 +104,9 @@ class AFE_ShotCalculator:
         if remainder > 0:
             lines.append(f"剩余：{remainder}秒")
         lines.append(f"启用：{len(enabled_ids)} 个  跳过：{len(disabled_set)} 个")
-        if start_from > 1:
-            lines.append(f"从第 {start_from} 个开始")
         lines.append("━━━━━━━━━━━━━━━━━━━━━━")
         lines.extend(rows)
-
-        # 在节点内部显示（不需要外部输出口）
         print("\n".join(lines))
-        logger.info(f"分镜计算：{total_seconds}s ÷ {seconds_per_shot}s = {shot_count}个，启用{len(enabled_ids)}个")
-        return (shot_count, seconds_per_shot)
+
+        logger.info(f"分镜计算：{total_seconds}s ÷ {seconds_per_shot}s = {shot_count}个")
+        return (shot_count, seconds_per_shot, instruction_text)
