@@ -80,24 +80,32 @@ class AFE_ScriptParser:
         )
 
         # ── 决定使用哪个 LLM 响应 ──────────────────────────
-        if llm_response.strip():
-            # 用法1：使用外部 LLM 节点传入的响应
+        # 优先级：llm_response > script_text（若像JSON）> API调用
+        def _looks_like_json(text: str) -> bool:
+            t = text.strip()
+            return t.startswith("[") or t.startswith("{")
+
+        if llm_response.strip() and not llm_response.strip() in ("api", "local_transformers"):
+            # 用法1：llm_response 有真实内容（非模式标识符）
             raw = llm_response
-            logger.info("使用外部 LLM 节点的响应")
+            logger.info("使用 llm_response 输入的 LLM 响应")
+
+        elif _looks_like_json(script_text):
+            # 用法2：script_text 里直接传入了 JSON（LLM 输出接到了 script_text）
+            raw = script_text
+            logger.info("从 script_text 检测到 JSON，直接解析")
 
         elif llm_api_key.strip():
-            # 用法2：直接调用 API
+            # 用法3：调用远程 API
             raw = self._call_api(prompt_for_llm, llm_api_key, llm_base_url, llm_model)
             logger.info(f"使用 API 模式：{llm_base_url}")
 
         else:
-            # 两种都没有：输出提示词供用户复制到 LLM 节点
             hint = (
                 "⚠️ 请选择以下任一方式：\n"
-                "方式1：安装 ComfyUI-LLM-Party，把 LLM 节点的输出连接到 llm_response 输入\n"
+                "方式1：把 LLM 节点的输出连接到 script_text 或 llm_response 输入\n"
                 "方式2：在 llm_api_key 填入 DeepSeek API Key\n\n"
-                "下方是给 LLM 的提示词（可手动复制使用）：\n\n"
-                + prompt_for_llm
+                "LLM 提示词：\n\n" + prompt_for_llm
             )
             logger.warning("未提供 LLM 响应或 API Key")
             return ([], 0, hint, prompt_for_llm)
