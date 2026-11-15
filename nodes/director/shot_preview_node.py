@@ -53,6 +53,7 @@ class AFE_ShotPreview:
                 return (blank, f"❌ 图片加载失败：{e}")
 
         elif ext in (".mp4", ".avi", ".mov", ".webm"):
+            reader = None
             try:
                 import imageio
                 reader = imageio.get_reader(file_path)
@@ -62,7 +63,6 @@ class AFE_ShotPreview:
                 idx = {"first": 0, "last": max(0, n_frames - 1),
                        "middle": n_frames // 2}.get(frame_to_show, n_frames // 2)
                 frame = reader.get_data(idx)
-                reader.close()
                 pil_img = Image.fromarray(frame).convert("RGB")
                 arr = np.array(pil_img).astype(np.float32) / 255.0
                 return (torch.from_numpy(arr).unsqueeze(0),
@@ -71,5 +71,11 @@ class AFE_ShotPreview:
                 return (blank, "⚠️ imageio 未安装，请 pip install imageio[ffmpeg]")
             except Exception as e:
                 return (blank, f"❌ 视频帧提取失败：{e}")
+            finally:
+                if reader is not None:
+                    try:
+                        reader.close()
+                    except Exception:
+                        pass
         else:
             return (blank, f"❌ 不支持的文件格式：{ext}")
