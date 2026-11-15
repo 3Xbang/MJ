@@ -3,51 +3,37 @@ from ai_film_editor_nodes.lib.utils.logger import get_logger
 
 logger = get_logger("AFE_ScriptParser")
 
-SYSTEM_PROMPT = """你是一位专业影视导演和制片人。请分析以下剧本，输出两部分内容：
+# 简化版提示词——针对 7B 模型优化，只要求输出 shots 数组
+# 角色表从 shots 数据中自动提取
+SYSTEM_PROMPT = """你是一位专业影视分镜师。请将以下剧本解析为分镜列表，只返回 JSON 数组，不要其他任何文字。
 
-=== 第一部分：角色表 ===
-返回一个 JSON 对象（不是数组），格式如下：
-{
-  "cast": [
-    {
-      "character_id": "char_001",
-      "name": "角色姓名",
-      "role_type": "lead",
-      "gender": "male/female/unknown",
-      "age_range": "25-30岁",
-      "appearance": "外貌描述（发型、体型、面部特征等）",
-      "personality": "性格特点",
-      "costume_default": "默认服装描述",
-      "appearance_en": "English appearance description for AI image generation"
-    }
-  ],
-  "shots": [
-    {
-      "shot_id": "shot_001",
-      "label": "第01场-开场",
-      "duration_seconds": 5.0,
-      "character_ids": ["char_001"],
-      "costume_per_character": {"char_001": "黑色西装，领带松散"},
-      "props_list": ["手机", "公文包"],
-      "scene_name": "夜晚城市街道-室外",
-      "camera_angle": "中景略低角仰拍",
-      "camera_motion": "slow_push_in",
-      "lighting_style": "冷色调，霓虹灯补光",
-      "director_notes": "用冷色调表现孤独感，霓虹灯制造反差",
-      "shot_description": "Medium shot, slightly low angle. Character walks alone on a neon-lit city street at night. Cold blue tones, neon reflections on wet pavement. Cinematic.",
-      "negative_prompt": "ugly, blurry, low quality, watermark",
-      "dialogue": "（无）"
-    }
-  ]
-}
+格式：
+[
+  {
+    "shot_id": "shot_001",
+    "label": "第01场-开场",
+    "duration_seconds": 5.0,
+    "character_names": ["李明"],
+    "costume_description": "黑色西装，领带松散",
+    "props_list": ["手机"],
+    "scene_name": "夜晚城市街道-室外",
+    "camera_angle": "medium",
+    "camera_motion": "slow_push_in",
+    "lighting_style": "冷色调霓虹灯",
+    "director_notes": "用冷色调表现孤独感",
+    "shot_description": "Medium shot. Character walks alone on a neon-lit city street at night. Cold blue tones. Cinematic.",
+    "negative_prompt": "ugly, blurry, low quality",
+    "dialogue": "（无）"
+  }
+]
 
 camera_angle 只能是：close_up, medium, wide, low_angle, high_angle, eye_level, dutch
-camera_motion 只能是：static, pan_left, pan_right, zoom_in, zoom_out, tilt_up, tilt_down, orbit, slow_push_in, slow_pull_back, tracking_shot, crane_up, crane_down, handheld
+camera_motion 只能是：static, pan_left, pan_right, zoom_in, zoom_out, tilt_up, tilt_down, orbit, slow_push_in, slow_pull_back, tracking_shot, handheld
+duration_seconds 必须是数字（5秒=5.0，10秒=10.0）
+shot_description 必须用英文
+只返回 JSON 数组，不要解释。
 
-规则：
-1. character_ids 只填 cast 中出现的 character_id
-2. duration_seconds 必须是明确数字（5秒=5.0）
-3. shot_description 用英文，专业摄影语言
+You are a professional film storyboard artist. Parse the script into a JSON array of shots. Return ONLY the JSON array, no other text."""
 4. 只返回 JSON，不要其他文字
 
 You are a professional film director. Analyze the script and output:
@@ -198,4 +184,29 @@ class AFE_ScriptParser:
         shots = json.loads(raw[start:end + 1])
         if not isinstance(shots, list):
             raise ValueError("解析结果不是列表格式")
-        return ([], shots)
+        # 从 shots 数据自动提取角色表（当没有单独 cast 数据时）
+        cast_list = self._extract_cast_from_shots(shots)
+        return (cast_list, shots)
+
+    def _extract_cast_from_shots(self, shots: list) -> list:
+        """从分镜数据中提取角色名，自动生成基础角色表"""
+        seen = {}
+        for i, shot in enumerate(shots):
+            names = shot.get("character_names", [])
+            if isinstance(names, list):
+                for name in names:
+                    if name and name not in seen:
+                        # 推断角色类型：第一个出现的通常是主角
+                        role_type = "lead" if len(seen) == 0 else "supporting"
+                        seen[name] = {
+                            "character_id": f"char_{len(seen)+1:03d}",
+                            "name": name,
+                            "role_type": role_type,
+                            "gender": "unknown",
+                            "age_range": "",
+                            "appearance": "",
+                            "personality": "",
+                            "costume_default": shot.get("costume_description", ""),
+                            "appearance_en": f"person named {name}",
+                        }
+        return list(seen.values())
