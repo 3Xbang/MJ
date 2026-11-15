@@ -173,6 +173,7 @@
         "在这里输入剧本...",
         "",
         "",
+        "",
         "https://api.deepseek.com/v1",
         "deepseek-chat"
       ]
