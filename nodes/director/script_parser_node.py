@@ -55,6 +55,19 @@ class AFE_ScriptParser:
                 }),
             },
             "optional": {
+                # 来自 Shot Calculator 的分镜数量控制
+                "requested_shot_count": ("INT", {
+                    "default": 0,
+                    "min": 0,
+                    "max": 500,
+                    "tooltip": "连接 Shot Calculator 的 shot_count，告诉LLM生成几个分镜（0=自动判断）"
+                }),
+                "seconds_per_shot": ("INT", {
+                    "default": 5,
+                    "min": 1,
+                    "max": 60,
+                    "tooltip": "连接 Shot Calculator 的 seconds_per_shot，每个分镜几秒"
+                }),
                 "custom_system_prompt": ("STRING", {
                     "multiline": True,
                     "default": "",
@@ -76,6 +89,7 @@ class AFE_ScriptParser:
     OUTPUT_NODE = True
 
     def parse_script(self, script_text, custom_system_prompt="",
+                     requested_shot_count: int = 0, seconds_per_shot: int = 5,
                      llm_response="", llm_api_key="",
                      llm_base_url="https://api.deepseek.com/v1",
                      llm_model="deepseek-chat"):
@@ -83,11 +97,17 @@ class AFE_ScriptParser:
         if not script_text.strip():
             raise ValueError("script_text 不能为空")
 
+        # 若连接了 Shot Calculator，把分镜要求写进提示词
+        shot_requirement = ""
+        if requested_shot_count > 0:
+            shot_requirement = f"\n\n【分镜要求】请将剧本精确拆分为 {requested_shot_count} 个分镜，每个分镜时长 {seconds_per_shot} 秒（duration_seconds={seconds_per_shot}.0）。"
+            logger.info(f"分镜要求：{requested_shot_count}个 × {seconds_per_shot}秒")
+
         # 使用自定义提示词或默认专业提示词
         system = custom_system_prompt.strip() if custom_system_prompt.strip() else SYSTEM_PROMPT
 
-        # 生成给 LLM 的完整提示词（无论哪种模式都输出，方便用户连接外部 LLM 节点）
-        prompt_for_llm = f"{system}\n\n剧本内容：\n{script_text}"
+        # 生成给 LLM 的完整提示词（包含分镜数量要求）
+        prompt_for_llm = f"{system}{shot_requirement}\n\n剧本内容：\n{script_text}"
 
         # ── 决定使用哪个 LLM 响应 ──────────────────────────
         def _looks_like_json(text: str) -> bool:
