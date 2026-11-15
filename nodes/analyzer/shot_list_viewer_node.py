@@ -34,8 +34,8 @@ class AFE_ShotListViewer:
             },
         }
 
-    RETURN_TYPES = ("STRING", "INT")
-    RETURN_NAMES = ("shot_list_json", "total_shots")
+    RETURN_TYPES = ("STRING", "INT", "STRING")
+    RETURN_NAMES = ("shot_list_json", "total_shots", "shot_report")
     FUNCTION = "view_shots"
     CATEGORY = "AI Film Editor/Analyzers"
     OUTPUT_NODE = True
@@ -109,8 +109,8 @@ class AFE_ShotListViewer:
         lines.append(f"共 {len(shots)} 个分镜")
 
         shot_list_json = json.dumps(output_shots, ensure_ascii=False)
-        report_text = "\n".join(lines)
+        shot_report = "\n".join(lines)
 
         logger.info(f"ShotListViewer: {len(shots)} shots, mode={show_details}")
         # Return UI text for display on the node card, plus the downstream outputs
-        return {"ui": {"text": [report_text]}, "result": (shot_list_json, len(shots))}
+        return {"ui": {"text": [shot_report]}, "result": (shot_list_json, len(shots), shot_report)}

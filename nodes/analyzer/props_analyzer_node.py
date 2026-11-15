@@ -53,8 +53,8 @@ class AFE_PropsAnalyzer:
             },
         }
 
-    RETURN_TYPES = ("STRING", "INT")
-    RETURN_NAMES = ("props_json", "props_count")
+    RETURN_TYPES = ("STRING", "INT", "STRING")
+    RETURN_NAMES = ("props_json", "props_count", "props_report")
     FUNCTION = "analyze_props"
     CATEGORY = "AI Film Editor/Analyzers"
     OUTPUT_NODE = True
@@ -113,4 +113,4 @@ class AFE_PropsAnalyzer:
         props_json = json.dumps(props_list, ensure_ascii=False)
 
         logger.info(f"PropsAnalyzer: found {len(props_list)} unique props in {len(shots)} shots")
-        return {"ui": {"text": [props_report]}, "result": (props_json, len(props_list))}
+        return {"ui": {"text": [props_report]}, "result": (props_json, len(props_list), props_report)}

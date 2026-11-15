@@ -60,8 +60,8 @@ class AFE_CostumeAnalyzer:
             },
         }
 
-    RETURN_TYPES = ("STRING", "INT")
-    RETURN_NAMES = ("costumes_json", "costumes_count")
+    RETURN_TYPES = ("STRING", "INT", "STRING")
+    RETURN_NAMES = ("costumes_json", "costumes_count", "costume_report")
     FUNCTION = "analyze_costumes"
     CATEGORY = "AI Film Editor/Analyzers"
     OUTPUT_NODE = True
@@ -130,4 +130,4 @@ class AFE_CostumeAnalyzer:
         costumes_json = json.dumps(costumes, ensure_ascii=False)
 
         logger.info(f"CostumeAnalyzer: found {len(costumes)} unique costumes in {len(shots)} shots")
-        return {"ui": {"text": [costume_report]}, "result": (costumes_json, len(costumes))}
+        return {"ui": {"text": [costume_report]}, "result": (costumes_json, len(costumes), costume_report)}

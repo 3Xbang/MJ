@@ -39,8 +39,8 @@ class AFE_AssetSelector:
             },
         }
 
-    RETURN_TYPES = ("STRING", "STRING", "STRING")
-    RETURN_NAMES = ("positive_prompt", "negative_prompt", "asset_name")
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING")
+    RETURN_NAMES = ("positive_prompt", "negative_prompt", "asset_name", "asset_info")
     FUNCTION = "select_asset"
     CATEGORY = "AI Film Editor/Analyzers"
     OUTPUT_NODE = True
@@ -52,17 +52,17 @@ class AFE_AssetSelector:
         except (json.JSONDecodeError, ValueError) as exc:
             msg = f"❌ JSON 解析失败：{exc}"
             logger.error(msg)
-            return {"ui": {"text": [msg]}, "result": ("", "", "")}
+            return {"ui": {"text": [msg]}, "result": ("", "", "", msg)}
 
         if not isinstance(assets, list):
             msg = "❌ 输入必须是 JSON 数组（来自分析器的输出）"
             logger.error(msg)
-            return {"ui": {"text": [msg]}, "result": ("", "", "")}
+            return {"ui": {"text": [msg]}, "result": ("", "", "", msg)}
 
         if len(assets) == 0:
             msg = "⚠️ 资产列表为空，请先连接分析器节点"
             logger.warning(msg)
-            return {"ui": {"text": [msg]}, "result": ("", "", "")}
+            return {"ui": {"text": [msg]}, "result": ("", "", "", msg)}
 
         # Convert 1-based index to 0-based
         zero_idx = asset_index - 1
@@ -72,7 +72,7 @@ class AFE_AssetSelector:
                 f"有效范围：1–{len(assets)}）"
             )
             logger.warning(msg)
-            return {"ui": {"text": [msg]}, "result": ("", "", "")}
+            return {"ui": {"text": [msg]}, "result": ("", "", "", msg)}
 
         asset = assets[zero_idx]
 
@@ -97,4 +97,4 @@ class AFE_AssetSelector:
         asset_info = "\n".join(detail_lines)
 
         logger.info(f"AssetSelector: selected index={asset_index} name={name}")
-        return {"ui": {"text": [asset_info]}, "result": (positive_prompt, negative_prompt, name)}
+        return {"ui": {"text": [asset_info]}, "result": (positive_prompt, negative_prompt, name, asset_info)}

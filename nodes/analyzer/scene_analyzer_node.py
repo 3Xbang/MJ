@@ -75,8 +75,8 @@ class AFE_SceneAnalyzer:
             },
         }
 
-    RETURN_TYPES = ("STRING", "INT")
-    RETURN_NAMES = ("scenes_json", "scenes_count")
+    RETURN_TYPES = ("STRING", "INT", "STRING")
+    RETURN_NAMES = ("scenes_json", "scenes_count", "scene_report")
     FUNCTION = "analyze_scenes"
     CATEGORY = "AI Film Editor/Analyzers"
     OUTPUT_NODE = True
@@ -137,4 +137,4 @@ class AFE_SceneAnalyzer:
         scenes_json = json.dumps(scenes, ensure_ascii=False)
 
         logger.info(f"SceneAnalyzer: found {len(scenes)} unique scenes in {len(shots)} shots")
-        return {"ui": {"text": [scene_report]}, "result": (scenes_json, len(scenes))}
+        return {"ui": {"text": [scene_report]}, "result": (scenes_json, len(scenes), scene_report)}
