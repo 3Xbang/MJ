@@ -37,7 +37,7 @@
       "properties": {"Node name for S&R": "LLM_local"},
       "widgets_values": [
         "LLM",
-        "你是一位专业影视分镜师。请将以下剧本解析为结构化的JSON分镜列表。\n\n返回格式（JSON数组）：\n[{\"shot_id\":\"shot_001\",\"label\":\"场景描述\",\"description\":\"画面描述\",\"character_names\":[\"角色名\"],\"scene_name\":\"场景名\",\"camera_motion\":\"static\",\"duration_hint\":5.0}]\n\ncamera_motion只能是：static, pan_left, pan_right, zoom_in, zoom_out, tilt_up, tilt_down, orbit\n\n只返回JSON数组，不要其他文字。",
+        "你是一位专业影视导演和分镜师。请将以下剧本精确解析为结构化分镜列表。\n\n每个分镜必须包含以下字段：\n- shot_id: 顺序编号（shot_001, shot_002...）\n- label: 简短场景标签（如\"第01场-街道追逐\"）\n- duration_seconds: 精确时长（秒，如 5.0 表示5秒）\n- character_names: 该镜头出现的角色名字列表\n- costume_description: 角色服装描述（中文）\n- props_list: 该镜头使用的道具列表\n- scene_name: 场景名称（如\"夜晚城市街道-室外\"）\n- camera_motion: 镜头运动（只能是：static, pan_left, pan_right, zoom_in, zoom_out, tilt_up, tilt_down, orbit）\n- shot_description: 详细画面英文描述，用于AI图像生成（如 \"Medium shot. Character walks down a neon-lit street at night. Cinematic lighting.\"）\n- negative_prompt: 该镜头应避免的元素（英文，如 \"ugly, blurry, watermark\"）\n- dialogue: 台词（无台词填空字符串）\n\n重要规则：\n1. duration_seconds 必须是明确数字（5秒=5.0，10秒=10.0）\n2. shot_description 必须用英文写，详细描述构图、光线、人物动作\n3. 每个分镜独立完整，不依赖上下文\n4. 只返回 JSON 数组，不要其他任何文字\n\nYou are a professional film director and storyboard artist. Parse the script into structured shots.\nReturn ONLY a JSON array. Each shot must have: shot_id, label, duration_seconds, character_names, costume_description, props_list, scene_name, camera_motion, shot_description (English), negative_prompt (English), dialogue.",
         "在繁华的都市中，主角独自走在夜晚的街道上，霓虹灯映照着她的面庞。突然，她的手机响起，来电显示一个陌生号码。她犹豫片刻，接起了电话。",
         null,
         null,
@@ -45,8 +45,8 @@
         null,
         0.3,
         2048,
-        false,
-        false,
+        "disable",
+        "disable",
         100,
         "",
         true,
@@ -73,13 +73,11 @@
       "properties": {"Node name for S&R": "AFE_ScriptParser"},
       "widgets_values": [
         "在繁华的都市中，主角独自走在夜晚的街道上，霓虹灯映照着她的面庞。突然，她的手机响起，来电显示一个陌生号码。她犹豫片刻，接起了电话。",
-        "api",
+        "",
+        "",
         "",
         "https://api.deepseek.com/v1",
-        "deepseek-chat",
-        "Qwen/Qwen2.5-7B-Instruct",
-        "",
-        ""
+        "deepseek-chat"
       ]
     }
   ],

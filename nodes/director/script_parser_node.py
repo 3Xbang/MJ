@@ -3,18 +3,29 @@ from ai_film_editor_nodes.lib.utils.logger import get_logger
 
 logger = get_logger("AFE_ScriptParser")
 
-SYSTEM_PROMPT_TEMPLATE = """你是一位专业影视分镜师。请将以下剧本解析为结构化分镜列表。
+SYSTEM_PROMPT = """你是一位专业影视导演和分镜师。请将以下剧本精确解析为结构化分镜列表。
 
-要求：
-- 返回 JSON 数组格式
-- 每个分镜包含：shot_id, label, description, character_names, scene_name, camera_motion, duration_hint
-- camera_motion 只能是：static, pan_left, pan_right, zoom_in, zoom_out, tilt_up, tilt_down, orbit
-- duration_hint 单位为秒
-- 只返回 JSON，不要有其他文字
+每个分镜必须包含以下字段：
+- shot_id: 顺序编号（shot_001, shot_002...）
+- label: 简短场景标签（如"第01场-街道追逐"）
+- duration_seconds: 精确时长（秒，如 5.0 表示5秒）
+- character_names: 该镜头出现的角色名字列表
+- costume_description: 角色服装描述（中文）
+- props_list: 该镜头使用的道具列表
+- scene_name: 场景名称（如"夜晚城市街道-室外"）
+- camera_motion: 镜头运动（只能是：static, pan_left, pan_right, zoom_in, zoom_out, tilt_up, tilt_down, orbit）
+- shot_description: 详细画面英文描述，用于AI图像生成（如 "Medium shot. Character walks down a neon-lit street at night. Cinematic lighting."）
+- negative_prompt: 该镜头应避免的元素（英文，如 "ugly, blurry, watermark"）
+- dialogue: 台词（无台词填空字符串）
 
-剧本内容：
-{script_text}
-{chars_hint}{scenes_hint}"""
+重要规则：
+1. duration_seconds 必须是明确数字（5秒=5.0，10秒=10.0）
+2. shot_description 必须用英文写，详细描述构图、光线、人物动作
+3. 每个分镜独立完整，不依赖上下文
+4. 只返回 JSON 数组，不要其他任何文字
+
+You are a professional film director and storyboard artist. Parse the script into structured shots.
+Return ONLY a JSON array. Each shot must have: shot_id, label, duration_seconds, character_names, costume_description, props_list, scene_name, camera_motion, shot_description (English), negative_prompt (English), dialogue."""
 
 
 class AFE_ScriptParser:
@@ -32,25 +43,21 @@ class AFE_ScriptParser:
             "required": {
                 "script_text": ("STRING", {
                     "multiline": True,
-                    "default": "在这里输入剧本内容..."
+                    "default": "在这里输入剧本..."
                 }),
             },
             "optional": {
-                # ── 用法1：接收外部 LLM 节点的输出 ──
-                "llm_response": ("STRING", {
+                "custom_system_prompt": ("STRING", {
                     "multiline": True,
                     "default": "",
-                    "tooltip": "连接 ComfyUI-LLM-Party 等 LLM 节点的输出"
+                    "tooltip": "留空使用默认专业提示词，填写则覆盖默认提示词"
                 }),
-
-                # ── 用法2：直接调用 API（不连接 LLM 节点时使用）──
+                "llm_response": ("STRING", {
+                    "default": ""
+                }),
                 "llm_api_key":  ("STRING", {"default": ""}),
                 "llm_base_url": ("STRING", {"default": "https://api.deepseek.com/v1"}),
                 "llm_model":    ("STRING", {"default": "deepseek-chat"}),
-
-                # ── 上下文提示 ──
-                "available_characters": ("STRING", {"default": ""}),
-                "available_scenes":     ("STRING", {"default": ""}),
             }
         }
 
@@ -60,33 +67,27 @@ class AFE_ScriptParser:
     CATEGORY = "AI Film Editor/Director"
     OUTPUT_NODE = True
 
-    def parse_script(self, script_text,
+    def parse_script(self, script_text, custom_system_prompt="",
                      llm_response="", llm_api_key="",
                      llm_base_url="https://api.deepseek.com/v1",
-                     llm_model="deepseek-chat",
-                     available_characters="", available_scenes=""):
+                     llm_model="deepseek-chat"):
 
         if not script_text.strip():
             raise ValueError("script_text 不能为空")
 
-        chars_hint  = f"\n可用角色：{available_characters}" if available_characters.strip() else ""
-        scenes_hint = f"\n可用场景：{available_scenes}"   if available_scenes.strip()     else ""
+        # 使用自定义提示词或默认专业提示词
+        system = custom_system_prompt.strip() if custom_system_prompt.strip() else SYSTEM_PROMPT
 
-        # 生成给 LLM 的提示词（无论哪种模式都输出，方便用户连接外部 LLM 节点）
-        prompt_for_llm = SYSTEM_PROMPT_TEMPLATE.format(
-            script_text=script_text,
-            chars_hint=chars_hint,
-            scenes_hint=scenes_hint,
-        )
+        # 生成给 LLM 的完整提示词（无论哪种模式都输出，方便用户连接外部 LLM 节点）
+        prompt_for_llm = f"{system}\n\n剧本内容：\n{script_text}"
 
         # ── 决定使用哪个 LLM 响应 ──────────────────────────
-        # 优先级：llm_response > script_text（若像JSON）> API调用
         def _looks_like_json(text: str) -> bool:
             t = text.strip()
             return t.startswith("[") or t.startswith("{")
 
-        if llm_response.strip() and not llm_response.strip() in ("api", "local_transformers"):
-            # 用法1：llm_response 有真实内容（非模式标识符）
+        if llm_response.strip():
+            # 用法1：llm_response 有真实内容
             raw = llm_response
             logger.info("使用 llm_response 输入的 LLM 响应")
 
@@ -103,7 +104,7 @@ class AFE_ScriptParser:
         else:
             hint = (
                 "⚠️ 请选择以下任一方式：\n"
-                "方式1：把 LLM 节点的输出连接到 script_text 或 llm_response 输入\n"
+                "方式1：把 LLM 节点的输出连接到 llm_response 输入\n"
                 "方式2：在 llm_api_key 填入 DeepSeek API Key\n\n"
                 "LLM 提示词：\n\n" + prompt_for_llm
             )
