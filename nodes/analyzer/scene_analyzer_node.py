@@ -5,7 +5,7 @@ from ai_film_editor_nodes.lib.utils.logger import get_logger
 logger = get_logger("AFE_SceneAnalyzer")
 
 DEFAULT_NEGATIVE = "dark, dirty, crowded, blurry, low quality, people, person, human, character, man, woman, figure"
-DEFAULT_STYLE = "cinematic, high detail"
+DEFAULT_STYLE = "3D CG animation, CGI rendering, cinematic"
 
 # 场景固定词 — 明确排除人物，只拍空场景
 SCENE_PREFIX = "empty scene, no people, no characters, no humans, background only"

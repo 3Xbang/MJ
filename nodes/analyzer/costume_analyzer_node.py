@@ -5,7 +5,7 @@ from ai_film_editor_nodes.lib.utils.logger import get_logger
 logger = get_logger("AFE_CostumeAnalyzer")
 
 DEFAULT_NEGATIVE = "ugly, torn, dirty, damaged, low quality, person, human, face, head, hands, body, mannequin, model, background, scene, room"
-DEFAULT_STYLE = "pure white background, studio lighting, sharp focus, high detail"
+DEFAULT_STYLE = "3D CG animation, CGI rendering, clean white background, studio lighting"
 
 # 服装固定词 — 白底平铺，无人无背景
 COSTUME_PREFIX = "clothing item only, flat lay on white, pure white background, no mannequin, no person, no model, no body, no background scene, fabric detail visible"

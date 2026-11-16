@@ -5,7 +5,7 @@ from ai_film_editor_nodes.lib.utils.logger import get_logger
 logger = get_logger("AFE_PropsAnalyzer")
 
 DEFAULT_NEGATIVE = "blurry, damaged, low quality, distorted, person, human, hands, body, background, scene, room, table, surface"
-DEFAULT_STYLE = "pure white background, studio lighting, sharp focus, high detail"
+DEFAULT_STYLE = "3D CG animation, CGI rendering, clean white background, studio lighting"
 
 # 道具固定词 — 白底单品，无人无背景
 PROPS_PREFIX = "single object on white background, pure white background, no person, no hands, no scene, isolated product shot, clean white backdrop"
