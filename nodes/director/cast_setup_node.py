@@ -1,5 +1,5 @@
 ﻿"""
-AFE_CastSetup 鈥?婕斿憳琛ㄧ鐞嗗櫒锛堢嫭绔嬭妭鐐癸級
+AFE_CastSetup 鈥?婕斿憳琛ㄧ鐞嗗櫒锛堢嫭绔嬭妭鐐癸級
 
 鍍忓婕旂粍涓€鏍峰畬鍏ㄧ嫭绔嬶紝涓嶉渶瑕佽繛鎺ヤ换浣曡妭鐐广€?鎵嬪姩濉啓婕斿憳琛紝鎸囧畾涓昏/閰嶈/璺汉锛?杈撳嚭 CAST_DATA 渚?Cast Analyzer 浣跨敤銆?
 鐢ㄦ硶锛?  路 鎶婅鑹插悕濉叆瀵瑰簲鐨勬枃鏈
@@ -20,7 +20,7 @@ def _parse_names(text: str) -> list[str]:
 
 class AFE_CastSetup:
     """
-    婕斿憳琛ㄧ鐞嗗櫒 鈥?鐙珛鑺傜偣銆?
+    婕斿憳琛ㄧ鐞嗗櫒 鈥?鐙珛鑺傜偣銆?
     鎵嬪姩濉啓鍓ф湰婕斿憳琛細
       路 涓昏鍚嶅崟锛坙ead锛?      路 閰嶈鍚嶅崟锛坰upporting锛?      路 璺汉鍚嶅崟锛坋xtra锛?
     杈撳嚭鏍囧噯 CAST_DATA锛岀洿鎺ユ帴 Cast Analyzer 鐨?cast_data 杈撳叆銆?    涓嶄緷璧?Script Parser 鎴?LLM锛屽彲鍦ㄤ换鎰忔祦绋嬩腑鐙珛浣跨敤銆?    """
