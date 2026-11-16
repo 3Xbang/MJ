@@ -109,6 +109,7 @@ class AFE_CastAnalyzer:
         for shot in shots:
             shot_id = shot.get("shot_id") or shot.get("label", "")
             costume = shot.get("costume_description", "")
+            costume_en = shot.get("costume_en", "").strip()
             names = shot.get("character_names", [])
             if not isinstance(names, list):
                 names = [names] if names else []
@@ -118,11 +119,13 @@ class AFE_CastAnalyzer:
                     continue
                 if name not in name_info:
                     seen_order.append(name)
-                    name_info[name] = {"shots": [], "costume": costume}
+                    name_info[name] = {"shots": [], "costume": costume, "costume_en": costume_en}
                 name_info[name]["shots"].append(shot_id)
-                # Keep first non-empty costume
+                # Keep first non-empty values
                 if not name_info[name]["costume"] and costume:
                     name_info[name]["costume"] = costume
+                if not name_info[name]["costume_en"] and costume_en:
+                    name_info[name]["costume_en"] = costume_en
 
         # Build character list
         characters: list[dict] = []
@@ -130,14 +133,26 @@ class AFE_CastAnalyzer:
             info = name_info[name]
             char_data = cast_map.get(name, {})
 
-            # Positive prompt: prefer appearance_en from cast_data
-            appearance_en = char_data.get("appearance_en", "").strip()
-            if appearance_en:
+            # ── Positive prompt: layer appearance + costume ──────────────────
+            # appearance_en  = physical description from cast_data (new format)
+            # default_costume_en = representative outfit from cast_data (new format)
+            # costume_en     = outfit from shot data (fallback when cast_data absent)
+            appearance_en      = char_data.get("appearance_en", "").strip()
+            default_costume_en = char_data.get("default_costume_en", "").strip()
+            costume_en         = info.get("costume_en", "").strip()
+
+            # Determine the best outfit descriptor (English only)
+            outfit = default_costume_en or costume_en
+
+            if appearance_en and outfit:
+                base = f"{appearance_en}, {outfit}"
+            elif appearance_en:
                 base = appearance_en
-            elif info["costume"]:
-                base = f"person, {info['costume']}"
+            elif outfit:
+                base = f"person, {outfit}"
             else:
-                base = f"person named {name}"
+                # Last resort: no English data at all — generic person
+                base = "person"
 
             suffix = style_suffix.strip()
             positive_prompt = f"{base}, {suffix}" if suffix else base
@@ -153,6 +168,7 @@ class AFE_CastAnalyzer:
                 "positive_prompt": positive_prompt,
                 "negative_prompt": DEFAULT_NEGATIVE,
                 "costume_description": info["costume"],
+                "costume_en": info.get("costume_en", ""),
             })
 
         # ── Filter by role type ───────────────────────────────────────────────

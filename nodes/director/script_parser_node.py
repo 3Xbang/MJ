@@ -3,42 +3,56 @@ from ai_film_editor_nodes.lib.utils.logger import get_logger
 
 logger = get_logger("AFE_ScriptParser")
 
-# 简化版提示词——针对 7B 模型优化，只要求输出 shots 数组
-# 角色表从 shots 数据中自动提取
-SYSTEM_PROMPT = """你是一位专业影视分镜师。请将以下剧本解析为分镜列表，只返回 JSON 数组，不要其他任何文字。
+# 针对 7B 模型优化的提示词
+# 要求输出 {"cast": [...], "shots": [...]} 格式
+# cast 数组含角色英文外貌描述，shots 含英文服装描述
+SYSTEM_PROMPT = """你是一位专业影视分镜师。将剧本解析为JSON对象，只返回JSON，不要任何其他文字。
 
-严格规则（必须遵守）：
-1. 禁止写"同上"，每个分镜的 costume_description 必须写完整服装描述
-2. dialogue 字段必须从剧本提取实际台词，有台词写台词，真的没有才写"（无）"
-3. shot_description 控制在80字以内（英文），保持简洁
-4. duration_seconds 必须是数字（5秒=5.0）
-5. shot_description 必须用英文
+【输出格式】
+{
+  "cast": [
+    {
+      "name": "角色名",
+      "role_type": "lead",
+      "gender": "male",
+      "age_range": "24-26",
+      "appearance_en": "25-year-old Chinese male, messy dark brown hair, slim build, tired eyes, light stubble",
+      "default_costume_en": "cream linen shirt with rolled-up sleeves, dark slim trousers"
+    }
+  ],
+  "shots": [
+    {
+      "shot_id": "shot_001",
+      "label": "第01场-场景名",
+      "duration_seconds": 5.0,
+      "character_names": ["角色名"],
+      "costume_description": "米白色亚麻衬衫，袖口随意卷起",
+      "costume_en": "cream linen shirt with rolled-up sleeves",
+      "props_list": ["道具1"],
+      "scene_name": "公寓客厅-室内",
+      "camera_angle": "medium",
+      "camera_motion": "slow_push_in",
+      "lighting_style": "自然光，午后",
+      "director_notes": "表现随意感",
+      "shot_description": "Medium shot. Young man sits alone in apartment. Warm afternoon light. Contemplative mood.",
+      "negative_prompt": "ugly, blurry, low quality",
+      "dialogue": "台词或（无）"
+    }
+  ]
+}
 
-格式：
-[
-  {
-    "shot_id": "shot_001",
-    "label": "第01场-开场",
-    "duration_seconds": 5.0,
-    "character_names": ["李明"],
-    "costume_description": "黑色西装，领带松散",
-    "props_list": ["手机"],
-    "scene_name": "夜晚城市街道-室外",
-    "camera_angle": "medium",
-    "camera_motion": "slow_push_in",
-    "lighting_style": "冷色调霓虹灯",
-    "director_notes": "表现孤独感",
-    "shot_description": "Medium shot. Man walks alone on neon-lit street at night. Cold blue tones. Cinematic.",
-    "negative_prompt": "ugly, blurry, low quality",
-    "dialogue": "台词内容或（无）"
-  }
-]
+【严格规则】
+1. 禁止"同上"，每个分镜必须写完整 costume_description
+2. dialogue 从剧本提取实际台词，无台词写"（无）"
+3. appearance_en 用英文描述角色外貌（年龄、性别、发型、肤色、体型），从剧本中推断
+4. default_costume_en 用英文写角色最常见/标志性服装
+5. costume_en 用英文写本分镜中该角色的服装
+6. shot_description ≤80个英文单词
+7. camera_angle 只能是：close_up, medium, wide, low_angle, high_angle, eye_level, dutch
+8. camera_motion 只能是：static, pan_left, pan_right, zoom_in, zoom_out, tilt_up, tilt_down, orbit, slow_push_in, slow_pull_back, tracking_shot, handheld
+9. role_type 只能是：lead, supporting, extra_a, extra_b, extra_other
 
-camera_angle 只能是：close_up, medium, wide, low_angle, high_angle, eye_level, dutch
-camera_motion 只能是：static, pan_left, pan_right, zoom_in, zoom_out, tilt_up, tilt_down, orbit, slow_push_in, slow_pull_back, tracking_shot, handheld
-只返回 JSON 数组，不要解释。
-
-You are a professional storyboard artist. NEVER use "同上". Always write complete costume descriptions. Extract actual dialogue from the script."""
+只返回JSON对象，不要解释。"""
 
 
 class AFE_ScriptParser:
@@ -258,14 +272,14 @@ class AFE_ScriptParser:
         return shots
 
     def _extract_cast_from_shots(self, shots: list) -> list:
-        """从分镜数据中提取角色名，自动生成基础角色表"""
+        """从分镜数据中提取角色名，自动生成基础角色表（新格式JSON已包含cast时不走这里）"""
         seen = {}
-        for i, shot in enumerate(shots):
+        for shot in shots:
             names = shot.get("character_names", [])
+            costume_en = shot.get("costume_en", "").strip()
             if isinstance(names, list):
                 for name in names:
                     if name and name not in seen:
-                        # 推断角色类型：第一个出现的通常是主角
                         role_type = "lead" if len(seen) == 0 else "supporting"
                         seen[name] = {
                             "character_id": f"char_{len(seen)+1:03d}",
@@ -276,6 +290,11 @@ class AFE_ScriptParser:
                             "appearance": "",
                             "personality": "",
                             "costume_default": shot.get("costume_description", ""),
-                            "appearance_en": f"person named {name}",
+                            # appearance_en 留空让 Cast Analyzer 用 costume_en 兜底
+                            "appearance_en": "",
+                            "default_costume_en": costume_en,
                         }
+                    elif name in seen and costume_en and not seen[name]["default_costume_en"]:
+                        # 补充第一次出现时未能记录的 costume_en
+                        seen[name]["default_costume_en"] = costume_en
         return list(seen.values())
