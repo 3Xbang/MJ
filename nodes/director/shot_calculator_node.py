@@ -5,15 +5,29 @@ logger = get_logger("AFE_DirectorGroup")
 
 # ── Style mapping tables ──────────────────────────────────────────────────────
 
-VISUAL_MAP = {
-    "写实 Photorealistic": "photorealistic, hyper-realistic, film photography",
-    "3D Animation": "3D animation, CGI rendered, Pixar style",
-    "2D Animation / Anime": "2D animation, anime style, hand-drawn",
-    "国风水墨 Chinese Ink": "Chinese ink painting style, traditional art",
-    "赛博朋克 Cyberpunk": "cyberpunk style, neon lights, futuristic",
-    "漫画 Comic / Manga": "comic book style, manga illustration",
-    "油画 Oil Painting": "oil painting style, brushstroke texture",
-    "简约扩散 Minimal": "minimalist style, clean composition",
+RENDER_MAP = {
+    "真人写实 Live Action": "live action, photorealistic, cinematic photography",
+    "3D CG 动画 3D Animation": "3D animation, CGI, Pixar style, smooth rendering",
+    "写实 CG Realistic CGI": "realistic CGI, ultra-realistic 3D rendering, not animated",
+    "卡通 3D Cartoon 3D": "stylized 3D animation, cartoon 3D, vibrant colors",
+    "2D 动画 2D Animation": "2D animation, flat design, smooth animation",
+    "漫画 Manga / Comic 2D": "manga style, comic book illustration, ink outlines",
+    "停格 Stop Motion": "stop motion animation, claymation style",
+    "混合 Live Action + VFX": "live action with VFX, mixed media, real actors with CGI effects",
+}
+
+ART_MAP = {
+    "现实主义 Realism": "realistic style, natural lighting",
+    "赛博朋克 Cyberpunk": "cyberpunk aesthetic, neon lights, dark atmosphere",
+    "国风古典 Chinese Classical": "Chinese classical style, traditional art",
+    "国风水墨 Chinese Ink": "Chinese ink painting, brush strokes, minimalist",
+    "漫画 Manga Style": "manga style, Japanese animation, cel shading",
+    "欧美漫画 Western Comic": "Western comic style, bold lines, flat colors",
+    "油画 Oil Painting": "oil painting style, thick brushstrokes, rich textures",
+    "水彩 Watercolor": "watercolor style, soft edges, translucent colors",
+    "极简抽象 Minimal Abstract": "minimalist, abstract, clean lines",
+    "蒙德里安 Mondrian": "bold geometric shapes, primary colors",
+    "完全自由 Free Style": "",
 }
 
 PRODUCTION_MAP = {
@@ -77,13 +91,36 @@ class AFE_DirectorGroup:
                     "step": 1,
                     "tooltip": "每个分镜时长（秒），默认5秒"
                 }),
-                "visual_mode": (
+                "render_format": (
                     [
-                        "写实 Photorealistic", "3D Animation", "2D Animation / Anime",
-                        "国风水墨 Chinese Ink", "赛博朋克 Cyberpunk",
-                        "漫画 Comic / Manga", "油画 Oil Painting", "简约扩散 Minimal",
+                        "真人写实 Live Action",
+                        "3D CG 动画 3D Animation",
+                        "写实 CG Realistic CGI",
+                        "卡通 3D Cartoon 3D",
+                        "2D 动画 2D Animation",
+                        "漫画 Manga / Comic 2D",
+                        "停格 Stop Motion",
+                        "混合 Live Action + VFX",
                     ],
-                    {"default": "写实 Photorealistic"}
+                    {"default": "真人写实 Live Action",
+                     "tooltip": "影片的渲染方式：真人实拍 / 3D动画 / 2D动画"}
+                ),
+                "art_style": (
+                    [
+                        "现实主义 Realism",
+                        "赛博朋克 Cyberpunk",
+                        "国风古典 Chinese Classical",
+                        "国风水墨 Chinese Ink",
+                        "漫画 Manga Style",
+                        "欧美漫画 Western Comic",
+                        "油画 Oil Painting",
+                        "水彩 Watercolor",
+                        "极简抽象 Minimal Abstract",
+                        "蒙德里安 Mondrian",
+                        "完全自由 Free Style",
+                    ],
+                    {"default": "现实主义 Realism",
+                     "tooltip": "画面的美术风格定位"}
                 ),
                 "production_type": (
                     [
@@ -109,10 +146,6 @@ class AFE_DirectorGroup:
                         "清新淡雅 Fresh & Clean", "高富辉贵感 Luxury",
                     ],
                     {"default": "自然 Natural"}
-                ),
-                "art_quality": (
-                    ["8K ultra detailed", "4K cinematic", "HD standard", "stylized artistic"],
-                    {"default": "8K ultra detailed"}
                 ),
             },
             "optional": {
@@ -140,11 +173,11 @@ class AFE_DirectorGroup:
         self,
         total_seconds: int,
         seconds_per_shot: int,
-        visual_mode: str = "写实 Photorealistic",
+        render_format: str = "真人写实 Live Action",
+        art_style: str = "现实主义 Realism",
         production_type: str = "短视频 Short Video",
         time_period: str = "现代都市 Modern Urban",
         color_grading: str = "自然 Natural",
-        art_quality: str = "8K ultra detailed",
         disabled_shots: str = "",
         start_from: int = 1,
     ) -> tuple:
@@ -188,15 +221,17 @@ class AFE_DirectorGroup:
 
         # ── style_prompt composition ──────────────────────────────────────────
         parts: list[str] = []
-        if visual_mode in VISUAL_MAP:
-            parts.append(VISUAL_MAP[visual_mode])
+        if render_format in RENDER_MAP:
+            parts.append(RENDER_MAP[render_format])
+        art_part = ART_MAP.get(art_style, "")
+        if art_part:
+            parts.append(art_part)
         if production_type in PRODUCTION_MAP:
             parts.append(PRODUCTION_MAP[production_type])
         if time_period in TIME_MAP:
             parts.append(TIME_MAP[time_period])
         if color_grading in COLOR_MAP:
             parts.append(COLOR_MAP[color_grading])
-        parts.append(art_quality)
         style_prompt = ", ".join(parts)
 
         # ── Console output ────────────────────────────────────────────────────
@@ -215,7 +250,8 @@ class AFE_DirectorGroup:
         print("\n".join(lines))
 
         logger.info(
-            f"导演组：{total_seconds}s ÷ {seconds_per_shot}s = {shot_count}个 | 风格: {style_prompt}"
+            f"导演组：{total_seconds}s ÷ {seconds_per_shot}s = {shot_count}个 | "
+            f"渲染:{render_format} | 风格:{art_style} | style_prompt: {style_prompt}"
         )
         return (shot_count, seconds_per_shot, instruction_text, style_prompt)
 
