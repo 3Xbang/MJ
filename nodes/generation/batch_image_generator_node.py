@@ -85,10 +85,14 @@ class AFE_BatchImageGenerator:
                     "default": 16, "min": 4, "max": 64, "step": 4,
                     "tooltip": "Flux/SD3=16, SD/SDXL=4",
                 }),
+                "variations_per_asset": ("INT", {
+                    "default": 3, "min": 1, "max": 10,
+                    "tooltip": "每个资产生成几张供选择（1=只生成1张，3=生成3个方案）",
+                }),
                 "output_prefix": ("STRING", {"default": "AFE"}),
                 "max_assets": ("INT", {
                     "default": 0, "min": 0, "max": 200,
-                    "tooltip": "最多生成几张（0=全部）",
+                    "tooltip": "最多生成几个资产（0=全部）",
                 }),
             },
         }
@@ -114,6 +118,7 @@ class AFE_BatchImageGenerator:
         sampler_name: str = "euler",
         scheduler: str = "simple",
         latent_channels: int = 16,
+        variations_per_asset: int = 3,
         output_prefix: str = "AFE",
         max_assets: int = 0,
     ):
@@ -136,7 +141,10 @@ class AFE_BatchImageGenerator:
             assets = assets[:max_assets]
 
         total = len(assets)
-        logger.info(f"BatchGenerator: {total} 个资产，开始生成 {width}×{height}")
+        logger.info(
+            f"BatchGenerator: {total} 个资产 × {variations_per_asset} 张 "
+            f"= {total * variations_per_asset} 张图，{width}×{height}"
+        )
 
         # ── Import ComfyUI KSampler internals ─────────────────────────────────
         try:
@@ -160,44 +168,51 @@ class AFE_BatchImageGenerator:
                 or asset.get("description", "")[:20]
                 or f"asset_{idx:02d}"
             )
-            logger.info(f"  [{idx}/{total}] {name}: {pos_text[:60]}...")
 
             if not pos_text:
                 errors.append(f"资产{idx} ({name})：positive_prompt 为空，跳过")
                 continue
 
+            # Encode prompts once per asset, reuse across variations
             try:
-                # Encode prompts
                 positive = _encode_text(clip, pos_text)
                 negative = _encode_text(clip, neg_text)
-                latent   = _make_latent(height, width, latent_channels)
-
-                # Sample
-                if common_ksampler is not None:
-                    latent_out = common_ksampler(
-                        model, seed + i, steps, cfg,
-                        sampler_name, scheduler,
-                        positive, negative, latent,
-                    )
-                    latent_samples = latent_out[0]["samples"]
-                else:
-                    latent_samples = self._fallback_sample(
-                        model, positive, negative, latent,
-                        seed + i, steps, cfg, sampler_name, scheduler,
-                    )
-
-                # Decode
-                img = vae.decode(latent_samples)   # [1, H, W, 3]
-                all_images.append(img)
-                success_names.append(name)
-
-                # Save individually
-                self._save(img, output_prefix, idx, name)
-
             except Exception as exc:
-                err = f"资产{idx} ({name}) 生成失败：{exc}"
-                logger.error(err)
-                errors.append(err)
+                errors.append(f"资产{idx} ({name}) 编码失败：{exc}")
+                continue
+
+            # Generate N variations with different seeds
+            for v in range(variations_per_asset):
+                var_seed = seed + i * 1000 + v * 100
+                var_label = f"v{v + 1}" if variations_per_asset > 1 else ""
+                logger.info(f"  [{idx}/{total}] {name} {var_label}  seed={var_seed}")
+
+                try:
+                    latent = _make_latent(height, width, latent_channels)
+
+                    if common_ksampler is not None:
+                        latent_out = common_ksampler(
+                            model, var_seed, steps, cfg,
+                            sampler_name, scheduler,
+                            positive, negative, latent,
+                        )
+                        latent_samples = latent_out[0]["samples"]
+                    else:
+                        latent_samples = self._fallback_sample(
+                            model, positive, negative, latent,
+                            var_seed, steps, cfg, sampler_name, scheduler,
+                        )
+
+                    img = vae.decode(latent_samples)
+                    all_images.append(img)
+                    file_label = f"{name}_{var_label}" if var_label else name
+                    success_names.append(file_label)
+                    self._save(img, output_prefix, idx, file_label)
+
+                except Exception as exc:
+                    err = f"资产{idx} ({name}) {var_label} 生成失败：{exc}"
+                    logger.error(err)
+                    errors.append(err)
 
         # ── Assemble result ───────────────────────────────────────────────────
         if not all_images:
@@ -208,7 +223,7 @@ class AFE_BatchImageGenerator:
         batch = torch.cat(all_images, dim=0)   # [N, H, W, 3]
 
         lines = [
-            f"✅ 批量生成完成：{len(all_images)}/{total} 张",
+            f"✅ 批量生成完成：{len(all_images)} 张（{total} 个资产 × {variations_per_asset} 方案）",
             f"   尺寸：{width}×{height}  步数：{steps}  CFG：{cfg}",
             "──────────────",
         ]

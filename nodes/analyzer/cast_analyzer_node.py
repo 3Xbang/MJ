@@ -71,16 +71,25 @@ class AFE_CastAnalyzer:
             },
         }
 
-    RETURN_TYPES = ("STRING", "INT", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING")
+    RETURN_TYPES = (
+        "STRING", "INT",
+        "STRING", "STRING", "STRING",   # role-separated JSON arrays
+        "STRING", "STRING",             # lead prompts
+        "STRING", "STRING",             # supporting prompts
+        "STRING", "STRING",             # extra prompts
+    )
     RETURN_NAMES = (
-        "characters_json",      # 全部角色 JSON
-        "characters_count",     # 角色数量
-        "lead_positive",        # 主角正向提示词
-        "lead_negative",        # 主角负面提示词
-        "supporting_positive",  # 第一配角正向提示词
-        "supporting_negative",  # 第一配角负面提示词
-        "extra_positive",       # 路人甲正向提示词（第一个路人）
-        "extra_negative",       # 路人甲负面提示词
+        "characters_json",      # 全部角色 JSON（供 BatchImageGenerator 使用）
+        "characters_count",
+        "lead_json",            # 仅主角 JSON 数组 → BatchImageGenerator
+        "supporting_json",      # 仅配角 JSON 数组 → BatchImageGenerator
+        "extra_json",           # 仅路人 JSON 数组 → BatchImageGenerator
+        "lead_positive",        # 第一主角提示词（单条，快速预览用）
+        "lead_negative",
+        "supporting_positive",  # 第一配角提示词
+        "supporting_negative",
+        "extra_positive",
+        "extra_negative",
     )
     FUNCTION = "analyze_cast"
     CATEGORY = "AI Film Editor/Analyzers"
@@ -210,6 +219,11 @@ class AFE_CastAnalyzer:
         cast_report = "\n".join(lines)
         characters_json = json.dumps(characters, ensure_ascii=False)
 
+        # Role-separated JSON arrays for BatchImageGenerator
+        lead_json       = json.dumps(leads,       ensure_ascii=False)
+        supporting_json = json.dumps(supportings, ensure_ascii=False)
+        extra_json      = json.dumps(extras,       ensure_ascii=False)
+
         logger.info(
             "CastAnalyzer: found %d characters (%d lead, %d supporting, %d extra) in %d shots",
             len(characters), len(leads), len(supportings), len(extras), len(shots),
@@ -220,6 +234,9 @@ class AFE_CastAnalyzer:
             "result": (
                 characters_json,
                 len(characters),
+                lead_json,
+                supporting_json,
+                extra_json,
                 lead_positive,
                 lead_negative,
                 supporting_positive,
