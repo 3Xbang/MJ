@@ -17,7 +17,8 @@ from ai_film_editor_nodes.nodes.director.script_parser_node import AFE_ScriptPar
 from ai_film_editor_nodes.nodes.director.shot_duration_node import AFE_ShotDuration
 from ai_film_editor_nodes.nodes.director.shot_calculator_node import AFE_DirectorGroup, AFE_ShotCalculator
 from ai_film_editor_nodes.nodes.director.cast_list_builder_node import AFE_CastListBuilder
-from ai_film_editor_nodes.nodes.director.tail_frame_node import AFE_TailFrameExtractorfrom ai_film_editor_nodes.nodes.director.tone_comp_node import AFE_ToneCompensation
+from ai_film_editor_nodes.nodes.director.tail_frame_node import AFE_TailFrameExtractor
+from ai_film_editor_nodes.nodes.director.tone_comp_node import AFE_ToneCompensation
 from ai_film_editor_nodes.nodes.adapters.video_adapter_node import AFE_VideoModelAdapter
 from ai_film_editor_nodes.nodes.utils.prompt_preview_node import AFE_PromptPreview
 from ai_film_editor_nodes.nodes.utils.model_checker_node import AFE_ModelChecker
