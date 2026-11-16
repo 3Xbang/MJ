@@ -110,10 +110,11 @@ class AFE_CostumeAnalyzer:
         costumes: list[dict] = []
         for idx, key in enumerate(seen_order):
             entry = costume_map[key]
-            # 服装图：白底平铺，不受导演组风格影响，始终用白底展示
+            # 服装图：白底平铺，风格跟 Director Group 统一
+            suffix = style_suffix.strip() or DEFAULT_STYLE
             positive_prompt = (
                 f"{COSTUME_PREFIX}, "
-                f"{_translate_costume(entry['description'])}, {DEFAULT_STYLE}"
+                f"{_translate_costume(entry['description'])}, {suffix}"
             )
             costumes.append({
                 "index": idx + 1,

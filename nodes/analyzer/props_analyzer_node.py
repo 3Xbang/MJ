@@ -96,8 +96,9 @@ class AFE_PropsAnalyzer:
         for idx, name in enumerate(seen_order):
             info = prop_map[name]
             en_name = _prop_to_english(name)
-            # 道具图：白底单品，不受导演组风格影响，始终用白底展示
-            positive_prompt = f"{PROPS_PREFIX}, {en_name}, {DEFAULT_STYLE}"
+            # 道具图：白底单品，风格跟 Director Group 统一
+            suffix = style_suffix.strip() or DEFAULT_STYLE
+            positive_prompt = f"{PROPS_PREFIX}, {en_name}, {suffix}"
             props_list.append({
                 "index": idx + 1,
                 "name": name,
