@@ -4,11 +4,11 @@ from ai_film_editor_nodes.lib.utils.logger import get_logger
 
 logger = get_logger("AFE_CostumeAnalyzer")
 
-DEFAULT_NEGATIVE = "ugly, torn, dirty, damaged, low quality, people, person, face, head, hands"
-DEFAULT_STYLE = "fabric detail, clean background, sharp focus"
+DEFAULT_NEGATIVE = "ugly, torn, dirty, damaged, low quality, person, human, face, head, hands, body, mannequin, model, background, scene, room"
+DEFAULT_STYLE = "pure white background, studio lighting, sharp focus, high detail"
 
-# 服装固定词 — 展示服装细节，无需整人，可用衣架/平铺方式
-COSTUME_PREFIX = "clothing display, costume detail shot, fabric texture visible, no face, clean background"
+# 服装固定词 — 白底平铺，无人无背景
+COSTUME_PREFIX = "clothing item only, flat lay on white, pure white background, no mannequin, no person, no model, no body, no background scene, fabric detail visible"
 
 
 def _get_shots(shot_sequence) -> list:
@@ -110,11 +110,10 @@ class AFE_CostumeAnalyzer:
         costumes: list[dict] = []
         for idx, key in enumerate(seen_order):
             entry = costume_map[key]
-            suffix = style_suffix.strip() or DEFAULT_STYLE
-            # 服装图：展示服装，风格与角色统一
+            # 服装图：白底平铺，不受导演组风格影响，始终用白底展示
             positive_prompt = (
                 f"{COSTUME_PREFIX}, "
-                f"{_translate_costume(entry['description'])}, {suffix}"
+                f"{_translate_costume(entry['description'])}, {DEFAULT_STYLE}"
             )
             costumes.append({
                 "index": idx + 1,
