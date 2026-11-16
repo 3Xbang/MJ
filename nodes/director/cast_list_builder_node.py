@@ -68,40 +68,47 @@ class AFE_CastListBuilder:
     @classmethod
     def INPUT_TYPES(cls):
         return {
-            "required": {
-                "shot_sequence": ("SHOT_SEQUENCE",),
-            },
+            "required": {},   # 全部可选，独立节点，不依赖其他节点
             "optional": {
-                "cast_data": ("CAST_DATA",),
-
+                "shot_sequence": ("SHOT_SEQUENCE", {
+                    "tooltip": "（可选）连接 Script Parser 自动提取分镜角色",
+                }),
+                "cast_data": ("CAST_DATA", {
+                    "tooltip": "（可选）连接 Script Parser 补充 LLM 外貌描述",
+                }),
                 "lead_names": ("STRING", {
                     "default": "",
                     "multiline": True,
-                    "tooltip": "【主角名单】每行或逗号分隔一个名字\n例：\n小宇\n张三",
+                    "tooltip": "【主角名单】每行一个名字\n例：\n小宇",
                 }),
                 "supporting_names": ("STRING", {
                     "default": "",
                     "multiline": True,
-                    "tooltip": "【配角名单】每行或逗号分隔一个名字\n例：\n小舟\n胖叔",
+                    "tooltip": "【配角名单】每行一个名字\n例：\n小舟\n胖叔",
                 }),
                 "extra_names": ("STRING", {
                     "default": "",
                     "multiline": True,
-                    "tooltip": "【路人名单】每行或逗号分隔一个名字",
+                    "tooltip": "【路人名单】每行一个名字",
                 }),
                 "exclude_names": ("STRING", {
                     "default": "",
                     "multiline": True,
-                    "tooltip": "【排除名单】不需要生成图的角色，每行或逗号分隔\n例：路人甲\n不知名群众",
+                    "tooltip": "【排除名单】不需要生成图的角色，每行一个",
                 }),
                 "extra_cast": ("STRING", {
                     "default": "",
                     "multiline": True,
-                    "tooltip": "【手动追加】剧本里没有但要生成的角色\n格式：角色名:主角类型  （每行一个）\n类型可以是：lead / supporting / extra_a\n例：\n老板:supporting\n路人女:extra_a",
+                    "tooltip": (
+                        "【手动追加】剧本外或后期新增角色\n"
+                        "格式：角色名:角色类型  每行一个\n"
+                        "类型：lead / supporting / extra_a\n"
+                        "例：\n老板:supporting\n替身演员:extra_a"
+                    ),
                 }),
                 "lead_count": ("INT", {
                     "default": 1, "min": 1, "max": 10,
-                    "tooltip": "未指定名单时：出镜最多的前 N 人为主角",
+                    "tooltip": "未填名单时：出镜最多的前 N 人自动设为主角",
                 }),
             },
         }
@@ -114,7 +121,7 @@ class AFE_CastListBuilder:
 
     def build_cast_list(
         self,
-        shot_sequence,
+        shot_sequence=None,   # 可选 — 不连接时纯手动模式
         cast_data=None,
         lead_names: str = "",
         supporting_names: str = "",
@@ -123,7 +130,7 @@ class AFE_CastListBuilder:
         extra_cast: str = "",
         lead_count: int = 1,
     ):
-        shots = _get_shots(shot_sequence)
+        shots = _get_shots(shot_sequence) if shot_sequence is not None else []
 
         # ── 1. 从分镜提取全部角色 ─────────────────────────────────────────
         name_shots:      dict[str, list] = {}
@@ -237,7 +244,9 @@ class AFE_CastListBuilder:
         llm_names  = set(llm_map.keys())
         auto_added = set(name_shots.keys()) - llm_names - exclude_set
 
-        mode = "手动指定" if has_manual else f"自动（主角前{lead_count}名）"
+        mode = "手动指定" if has_manual else (
+            f"自动（主角前{lead_count}名）" if shots else "纯手动模式"
+        )
         lines = [
             "🎭 演员表（管理完成）",
             f"   共 {len(merged)} 人  ·  分配模式：{mode}",

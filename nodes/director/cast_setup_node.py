@@ -1,39 +1,29 @@
-"""
-AFE_CastManager — 演员表管理器（独立节点）
+﻿"""
+AFE_CastSetup 鈥?婕斿憳琛ㄧ鐞嗗櫒锛堢嫭绔嬭妭鐐癸級
 
-像导演组一样完全独立，不需要连接任何节点。
-手动填写演员表，指定主角/配角/路人，
-输出 CAST_DATA 供 Cast Analyzer 使用。
-
-用法：
-  · 把角色名填入对应的文本框
-  · 每行一个角色名
-  · 输出接到 Cast Analyzer 的 cast_data 输入
+鍍忓婕旂粍涓€鏍峰畬鍏ㄧ嫭绔嬶紝涓嶉渶瑕佽繛鎺ヤ换浣曡妭鐐广€?鎵嬪姩濉啓婕斿憳琛紝鎸囧畾涓昏/閰嶈/璺汉锛?杈撳嚭 CAST_DATA 渚?Cast Analyzer 浣跨敤銆?
+鐢ㄦ硶锛?  路 鎶婅鑹插悕濉叆瀵瑰簲鐨勬枃鏈
+  路 姣忚涓€涓鑹插悕
+  路 杈撳嚭鎺ュ埌 Cast Analyzer 鐨?cast_data 杈撳叆
 """
 from __future__ import annotations
 import json
 import logging
 
-logger = logging.getLogger("AFE_CastManager")
+logger = logging.getLogger("AFE_CastSetup")
 
 
 def _parse_names(text: str) -> list[str]:
-    """每行一个名字，去除空行和空白。"""
+    """姣忚涓€涓悕瀛楋紝鍘婚櫎绌鸿鍜岀┖鐧姐€?""
     return [line.strip() for line in text.splitlines() if line.strip()]
 
 
-class AFE_CastManager:
+class AFE_CastSetup:
     """
-    演员表管理器 — 独立节点。
-
-    手动填写剧本演员表：
-      · 主角名单（lead）
-      · 配角名单（supporting）
-      · 路人名单（extra）
-
-    输出标准 CAST_DATA，直接接 Cast Analyzer 的 cast_data 输入。
-    不依赖 Script Parser 或 LLM，可在任意流程中独立使用。
-    """
+    婕斿憳琛ㄧ鐞嗗櫒 鈥?鐙珛鑺傜偣銆?
+    鎵嬪姩濉啓鍓ф湰婕斿憳琛細
+      路 涓昏鍚嶅崟锛坙ead锛?      路 閰嶈鍚嶅崟锛坰upporting锛?      路 璺汉鍚嶅崟锛坋xtra锛?
+    杈撳嚭鏍囧噯 CAST_DATA锛岀洿鎺ユ帴 Cast Analyzer 鐨?cast_data 杈撳叆銆?    涓嶄緷璧?Script Parser 鎴?LLM锛屽彲鍦ㄤ换鎰忔祦绋嬩腑鐙珛浣跨敤銆?    """
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -42,31 +32,31 @@ class AFE_CastManager:
                 "lead_names": ("STRING", {
                     "multiline": True,
                     "default": "",
-                    "placeholder": "每行填一个主角名\n例：\n小宇",
-                    "tooltip": "【主角】每行一个角色名",
+                    "placeholder": "姣忚濉竴涓富瑙掑悕\n渚嬶細\n灏忓畤",
+                    "tooltip": "銆愪富瑙掋€戞瘡琛屼竴涓鑹插悕",
                 }),
                 "supporting_names": ("STRING", {
                     "multiline": True,
                     "default": "",
-                    "placeholder": "每行填一个配角名\n例：\n小舟\n胖叔",
-                    "tooltip": "【配角】每行一个角色名",
+                    "placeholder": "姣忚濉竴涓厤瑙掑悕\n渚嬶細\n灏忚垷\n鑳栧彅",
+                    "tooltip": "銆愰厤瑙掋€戞瘡琛屼竴涓鑹插悕",
                 }),
             },
             "optional": {
                 "extra_a_names": ("STRING", {
                     "multiline": True,
                     "default": "",
-                    "tooltip": "【路人甲】每行一个角色名",
+                    "tooltip": "銆愯矾浜虹敳銆戞瘡琛屼竴涓鑹插悕",
                 }),
                 "extra_b_names": ("STRING", {
                     "multiline": True,
                     "default": "",
-                    "tooltip": "【路人乙】每行一个角色名",
+                    "tooltip": "銆愯矾浜轰箼銆戞瘡琛屼竴涓鑹插悕",
                 }),
                 "notes": ("STRING", {
                     "multiline": True,
                     "default": "",
-                    "tooltip": "备注（不影响输出，仅供记录）",
+                    "tooltip": "澶囨敞锛堜笉褰卞搷杈撳嚭锛屼粎渚涜褰曪級",
                 }),
             },
         }
@@ -85,7 +75,7 @@ class AFE_CastManager:
         extra_b_names: str = "",
         notes: str = "",
     ):
-        # ── 解析各角色名单 ────────────────────────────────────────────────
+        # 鈹€鈹€ 瑙ｆ瀽鍚勮鑹插悕鍗?鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
         leads      = _parse_names(lead_names)
         supporting = _parse_names(supporting_names)
         extras_a   = _parse_names(extra_a_names)
@@ -107,22 +97,22 @@ class AFE_CastManager:
             cast_data.append(_entry(idx, name, "extra_b"))
             idx += 1
 
-        # ── 生成报告 ──────────────────────────────────────────────────────
+        # 鈹€鈹€ 鐢熸垚鎶ュ憡 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
         lines = [
-            "🎭 演员表",
-            "━" * 24,
-            f"主角  {len(leads)} 人：{' / '.join(leads) if leads else '（未填）'}",
-            f"配角  {len(supporting)} 人：{' / '.join(supporting) if supporting else '（未填）'}",
+            "馃幁 婕斿憳琛?,
+            "鈹? * 24,
+            f"涓昏  {len(leads)} 浜猴細{' / '.join(leads) if leads else '锛堟湭濉級'}",
+            f"閰嶈  {len(supporting)} 浜猴細{' / '.join(supporting) if supporting else '锛堟湭濉級'}",
         ]
         if extras_a:
-            lines.append(f"路人甲 {len(extras_a)} 人：{' / '.join(extras_a)}")
+            lines.append(f"璺汉鐢?{len(extras_a)} 浜猴細{' / '.join(extras_a)}")
         if extras_b:
-            lines.append(f"路人乙 {len(extras_b)} 人：{' / '.join(extras_b)}")
-        lines.append("━" * 24)
-        lines.append(f"共 {len(cast_data)} 人")
+            lines.append(f"璺汉涔?{len(extras_b)} 浜猴細{' / '.join(extras_b)}")
+        lines.append("鈹? * 24)
+        lines.append(f"鍏?{len(cast_data)} 浜?)
 
         if notes.strip():
-            lines.append(f"\n📝 备注：{notes.strip()}")
+            lines.append(f"\n馃摑 澶囨敞锛歿notes.strip()}")
 
         cast_report = "\n".join(lines)
 
@@ -153,3 +143,4 @@ def _entry(idx: int, name: str, role_type: str) -> dict:
         "appearances":        [],
         "_source":            "manual",
     }
+
