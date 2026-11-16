@@ -4,8 +4,11 @@ from ai_film_editor_nodes.lib.utils.logger import get_logger
 
 logger = get_logger("AFE_SceneAnalyzer")
 
-DEFAULT_NEGATIVE = "dark, dirty, crowded, blurry, low quality"
-DEFAULT_STYLE = "cinematic, high detail, 8K"
+DEFAULT_NEGATIVE = "dark, dirty, crowded, blurry, low quality, people, person, human, character, man, woman, figure"
+DEFAULT_STYLE = "cinematic, high detail"
+
+# 场景固定词 — 明确排除人物，只拍空场景
+SCENE_PREFIX = "empty scene, no people, no characters, no humans, background only"
 
 
 def _get_shots(shot_sequence) -> list:
@@ -116,7 +119,8 @@ class AFE_SceneAnalyzer:
             lighting = info["lighting_style"]
             base_en = _scene_to_english(name, lighting)
             suffix = style_suffix.strip() or DEFAULT_STYLE
-            positive_prompt = f"{base_en}, {suffix}"
+            # 场景图：明确无人，只拍空场景背景
+            positive_prompt = f"{SCENE_PREFIX}, {base_en}, {suffix}"
 
             scenes.append({
                 "index": idx + 1,

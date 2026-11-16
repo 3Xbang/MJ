@@ -4,7 +4,11 @@ from ai_film_editor_nodes.lib.utils.logger import get_logger
 
 logger = get_logger("AFE_PropsAnalyzer")
 
-DEFAULT_NEGATIVE = "blurry, damaged, low quality, distorted"
+DEFAULT_NEGATIVE = "blurry, damaged, low quality, distorted, people, person, human, character, hands, body"
+DEFAULT_STYLE = "clean background, sharp focus, high detail"
+
+# 道具固定词 — 单品展示，无人物
+PROPS_PREFIX = "single object display, isolated item, no people, no hands, no humans, product shot"
 DEFAULT_STYLE = "product photography style, studio lighting, clean white background, sharp focus"
 
 
@@ -93,7 +97,8 @@ class AFE_PropsAnalyzer:
             info = prop_map[name]
             en_name = _prop_to_english(name)
             suffix = style_suffix.strip() or DEFAULT_STYLE
-            positive_prompt = f"{en_name}, {suffix}"
+            # 道具图：单品展示，无人，风格和角色/场景统一
+            positive_prompt = f"{PROPS_PREFIX}, {en_name}, {suffix}"
             props_list.append({
                 "index": idx + 1,
                 "name": name,
