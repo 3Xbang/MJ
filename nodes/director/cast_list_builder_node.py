@@ -54,11 +54,21 @@ class AFE_CastListBuilder:
             },
             "optional": {
                 "cast_data": ("CAST_DATA", {
-                    "tooltip": "来自 Script Parser 的 LLM 角色数据（可选，用于补充外貌描述）",
+                    "tooltip": "来自 Script Parser 的 LLM 角色数据（可选，补充外貌描述）",
+                }),
+                "lead_names": ("STRING", {
+                    "default": "",
+                    "multiline": False,
+                    "tooltip": "主角名单，逗号分隔。例：小宇,张三  （空=自动按出镜次数判断）",
+                }),
+                "supporting_names": ("STRING", {
+                    "default": "",
+                    "multiline": False,
+                    "tooltip": "配角名单，逗号分隔。例：小舟,胖叔  （空=自动）",
                 }),
                 "lead_count": ("INT", {
                     "default": 1, "min": 1, "max": 10,
-                    "tooltip": "出镜最多的前 N 人设为主角，其余设为配角",
+                    "tooltip": "未指定名单时：出镜最多的前 N 人为主角（lead_names 有值时此项被忽略）",
                 }),
             },
         }
@@ -73,6 +83,8 @@ class AFE_CastListBuilder:
         self,
         shot_sequence,
         cast_data=None,
+        lead_names: str = "",
+        supporting_names: str = "",
         lead_count: int = 1,
     ):
         shots = _get_shots(shot_sequence)
@@ -109,7 +121,15 @@ class AFE_CastListBuilder:
             logger.warning(msg)
             return {"ui": {"text": [msg]}, "result": ([], msg)}
 
-        # ── 2. 按出镜次数排序（出镜最多的可能是主角）───────────────────────
+        # ── 2. 解析导演指定的主配角名单 ───────────────────────────────────
+        def _parse_names(s: str) -> set:
+            return {n.strip() for n in s.split(",") if n.strip()}
+
+        designated_leads       = _parse_names(lead_names)
+        designated_supporting  = _parse_names(supporting_names)
+        use_manual             = bool(designated_leads or designated_supporting)
+
+        # ── 3. 按出镜次数排序（作为自动分配的依据）────────────────────────
         sorted_names = sorted(name_shots.keys(),
                                key=lambda n: len(name_shots[n]), reverse=True)
 
@@ -128,8 +148,21 @@ class AFE_CastListBuilder:
             llm = llm_map.get(name, {})
             shot_list = name_shots[name]
 
-            # role_type：LLM 给的优先，否则按出镜排名推断
-            if llm.get("role_type"):
+            # role_type 优先级：
+            # 1. 导演手动指定（lead_names / supporting_names）
+            # 2. LLM 给的 role_type
+            # 3. 按出镜排名自动推断
+            if use_manual:
+                if name in designated_leads:
+                    role_type = "lead"
+                elif name in designated_supporting:
+                    role_type = "supporting"
+                elif llm.get("role_type"):
+                    role_type = llm["role_type"]
+                else:
+                    # 未在名单里的：按出镜量推断
+                    role_type = "extra_a" if idx >= lead_count + 3 else "supporting"
+            elif llm.get("role_type"):
                 role_type = llm["role_type"]
             elif idx < lead_count:
                 role_type = "lead"
@@ -160,12 +193,20 @@ class AFE_CastListBuilder:
         found_all  = set(name_shots.keys())
         auto_added = found_all - llm_names
 
+        mode_str = "手动指定" if use_manual else f"自动（主角前{lead_count}名）"
         lines = [
             "🎭 演员表（构建完成）",
-            f"   共 {len(merged)} 人  |  LLM提供：{len(llm_names)} 人  "
-            f"|  自动补全：{len(auto_added)} 人",
-            "━" * 20,
+            f"   共 {len(merged)} 人  |  分配模式：{mode_str}",
+            f"   LLM提供：{len(llm_names)} 人  |  自动补全：{len(auto_added)} 人",
+            "━" * 24,
         ]
+
+        if use_manual and (designated_leads or designated_supporting):
+            if designated_leads:
+                lines.append(f"   🎯 指定主角：{', '.join(sorted(designated_leads))}")
+            if designated_supporting:
+                lines.append(f"   🎯 指定配角：{', '.join(sorted(designated_supporting))}")
+            lines.append("━" * 24)
 
         for c in merged:
             role   = ROLE_LABELS.get(c["role_type"], c["role_type"])
