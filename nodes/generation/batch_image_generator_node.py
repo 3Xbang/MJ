@@ -2,8 +2,9 @@
 AFE_BatchImageGenerator
 批量图像生成节点。
 
-接受任意 Analyzer 输出的 JSON，为每个资产生成 N 张图片并保存。
-参数精简，避免 ComfyUI combo 验证问题：sampler/scheduler/latent_channels 内部固定。
+每个资产固定生成 6 张不同方案（内部固定，不作为参数暴露）。
+客户从 6 张中选择满意的方案。
+采样参数（sampler/scheduler/latent_channels）内部固定为 Flux Schnell 最优设置。
 """
 from __future__ import annotations
 import json, os, re
@@ -12,10 +13,11 @@ from ai_film_editor_nodes.lib.utils.logger import get_logger
 
 logger = get_logger("AFE_BatchImageGenerator")
 
-# Fixed sampling settings for Flux Schnell (not exposed as widgets to avoid validation issues)
-_SAMPLER   = "euler"
-_SCHEDULER = "simple"
-_LATENT_CH = 16   # Flux uses 16 channels
+# 固定内部参数 — 不作为 widget 暴露，避免 ComfyUI 验证问题
+_SAMPLER       = "euler"
+_SCHEDULER     = "simple"
+_LATENT_CH     = 16    # Flux 使用 16 通道
+_VARIATIONS    = 6     # 每个资产固定生成 6 张方案
 
 
 def _safe(text: str, maxlen: int = 40) -> str:
@@ -53,16 +55,14 @@ class AFE_BatchImageGenerator:
                 "vae":   ("VAE",),
             },
             "optional": {
-                "width":              ("INT",   {"default": 1024, "min": 64,  "max": 4096, "step": 8}),
-                "height":             ("INT",   {"default": 1024, "min": 64,  "max": 4096, "step": 8}),
-                "steps":              ("INT",   {"default": 4,    "min": 1,   "max": 100}),
-                "cfg":                ("FLOAT", {"default": 1.0,  "min": 0.0, "max": 20.0, "step": 0.1}),
-                "seed":               ("INT",   {"default": 42,   "min": 0,   "max": 2**31 - 1}),
-                "variations_per_asset": ("INT", {"default": 3,   "min": 1,   "max": 10,
-                                                 "tooltip": "每个资产生成几张方案"}),
-                "output_prefix":      ("STRING", {"default": "AFE"}),
-                "max_assets":         ("INT",   {"default": 0,    "min": 0,   "max": 200,
-                                                 "tooltip": "0=全部生成"}),
+                "width":         ("INT",   {"default": 1024, "min": 64,  "max": 4096, "step": 8}),
+                "height":        ("INT",   {"default": 1024, "min": 64,  "max": 4096, "step": 8}),
+                "steps":         ("INT",   {"default": 4,    "min": 1,   "max": 100}),
+                "cfg":           ("FLOAT", {"default": 1.0,  "min": 0.0, "max": 20.0, "step": 0.1}),
+                "seed":          ("INT",   {"default": 42,   "min": 0,   "max": 2**31 - 1}),
+                "output_prefix": ("STRING", {"default": "AFE"}),
+                "max_assets":    ("INT",   {"default": 0,    "min": 0,   "max": 200,
+                                            "tooltip": "0=生成全部资产"}),
             },
         }
 
@@ -79,7 +79,6 @@ class AFE_BatchImageGenerator:
         width: int = 1024, height: int = 1024,
         steps: int = 4,   cfg: float = 1.0,
         seed: int = 42,
-        variations_per_asset: int = 3,
         output_prefix: str = "AFE",
         max_assets: int = 0,
     ):
@@ -97,7 +96,7 @@ class AFE_BatchImageGenerator:
             assets = assets[:max_assets]
 
         total = len(assets)
-        logger.info(f"BatchGen: {total} 资产 × {variations_per_asset} 张 = {total*variations_per_asset} 张")
+        logger.info(f"BatchGen: {total} 资产 × {_VARIATIONS} 张 = {total * _VARIATIONS} 张")
 
         try:
             from nodes import common_ksampler  # type: ignore
@@ -124,8 +123,8 @@ class AFE_BatchImageGenerator:
                 errors.append(f"资产{i+1}({name}) 编码失败：{exc}")
                 continue
 
-            for v in range(variations_per_asset):
-                vseed = seed + i * 1000 + v * 100
+            for v in range(_VARIATIONS):
+                vseed = seed + i * 1000 + v * 137  # 质数步长确保每张都不同
                 vlabel = f"v{v+1}" if variations_per_asset > 1 else ""
                 try:
                     lat = _latent(height, width)
@@ -155,7 +154,7 @@ class AFE_BatchImageGenerator:
 
         batch = torch.cat(all_images, dim=0)
         lines = [
-            f"✅ 生成完成：{len(all_images)} 张（{total} 资产 × {variations_per_asset} 方案）",
+            f"✅ 生成完成：{len(all_images)} 张（{total} 资产 × {_VARIATIONS} 方案）",
             f"   {width}×{height}  steps={steps}  cfg={cfg}",
             "──────────────",
         ] + [f"  {j+1:02d}. {n}" for j, n in enumerate(names)]
