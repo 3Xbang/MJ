@@ -1,27 +1,26 @@
 """
-AFE_BatchImageGenerator
-批量图像生成节点。
+AFE_BatchImageGenerator — 固定 6 张输出模式
 
-每次运行为每个资产生成【1张】图片。
-需要多个方案时，重复点运行即可——每次 seed 自动变化，保证不同。
-这样与 ComfyUI 的执行模型完全一致：每个步数跑一次，出一组图。
+每次运行固定输出 6 张图片：
+  - 1个资产  → 该资产的 6 个不同变体
+  - 2个资产  → 每个资产 3 张
+  - 3个资产  → 每个资产 2 张
+  - 6+个资产 → 每个资产各取 1 张（前6个）
 
-用法：
-  1. 点运行 → 每个资产出1张图
-  2. 不满意某张 → 再点运行 → 自动出新图
-  3. 记录满意那次的 seed → 下次用 fixed seed 复现
+seed=0 时每次自动随机，确保重复运行出不同图。
+seed>0 时固定复现同一组图。
 """
 from __future__ import annotations
-import json, os, re, random, time
+import json, os, re, random
 import torch
 from ai_film_editor_nodes.lib.utils.logger import get_logger
 
 logger = get_logger("AFE_BatchImageGenerator")
 
-# 内部固定的采样参数（Flux Schnell 最优设置）
 _SAMPLER   = "euler"
 _SCHEDULER = "simple"
 _LATENT_CH = 16
+_TARGET    = 6   # 每次固定输出 6 张
 
 
 def _safe(text: str, maxlen: int = 40) -> str:
@@ -41,10 +40,8 @@ def _latent(h: int, w: int):
 
 class AFE_BatchImageGenerator:
     """
-    批量图像生成器（每步出图模式）。
-
-    每次运行为每个资产各生成 1 张图片。
-    seed=0 时每次自动随机（不同方案）；seed>0 时固定复现同一张图。
+    批量图像生成器 — 固定 6 张。
+    每次运行为每个类别（主角/配角/场景/服装/道具）输出恰好 6 张图片。
     """
 
     @classmethod
@@ -65,10 +62,8 @@ class AFE_BatchImageGenerator:
                 "steps":         ("INT",   {"default": 4,    "min": 1,   "max": 100}),
                 "cfg":           ("FLOAT", {"default": 1.0,  "min": 0.0, "max": 20.0, "step": 0.1}),
                 "seed":          ("INT",   {"default": 0,    "min": 0,   "max": 2**31 - 1,
-                                            "tooltip": "0=每次自动随机（出不同图）；>0=固定复现该图"}),
+                                            "tooltip": "0=每次自动随机；>0=固定复现该图"}),
                 "output_prefix": ("STRING", {"default": "AFE"}),
-                "max_assets":    ("INT",   {"default": 0,    "min": 0,   "max": 200,
-                                            "tooltip": "0=生成全部资产"}),
             },
         }
 
@@ -86,9 +81,8 @@ class AFE_BatchImageGenerator:
         steps: int = 4, cfg: float = 1.0,
         seed: int = 0,
         output_prefix: str = "AFE",
-        max_assets: int = 0,
     ):
-        # ── 解析资产 ──────────────────────────────────────────────────────────
+        # 解析资产
         try:
             assets = json.loads(assets_json)
         except Exception as exc:
@@ -99,18 +93,10 @@ class AFE_BatchImageGenerator:
             msg = "⚠️ 资产列表为空，请先连接分析器节点"
             return {"ui": {"text": [msg]}, "result": (torch.zeros([1, height, width, 3]), 0, msg)}
 
-        if max_assets > 0:
-            assets = assets[:max_assets]
-
         total = len(assets)
-
-        # ── 确定本次 seed ─────────────────────────────────────────────────────
-        # seed=0 → 每次自动随机，确保每次运行出不同图
-        # seed>0 → 固定 seed，可复现同一张图
         base_seed = random.randint(1, 2**31 - 1) if seed == 0 else seed
-        logger.info(f"BatchGen: {total} 资产，base_seed={base_seed}  {'(随机)' if seed == 0 else '(固定)'}")
+        logger.info(f"BatchGen: {total} 资产 → 固定 {_TARGET} 张  seed={base_seed}")
 
-        # ── 加载 KSampler ─────────────────────────────────────────────────────
         try:
             from nodes import common_ksampler  # type: ignore
             _ks = common_ksampler
@@ -119,18 +105,19 @@ class AFE_BatchImageGenerator:
 
         all_images, names, errors = [], [], []
 
-        # ── 每个资产生成 1 张 ──────────────────────────────────────────────────
-        for i, asset in enumerate(assets):
-            pos = str(asset.get("positive_prompt", "")).strip()
-            neg = str(asset.get("negative_prompt", "ugly, blurry, low quality")).strip()
-            name = (asset.get("name") or asset.get("character_name")
-                    or asset.get("description", "")[:20] or f"asset_{i+1:02d}")
+        # 固定生成 _TARGET(6) 张，轮询资产
+        for slot in range(_TARGET):
+            asset = assets[slot % total]
+            pos   = str(asset.get("positive_prompt", "")).strip()
+            neg   = str(asset.get("negative_prompt", "ugly, blurry, low quality")).strip()
+            name  = (asset.get("name") or asset.get("character_name")
+                     or asset.get("description", "")[:20] or f"asset_{(slot % total)+1:02d}")
 
             if not pos:
-                errors.append(f"资产{i+1}({name})：prompt为空，跳过")
+                errors.append(f"槽位{slot+1}({name})：prompt为空，跳过")
                 continue
 
-            asset_seed = base_seed + i * 137  # 每个资产不同 seed，同一次运行内各资产图片也不同
+            slot_seed = base_seed + slot * 137  # 质数步长保证每张不同
 
             try:
                 positive = _encode(clip, pos)
@@ -138,57 +125,54 @@ class AFE_BatchImageGenerator:
                 lat = _latent(height, width)
 
                 if _ks:
-                    out = _ks(model, asset_seed, steps, cfg,
-                              _SAMPLER, _SCHEDULER, positive, negative, lat)
+                    out     = _ks(model, slot_seed, steps, cfg,
+                                  _SAMPLER, _SCHEDULER, positive, negative, lat)
                     samples = out[0]["samples"]
                 else:
                     import comfy.sample  # type: ignore
-                    noise = comfy.sample.prepare_noise(lat["samples"], asset_seed, None)
+                    noise   = comfy.sample.prepare_noise(lat["samples"], slot_seed, None)
                     samples = comfy.sample.sample(
                         model, noise, steps, cfg, _SAMPLER, _SCHEDULER,
                         positive, negative, lat["samples"],
                         denoise=1.0, disable_noise=False,
-                        force_full_denoise=True, seed=asset_seed,
+                        force_full_denoise=True, seed=slot_seed,
                     )
 
                 img = vae.decode(samples)
                 all_images.append(img)
-                names.append(name)
-                self._save(img, output_prefix, i + 1, name, base_seed)
+                names.append(f"{name}_{slot+1}")
+                self._save(img, output_prefix, slot + 1, name, slot_seed)
 
             except Exception as exc:
-                errors.append(f"资产{i+1}({name}) 生成失败：{exc}")
-                logger.error(f"Asset {i+1} failed: {exc}")
+                errors.append(f"槽位{slot+1}({name}) 失败：{exc}")
+                logger.error(f"Slot {slot+1} failed: {exc}")
 
-        # ── 汇报 ──────────────────────────────────────────────────────────────
         if not all_images:
             msg = "❌ 全部生成失败\n" + "\n".join(errors)
             return {"ui": {"text": [msg]}, "result": (torch.zeros([1, height, width, 3]), 0, msg)}
 
         batch = torch.cat(all_images, dim=0)
-
         seed_tip = "🎲 随机seed，再次运行出新图" if seed == 0 else f"📌 固定seed={base_seed}"
         lines = [
-            f"✅ {len(all_images)} 张图已生成（{total} 个资产）",
+            f"✅ 固定 {_TARGET} 张（来自 {total} 个资产，轮询分配）",
             f"   本次 seed：{base_seed}  |  {seed_tip}",
-            f"   {width}×{height}  steps={steps}  cfg={cfg}",
+            f"   {width}×{height}  steps={steps}",
             "──────────────",
-        ] + [f"  {j+1:02d}. {n}" for j, n in enumerate(names)]
+        ] + [f"  {j+1}. {n}" for j, n in enumerate(names)]
         if errors:
             lines += ["──────────────"] + errors
-        report = "\n".join(lines)
 
-        logger.info(f"BatchGen done: {len(all_images)}/{total}  seed={base_seed}")
+        report = "\n".join(lines)
         return {"ui": {"text": [report]}, "result": (batch, len(all_images), report)}
 
-    def _save(self, img: torch.Tensor, prefix: str, idx: int, name: str, seed: int):
+    def _save(self, img: torch.Tensor, prefix: str, slot: int, name: str, seed: int):
         try:
             import folder_paths  # type: ignore
             import numpy as np
             from PIL import Image  # type: ignore
             path = os.path.join(
                 folder_paths.get_output_directory(),
-                f"{prefix}_{idx:02d}_{_safe(name)}_s{seed}.png"
+                f"{prefix}_{slot:02d}_{_safe(name)}_s{seed}.png"
             )
             Image.fromarray(
                 (img[0].cpu().numpy() * 255).clip(0, 255).astype("uint8")
