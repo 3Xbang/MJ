@@ -16,8 +16,8 @@ from ai_film_editor_nodes.nodes.dam.scene_node import AFE_SceneAsset
 from ai_film_editor_nodes.nodes.director.script_parser_node import AFE_ScriptParser
 from ai_film_editor_nodes.nodes.director.shot_duration_node import AFE_ShotDuration
 from ai_film_editor_nodes.nodes.director.shot_calculator_node import AFE_DirectorGroup, AFE_ShotCalculator
-from ai_film_editor_nodes.nodes.director.tail_frame_node import AFE_TailFrameExtractor
-from ai_film_editor_nodes.nodes.director.tone_comp_node import AFE_ToneCompensation
+from ai_film_editor_nodes.nodes.director.cast_list_builder_node import AFE_CastListBuilder
+from ai_film_editor_nodes.nodes.director.tail_frame_node import AFE_TailFrameExtractorfrom ai_film_editor_nodes.nodes.director.tone_comp_node import AFE_ToneCompensation
 from ai_film_editor_nodes.nodes.adapters.video_adapter_node import AFE_VideoModelAdapter
 from ai_film_editor_nodes.nodes.utils.prompt_preview_node import AFE_PromptPreview
 from ai_film_editor_nodes.nodes.utils.model_checker_node import AFE_ModelChecker
@@ -102,6 +102,7 @@ NODE_CLASS_MAPPINGS = {
     "AFE_SceneAsset": AFE_SceneAsset,
     "AFE_DirectorGroup": AFE_DirectorGroup,
     "AFE_ShotCalculator": AFE_DirectorGroup,  # 向后兼容
+    "AFE_CastListBuilder": AFE_CastListBuilder,
     "AFE_ScriptParser": AFE_ScriptParser,
     "AFE_ShotDuration": AFE_ShotDuration,
     "AFE_TailFrameExtractor": AFE_TailFrameExtractor,
@@ -177,6 +178,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AFE_SceneAsset": "AFE Scene Asset",
     "AFE_DirectorGroup": "🎬 Director Group (导演组)",
     "AFE_ShotCalculator": "🎬 Director Group (导演组)",  # 向后兼容
+    "AFE_CastListBuilder": "🎭 Cast List Builder (演员表构建器)",
     "AFE_ScriptParser": "AFE Script Parser",
     "AFE_ShotDuration": "AFE Shot Duration",
     "AFE_TailFrameExtractor": "AFE Tail Frame Extractor",
