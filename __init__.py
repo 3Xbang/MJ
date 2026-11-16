@@ -90,6 +90,9 @@ from ai_film_editor_nodes.nodes.analyzer.scene_analyzer_node import AFE_SceneAna
 from ai_film_editor_nodes.nodes.analyzer.shot_list_viewer_node import AFE_ShotListViewer
 from ai_film_editor_nodes.nodes.analyzer.asset_selector_node import AFE_AssetSelector
 
+# Part 13 - Batch Image Generation
+from ai_film_editor_nodes.nodes.generation.batch_image_generator_node import AFE_BatchImageGenerator
+
 NODE_CLASS_MAPPINGS = {
     # Part 1
     "AFE_CharacterAsset": AFE_CharacterAsset,
@@ -160,6 +163,8 @@ NODE_CLASS_MAPPINGS = {
     "AFE_SceneAnalyzer":          AFE_SceneAnalyzer,
     "AFE_ShotListViewer":         AFE_ShotListViewer,
     "AFE_AssetSelector":          AFE_AssetSelector,
+    # Part 13 - Batch Generation
+    "AFE_BatchImageGenerator":    AFE_BatchImageGenerator,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -231,6 +236,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AFE_SceneAnalyzer":       "🌄 Scene Analyzer (场景分析器)",
     "AFE_ShotListViewer":      "🎬 Shot List Viewer (分镜列表)",
     "AFE_AssetSelector":       "🎯 Asset Selector (资产选择器)",
+    # Part 13 - Batch Generation
+    "AFE_BatchImageGenerator": "🖼️ Batch Image Generator (批量图像生成)",
 }
 
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]
