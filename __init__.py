@@ -92,6 +92,7 @@ from ai_film_editor_nodes.nodes.analyzer.asset_selector_node import AFE_AssetSel
 
 # Part 13 - Batch Image Generation
 from ai_film_editor_nodes.nodes.generation.batch_image_generator_node import AFE_BatchImageGenerator
+from ai_film_editor_nodes.nodes.generation.single_asset_generator_node import AFE_SingleAssetGenerator
 
 NODE_CLASS_MAPPINGS = {
     # Part 1
@@ -165,6 +166,7 @@ NODE_CLASS_MAPPINGS = {
     "AFE_AssetSelector":          AFE_AssetSelector,
     # Part 13 - Batch Generation
     "AFE_BatchImageGenerator":    AFE_BatchImageGenerator,
+    "AFE_SingleAssetGenerator":   AFE_SingleAssetGenerator,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -238,6 +240,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AFE_AssetSelector":       "🎯 Asset Selector (资产选择器)",
     # Part 13 - Batch Generation
     "AFE_BatchImageGenerator": "🖼️ Batch Image Generator (批量图像生成)",
+    "AFE_SingleAssetGenerator": "🎯 Single Asset Generator (单图重生成)",
 }
 
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]
