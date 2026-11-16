@@ -17,9 +17,9 @@ AFE_CastListBuilder — 演员表管理器
 """
 from __future__ import annotations
 import json
-from ai_film_editor_nodes.lib.utils.logger import get_logger
+import logging
 
-logger = get_logger("AFE_CastListBuilder")
+logger = logging.getLogger("AFE_CastListBuilder")
 
 ROLE_LABELS = {
     "lead":        "★ 主角",
