@@ -12,8 +12,15 @@ ROLE_TYPE_LABELS = {
     "extra_other": "其他路人",
 }
 
-DEFAULT_NEGATIVE = "ugly, deformed, blurry, low quality, distorted"
-DEFAULT_STYLE = "photorealistic, 8K, studio lighting, white background"
+DEFAULT_NEGATIVE = "ugly, deformed, blurry, low quality, distorted, cropped, partial body, cut off, bad anatomy, missing limbs"
+DEFAULT_STYLE    = "photorealistic, studio lighting, white background"
+
+# 定妆照固定词 — 加在所有角色提示词里，确保生成标准定妆参考图
+WARDROBE_TERMS = (
+    "full body shot, front view, standing pose, "
+    "character design reference sheet, costume details clearly visible, "
+    "clean white studio background"
+)
 
 EXTRA_TYPES = {"extra_a", "extra_b", "extra_other"}
 
@@ -164,7 +171,11 @@ class AFE_CastAnalyzer:
                 base = "person"
 
             suffix = style_suffix.strip()
-            positive_prompt = f"{base}, {suffix}" if suffix else base
+            # 定妆照格式: 外貌+服装 + 定妆固定词 + 风格后缀
+            if suffix:
+                positive_prompt = f"{base}, {WARDROBE_TERMS}, {suffix}"
+            else:
+                positive_prompt = f"{base}, {WARDROBE_TERMS}, {DEFAULT_STYLE}"
 
             # Role type: lead for first, supporting for rest (cast_data overrides)
             role_type = char_data.get("role_type", "lead" if idx == 0 else "supporting")
