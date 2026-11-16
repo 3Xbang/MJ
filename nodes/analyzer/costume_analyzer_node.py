@@ -5,6 +5,7 @@ from ai_film_editor_nodes.lib.utils.logger import get_logger
 logger = get_logger("AFE_CostumeAnalyzer")
 
 DEFAULT_NEGATIVE = "ugly, torn, dirty, damaged, low quality"
+DEFAULT_STYLE = "fabric detail, product photography, studio lighting"
 
 
 def _get_shots(shot_sequence) -> list:
@@ -58,6 +59,12 @@ class AFE_CostumeAnalyzer:
             "required": {
                 "shot_sequence": ("SHOT_SEQUENCE",),
             },
+            "optional": {
+                "style_suffix": ("STRING", {
+                    "default": DEFAULT_STYLE,
+                    "tooltip": "追加到每套服装提示词末尾，接 Director Group 的 style_prompt",
+                }),
+            },
         }
 
     RETURN_TYPES = ("STRING", "INT", "STRING")
@@ -66,7 +73,7 @@ class AFE_CostumeAnalyzer:
     CATEGORY = "AI Film Editor/Analyzers"
     OUTPUT_NODE = True
 
-    def analyze_costumes(self, shot_sequence):
+    def analyze_costumes(self, shot_sequence, style_suffix: str = DEFAULT_STYLE):
         shots = _get_shots(shot_sequence)
 
         # Key: (character_name_or_empty, costume_description) → entry dict
@@ -100,9 +107,9 @@ class AFE_CostumeAnalyzer:
         costumes: list[dict] = []
         for idx, key in enumerate(seen_order):
             entry = costume_map[key]
+            suffix = style_suffix.strip() or DEFAULT_STYLE
             positive_prompt = (
-                f"{_translate_costume(entry['description'])}, "
-                "casual modern style, fabric detail, product photography"
+                f"{_translate_costume(entry['description'])}, {suffix}"
             )
             costumes.append({
                 "index": idx + 1,

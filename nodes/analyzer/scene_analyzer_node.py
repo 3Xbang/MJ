@@ -5,6 +5,7 @@ from ai_film_editor_nodes.lib.utils.logger import get_logger
 logger = get_logger("AFE_SceneAnalyzer")
 
 DEFAULT_NEGATIVE = "dark, dirty, crowded, blurry, low quality"
+DEFAULT_STYLE = "cinematic, high detail, 8K"
 
 
 def _get_shots(shot_sequence) -> list:
@@ -73,6 +74,12 @@ class AFE_SceneAnalyzer:
             "required": {
                 "shot_sequence": ("SHOT_SEQUENCE",),
             },
+            "optional": {
+                "style_suffix": ("STRING", {
+                    "default": DEFAULT_STYLE,
+                    "tooltip": "追加到每个场景提示词末尾，接 Director Group 的 style_prompt",
+                }),
+            },
         }
 
     RETURN_TYPES = ("STRING", "INT", "STRING")
@@ -81,7 +88,7 @@ class AFE_SceneAnalyzer:
     CATEGORY = "AI Film Editor/Analyzers"
     OUTPUT_NODE = True
 
-    def analyze_scenes(self, shot_sequence):
+    def analyze_scenes(self, shot_sequence, style_suffix: str = DEFAULT_STYLE):
         shots = _get_shots(shot_sequence)
 
         # scene_name → {shots, lighting_style}
@@ -108,7 +115,8 @@ class AFE_SceneAnalyzer:
             info = scene_map[name]
             lighting = info["lighting_style"]
             base_en = _scene_to_english(name, lighting)
-            positive_prompt = f"{base_en}, cinematic, high detail, 8K"
+            suffix = style_suffix.strip() or DEFAULT_STYLE
+            positive_prompt = f"{base_en}, {suffix}"
 
             scenes.append({
                 "index": idx + 1,

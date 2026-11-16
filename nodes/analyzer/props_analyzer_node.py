@@ -5,6 +5,7 @@ from ai_film_editor_nodes.lib.utils.logger import get_logger
 logger = get_logger("AFE_PropsAnalyzer")
 
 DEFAULT_NEGATIVE = "blurry, damaged, low quality, distorted"
+DEFAULT_STYLE = "product photography style, studio lighting, clean white background, sharp focus"
 
 
 def _get_shots(shot_sequence) -> list:
@@ -51,6 +52,12 @@ class AFE_PropsAnalyzer:
             "required": {
                 "shot_sequence": ("SHOT_SEQUENCE",),
             },
+            "optional": {
+                "style_suffix": ("STRING", {
+                    "default": DEFAULT_STYLE,
+                    "tooltip": "追加到每件道具提示词末尾，接 Director Group 的 style_prompt",
+                }),
+            },
         }
 
     RETURN_TYPES = ("STRING", "INT", "STRING")
@@ -59,7 +66,7 @@ class AFE_PropsAnalyzer:
     CATEGORY = "AI Film Editor/Analyzers"
     OUTPUT_NODE = True
 
-    def analyze_props(self, shot_sequence):
+    def analyze_props(self, shot_sequence, style_suffix: str = DEFAULT_STYLE):
         shots = _get_shots(shot_sequence)
 
         # prop_name → {shots: [...]}
@@ -85,10 +92,8 @@ class AFE_PropsAnalyzer:
         for idx, name in enumerate(seen_order):
             info = prop_map[name]
             en_name = _prop_to_english(name)
-            positive_prompt = (
-                f"{en_name}, product photography style, "
-                "studio lighting, clean white background, sharp focus, 8K"
-            )
+            suffix = style_suffix.strip() or DEFAULT_STYLE
+            positive_prompt = f"{en_name}, {suffix}"
             props_list.append({
                 "index": idx + 1,
                 "name": name,
