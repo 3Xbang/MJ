@@ -20,7 +20,7 @@ logger = get_logger("AFE_BatchImageGenerator")
 _SAMPLER   = "euler"
 _SCHEDULER = "simple"
 _LATENT_CH = 16
-_TARGET    = 6   # 每次固定输出 6 张
+_TARGET    = 9   # 每次固定输出 9 张
 
 
 def _safe(text: str, maxlen: int = 40) -> str:
