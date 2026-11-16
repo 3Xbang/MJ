@@ -15,6 +15,8 @@ ROLE_TYPE_LABELS = {
 DEFAULT_NEGATIVE = "ugly, deformed, blurry, low quality, distorted"
 DEFAULT_STYLE = "photorealistic, 8K, studio lighting, white background"
 
+EXTRA_TYPES = {"extra_a", "extra_b", "extra_other"}
+
 
 def _get_shots(shot_sequence) -> list:
     """Normalize shot_sequence to a plain list of shot dicts."""
@@ -27,11 +29,31 @@ def _get_shots(shot_sequence) -> list:
     return []
 
 
+def _build_prompts(char: dict, style_suffix: str) -> tuple[str, str]:
+    """
+    Generate (positive_prompt, negative_prompt) for a character dict.
+
+    Priority:
+      1. appearance_en from cast_data (already embedded in char["positive_prompt"])
+      2. fallback: "person, {costume_description}, {style_suffix}"
+    """
+    # positive_prompt is already built during the main loop with appearance_en / costume
+    positive = char.get("positive_prompt", "")
+    if not positive:
+        # Last-resort fallback
+        name = char.get("name", "person")
+        costume = char.get("costume_description", "")
+        base = f"person, {costume}" if costume else f"person named {name}"
+        suffix = style_suffix.strip()
+        positive = f"{base}, {suffix}" if suffix else base
+    return positive, DEFAULT_NEGATIVE
+
+
 class AFE_CastAnalyzer:
     """
     人物分析器。
     从 shot_sequence 中汇总所有出场角色，可结合 cast_data 补充角色信息，
-    为每个角色生成 AI 提示词，并输出格式化分析报告。
+    为每个角色生成 AI 提示词，并按角色类型输出独立提示词口（主角/配角/路人）。
     """
 
     @classmethod
@@ -49,8 +71,17 @@ class AFE_CastAnalyzer:
             },
         }
 
-    RETURN_TYPES = ("STRING", "INT", "STRING")
-    RETURN_NAMES = ("characters_json", "characters_count", "cast_report")
+    RETURN_TYPES = ("STRING", "INT", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING")
+    RETURN_NAMES = (
+        "characters_json",      # 全部角色 JSON
+        "characters_count",     # 角色数量
+        "lead_positive",        # 主角正向提示词
+        "lead_negative",        # 主角负面提示词
+        "supporting_positive",  # 第一配角正向提示词
+        "supporting_negative",  # 第一配角负面提示词
+        "extra_positive",       # 路人甲正向提示词（第一个路人）
+        "extra_negative",       # 路人甲负面提示词
+    )
     FUNCTION = "analyze_cast"
     CATEGORY = "AI Film Editor/Analyzers"
     OUTPUT_NODE = True
@@ -104,7 +135,7 @@ class AFE_CastAnalyzer:
             if appearance_en:
                 base = appearance_en
             elif info["costume"]:
-                base = f"{name}, {info['costume']}"
+                base = f"person, {info['costume']}"
             else:
                 base = f"person named {name}"
 
@@ -124,10 +155,30 @@ class AFE_CastAnalyzer:
                 "costume_description": info["costume"],
             })
 
-        # Build report
+        # ── Filter by role type ───────────────────────────────────────────────
+        leads       = [c for c in characters if c["role_type"] == "lead"]
+        supportings = [c for c in characters if c["role_type"] == "supporting"]
+        extras      = [c for c in characters if c["role_type"] in EXTRA_TYPES]
+
+        lead_char  = leads[0]       if leads       else None
+        sup_char   = supportings[0] if supportings else None
+        extra_char = extras[0]      if extras       else None
+
+        lead_positive,       lead_negative       = _build_prompts(lead_char,  style_suffix) if lead_char  else ("", "")
+        supporting_positive, supporting_negative = _build_prompts(sup_char,   style_suffix) if sup_char   else ("", "")
+        extra_positive,      extra_negative      = _build_prompts(extra_char, style_suffix) if extra_char else ("", "")
+
+        # ── Build report ─────────────────────────────────────────────────────
+        lead_name  = lead_char["name"]  if lead_char  else "无"
+        sup_name   = sup_char["name"]   if sup_char   else "无"
+        extra_name = extra_char["name"] if extra_char else "无"
+
+        summary_line = f"🎭 主角：{lead_name} | 配角：{sup_name} | 路人：{extra_name}"
+
         lines = [
             "👥 人物分析报告",
             "━" * 10,
+            summary_line,
             f"共 {len(characters)} 个人物：",
         ]
         for c in characters:
@@ -143,5 +194,21 @@ class AFE_CastAnalyzer:
         cast_report = "\n".join(lines)
         characters_json = json.dumps(characters, ensure_ascii=False)
 
-        logger.info(f"CastAnalyzer: found {len(characters)} characters in {len(shots)} shots")
-        return {"ui": {"text": [cast_report]}, "result": (characters_json, len(characters), cast_report)}
+        logger.info(
+            "CastAnalyzer: found %d characters (%d lead, %d supporting, %d extra) in %d shots",
+            len(characters), len(leads), len(supportings), len(extras), len(shots),
+        )
+
+        return {
+            "ui": {"text": [cast_report]},
+            "result": (
+                characters_json,
+                len(characters),
+                lead_positive,
+                lead_negative,
+                supporting_positive,
+                supporting_negative,
+                extra_positive,
+                extra_negative,
+            ),
+        }
