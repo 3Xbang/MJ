@@ -97,6 +97,9 @@ from ai_film_editor_nodes.nodes.analyzer.asset_approval_node import AFE_AssetApp
 # Part 13 - Batch Image Generation
 from ai_film_editor_nodes.nodes.generation.batch_image_generator_node import AFE_BatchImageGenerator
 from ai_film_editor_nodes.nodes.generation.single_asset_generator_node import AFE_SingleAssetGenerator
+from ai_film_editor_nodes.nodes.generation.character_card_node import (
+    AFE_CharacterCardSetup, AFE_CharacterSlotGenerate, AFE_CharacterCardBatch
+)
 
 NODE_CLASS_MAPPINGS = {
     # Part 1
@@ -175,6 +178,9 @@ NODE_CLASS_MAPPINGS = {
     # Part 13 - Batch Generation
     "AFE_BatchImageGenerator":    AFE_BatchImageGenerator,
     "AFE_SingleAssetGenerator":   AFE_SingleAssetGenerator,
+    "AFE_CharacterCardSetup":     AFE_CharacterCardSetup,
+    "AFE_CharacterSlotGenerate":  AFE_CharacterSlotGenerate,
+    "AFE_CharacterCardBatch":     AFE_CharacterCardBatch,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -251,8 +257,13 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AFE_AssetSelector":  "🎯 Asset Selector (资产选择器)",
     "AFE_AssetApproval":  "✅ Asset Approval (资产确认器)",
     # Part 13 - Batch Generation
-    "AFE_BatchImageGenerator": "🖼️ Batch Image Generator (批量图像生成)",
+    "AFE_BatchImageGenerator":  "🖼️ Batch Image Generator (批量图像生成)",
     "AFE_SingleAssetGenerator": "🎯 Single Asset Generator (单图重生成)",
+    "AFE_CharacterCardSetup":   "🎭 Character Card Setup (角色卡设置)",
+    "AFE_CharacterSlotGenerate":"🎭 Character Slot Generate (单槽生成)",
+    "AFE_CharacterCardBatch":   "🎭 Character Card Batch (角色卡批量生成)",
 }
 
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]
+
+WEB_DIRECTORY = "./web"
