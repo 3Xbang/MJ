@@ -1,19 +1,19 @@
 """
 AFE_QwenImageSplit — Qwen Image 2.1 输出切分器
 
-Qwen Image 2.1 Prompt Enhancer 将9张图合并输出为1张网格图。
-本节点将其按 3×3 网格切分为9张独立图片，每张对应一个视角。
+Qwen Image 2.1 Prompt Enhancer 将9张图合并输出为1张网格图 (1440×2560)。
+本节点将其按实际内容行高切分为9张独立图片。
 
-输出顺序（左到右、上到下）：
-  view_1: [Image_1] 三视图合一
-  view_2: [Image_2] 正面全身
-  view_3: [Image_3] 侧面全身（或背面）
-  view_4: [Image_4] 面部特写1
-  view_5: [Image_5] 面部特写2
-  view_6: [Image_6] 面部特写3
-  view_7: [Image_7] 面部特写4
-  view_8: [Image_8] 场景坐姿1
-  view_9: [Image_9] 场景坐姿2
+实际行高（由内容分析确认，1440×2560 输出）：
+  Row 0: y=0~900    (白背景: 三视图/全身图)       900px
+  Row 1: y=900~1700 (蓝天背景: 面部特写)          800px
+  Row 2: y=1700~H   (海滩背景: 坐姿场景)          860px
+  Cols:  均等 3×480px
+
+输出顺序（左→右，上→下）：
+  view_1_三视图  view_2_正面    view_3_背面
+  view_4_侧面    view_5_面部中性 view_6_面部微笑
+  view_7_面部严肃 view_8_场景喝茶 view_9_场景坐姿
 """
 from __future__ import annotations
 import torch
@@ -23,12 +23,6 @@ logger = logging.getLogger("AFE_QwenImageSplit")
 
 
 class AFE_QwenImageSplit:
-    """
-    将 Qwen Image 2.1 Prompt Enhancer 输出的合并网格图
-    切分为 9 张独立图片。
-
-    默认按 3×3 网格均分。如果宽高无法整除，会自动截断到最近的整数。
-    """
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -39,67 +33,67 @@ class AFE_QwenImageSplit:
             "optional": {
                 "cols": ("INT", {
                     "default": 3, "min": 1, "max": 9, "step": 1,
-                    "tooltip": "网格列数（Qwen默认3列）",
+                    "tooltip": "列数（Qwen默认3列）",
                 }),
-                "rows": ("INT", {
-                    "default": 3, "min": 1, "max": 9, "step": 1,
-                    "tooltip": "网格行数（Qwen默认3行）",
+                "row_cut_1": ("INT", {
+                    "default": 900, "min": 100, "max": 3000, "step": 10,
+                    "tooltip": "Row 0/1 分割点（白背景行结束位置，默认900px）",
+                }),
+                "row_cut_2": ("INT", {
+                    "default": 1700, "min": 200, "max": 3000, "step": 10,
+                    "tooltip": "Row 1/2 分割点（蓝天行结束位置，默认1700px）",
                 }),
             },
         }
 
-    # 9 个独立 IMAGE 输出
-    RETURN_TYPES  = ("IMAGE",) * 9
-    RETURN_NAMES  = (
+    RETURN_TYPES = ("IMAGE",) * 9
+    RETURN_NAMES = (
         "view_1_三视图",
         "view_2_正面",
-        "view_3_侧面",
-        "view_4_面部1",
-        "view_5_面部2",
-        "view_6_面部3",
-        "view_7_面部4",
-        "view_8_场景1",
-        "view_9_场景2",
+        "view_3_背面",
+        "view_4_侧面",
+        "view_5_面部中性",
+        "view_6_面部微笑",
+        "view_7_面部严肃",
+        "view_8_场景喝茶",
+        "view_9_场景坐姿",
     )
-    FUNCTION  = "split"
-    CATEGORY  = "AI Film Editor/Character Card"
+    FUNCTION = "split"
+    CATEGORY = "AI Film Editor/Character Card"
     OUTPUT_NODE = False
 
-    def split(self, image: torch.Tensor, cols: int = 3, rows: int = 3):
-        """
-        image: 两种可能的输入格式：
-          A) [1, H, W, C]  — Qwen 输出的单张合并网格图（例如 1440×2560）
-          B) [9, H, W, C]  — Qwen 输出的 batch（9张独立图，每张 1024×1024）
+    def split(self, image: torch.Tensor,
+              cols: int = 3,
+              row_cut_1: int = 900,
+              row_cut_2: int = 1700):
 
-        对应处理：
-          A → 按 rows×cols 裁剪成 9 个小图
-          B → 直接按 batch index 拆开成 9 张
-        """
         B, H, W, C = image.shape
-        logger.info("QwenImageSplit input: B=%d H=%d W=%d C=%d", B, H, W, C)
+        logger.info("QwenImageSplit: B=%d H=%d W=%d", B, H, W)
 
-        # ── 情况 B：已经是 batch，直接按 index 拆分 ───────────────────────────
+        # ── Batch 模式：直接按 index 拆分 ─────────────────────────────────
         if B > 1:
-            logger.info("Batch mode: splitting %d images by index", B)
+            logger.info("Batch mode: %d images", B)
             cells = [image[i:i+1] for i in range(B)]
-            # 补齐到 9
             while len(cells) < 9:
                 cells.append(cells[-1])
             return tuple(cells[:9])
 
-        # ── 情况 A：单张合并图，按网格裁剪 ───────────────────────────────────
-        img = image  # [1, H, W, C]
-        cell_h = H // rows
-        cell_w = W // cols
-        logger.info("Grid crop mode: %dx%d cells (%dx%d each)", cols, rows, cell_w, cell_h)
+        # ── 单张合并图：按非均等行高切分 ──────────────────────────────────
+        # 按实际图片高度等比缩放分割点（基准：2560px）
+        scale = H / 2560.0
+        c1 = max(1,      min(int(row_cut_1 * scale), H - 2))
+        c2 = max(c1 + 1, min(int(row_cut_2 * scale), H - 1))
+        row_cuts = [0, c1, c2, H]
+        cw = W // cols
+
+        logger.info("Row cuts: [0, %d, %d, %d]  col_width=%d", c1, c2, H, cw)
 
         cells = []
-        for r in range(rows):
-            for c in range(cols):
-                y0 = r * cell_h
-                x0 = c * cell_w
-                cell = img[:, y0:y0 + cell_h, x0:x0 + cell_w, :]
-                cells.append(cell)
+        for ri in range(3):
+            y0, y1 = row_cuts[ri], row_cuts[ri + 1]
+            for ci in range(cols):
+                x0, x1 = ci * cw, (ci + 1) * cw
+                cells.append(image[:, y0:y1, x0:x1, :])
 
         while len(cells) < 9:
             cells.append(cells[-1])
