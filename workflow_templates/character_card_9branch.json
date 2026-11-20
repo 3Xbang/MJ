@@ -1,0 +1,2352 @@
+{
+  "id": "afe-character-card-9branch-v3",
+  "last_node_id": 20,
+  "last_link_id": 18,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoadImage",
+      "title": "🎭 角色参考图",
+      "pos": [
+        50,
+        300
+      ],
+      "size": [
+        300,
+        420
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            1,
+            3,
+            5,
+            7,
+            9,
+            11,
+            13,
+            15,
+            17
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.44.0",
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "reference.png",
+        "image"
+      ],
+      "widgets_values_named": {
+        "image": "reference.png",
+        "upload": "image"
+      }
+    },
+    {
+      "id": 2,
+      "type": "AFE_NineViewPromptBuilder",
+      "title": "🎬 角色描述（改这里→重新生成JSON）",
+      "pos": [
+        50,
+        50
+      ],
+      "size": [
+        560,
+        300
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "prompt_1",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "prompt_2",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "prompt_3",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "prompt_4",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "prompt_5",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "prompt_6",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "prompt_7",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "prompt_8",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "prompt_9",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "negative_prompt",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "prompt_preview",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {},
+      "widgets_values": [
+        "A 50-year-old chubby Asian man with shoulder-length wavy silver-grey hair, handlebar mustache and goatee. Wearing white T-shirt, beige shorts with gold double-G pattern, thick gold chain necklace, brown wooden bead bracelets, brown sandals",
+        "3D cartoon Pixar animation style, vibrant colors, 8k, highly detailed",
+        "photorealistic, real person, ugly, deformed, noisy, blurry, distorted, bad anatomy, bad hands, missing fingers, extra fingers, text, watermark, logo, signature, low resolution, dark, gloomy, 2d, sketch, anime"
+      ],
+      "widgets_values_named": {
+        "character_description": "A 50-year-old chubby Asian man with shoulder-length wavy silver-grey hair, handlebar mustache and goatee. Wearing white T-shirt, beige shorts with gold double-G pattern, thick gold chain necklace, brown wooden bead bracelets, brown sandals",
+        "style_suffix": "3D cartoon Pixar animation style, vibrant colors, 8k, highly detailed",
+        "negative_prompt": "photorealistic, real person, ugly, deformed, noisy, blurry, distorted, bad anatomy, bad hands, missing fingers, extra fingers, text, watermark, logo, signature, low resolution, dark, gloomy, 2d, sketch, anime"
+      }
+    },
+    {
+      "id": 3,
+      "type": "bc1c967a-7f6a-4be9-a372-dad16e4f28e3",
+      "pos": [
+        680,
+        50
+      ],
+      "size": [
+        420,
+        760
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "positive_prompt",
+          "name": "prompt",
+          "type": "STRING",
+          "widget": {
+            "name": "prompt"
+          },
+          "link": null
+        },
+        {
+          "label": "refine_prompt",
+          "name": "switch_1",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "switch_1"
+          },
+          "link": null
+        },
+        {
+          "label": "custom_size",
+          "name": "switch",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "switch"
+          },
+          "link": null
+        },
+        {
+          "label": "sampler",
+          "name": "scheduler",
+          "type": "COMBO",
+          "widget": {
+            "name": "scheduler"
+          },
+          "link": null
+        },
+        {
+          "label": "cache_device",
+          "name": "device",
+          "type": "COMBO",
+          "widget": {
+            "name": "device"
+          },
+          "link": null
+        },
+        {
+          "label": "dtype",
+          "name": "dtype",
+          "type": "COMBO",
+          "widget": {
+            "name": "dtype"
+          },
+          "link": null
+        },
+        {
+          "label": "PE_model",
+          "name": "clip_name_1",
+          "type": "COMBO",
+          "widget": {
+            "name": "clip_name_1"
+          },
+          "link": null
+        },
+        {
+          "label": "image_1",
+          "name": "images.image_1",
+          "type": "IMAGE",
+          "link": 1
+        },
+        {
+          "label": "image_2",
+          "name": "images.image_2",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_3",
+          "name": "images.image_3",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_4",
+          "name": "images.image_4",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_5",
+          "name": "images.image_5_1",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_6",
+          "name": "images.image_6",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_7",
+          "name": "images.image_7",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_8",
+          "name": "images.image_8",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_9",
+          "name": "images.image_9",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_10",
+          "name": "images.image_10",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            2
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.44.0",
+        "previewExposures": []
+      },
+      "widgets_values": [
+        0,
+        "[Image_1] Professional character design reference sheet on light grey background. Left side: 3 full-body standing poses side by side — front view, back view, side profile. Top right: 4 face close-up portraits with different expressions — neutral, happy, serious, surprised. Middle right: 2 action poses — sitting drinking tea on beach, sitting arms crossed. Bottom: running silhouette, accessories. A 50-year-old chubby Asian man with shoulder-length wavy silver-grey hair, handlebar mustache and goatee. Wearing white T-shirt, beige shorts with gold double-G pattern, thick gold chain necklace, brown wooden bead bracelets, brown sandals. 3D cartoon Pixar animation style, vibrant colors, 8k, highly detailed.",
+        false,
+        false,
+        4096,
+        "photorealistic, real person, ugly, deformed, noisy, blurry, distorted, bad anatomy, bad hands, missing fingers, extra fingers, text, watermark, logo, signature, low resolution, dark, gloomy, 2d, sketch, anime.",
+        1,
+        false,
+        1024,
+        1024,
+        "euler",
+        42,
+        "qwen_image_2.1_turbo_int8_convrot.safetensors",
+        "qwen3vl_8b_int8_convrot.safetensors",
+        "qwen_image_2.1_vae_bf16.safetensors",
+        "auto",
+        "default",
+        "qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors"
+      ],
+      "widgets_values_named": {
+        "resolution": 0,
+        "prompt": "[Image_1] Professional character design reference sheet on light grey background. Left side: 3 full-body standing poses side by side — front view, back view, side profile. Top right: 4 face close-up portraits with different expressions — neutral, happy, serious, surprised. Middle right: 2 action poses — sitting drinking tea on beach, sitting arms crossed. Bottom: running silhouette, accessories. A 50-year-old chubby Asian man with shoulder-length wavy silver-grey hair, handlebar mustache and goatee. Wearing white T-shirt, beige shorts with gold double-G pattern, thick gold chain necklace, brown wooden bead bracelets, brown sandals. 3D cartoon Pixar animation style, vibrant colors, 8k, highly detailed.",
+        "switch_1": false,
+        "thinking": false,
+        "max_length": 4096,
+        "negative_prompt": "photorealistic, real person, ugly, deformed, noisy, blurry, distorted, bad anatomy, bad hands, missing fingers, extra fingers, text, watermark, logo, signature, low resolution, dark, gloomy, 2d, sketch, anime.",
+        "cfg": 1,
+        "switch": false,
+        "width": 1024,
+        "height": 1024,
+        "scheduler": "euler",
+        "seed": 891836227295375,
+        "unet_name": "qwen_image_2.1_turbo_int8_convrot.safetensors",
+        "clip_name": "qwen3vl_8b_int8_convrot.safetensors",
+        "vae_name": "qwen_image_2.1_vae_bf16.safetensors",
+        "device": "auto",
+        "dtype": "default",
+        "clip_name_1": "qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors"
+      }
+    },
+    {
+      "id": 4,
+      "type": "PreviewImage",
+      "title": "🖼 🎨 角色设计参考图",
+      "pos": [
+        680,
+        770
+      ],
+      "size": [
+        480,
+        580
+      ],
+      "flags": {},
+      "order": 20,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 2
+        }
+      ],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": []
+    },
+    {
+      "id": 5,
+      "type": "bc1c967a-7f6a-4be9-a372-dad16e4f28e3",
+      "pos": [
+        1240,
+        50
+      ],
+      "size": [
+        420,
+        760
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "positive_prompt",
+          "name": "prompt",
+          "type": "STRING",
+          "widget": {
+            "name": "prompt"
+          },
+          "link": null
+        },
+        {
+          "label": "refine_prompt",
+          "name": "switch_1",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "switch_1"
+          },
+          "link": null
+        },
+        {
+          "label": "custom_size",
+          "name": "switch",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "switch"
+          },
+          "link": null
+        },
+        {
+          "label": "sampler",
+          "name": "scheduler",
+          "type": "COMBO",
+          "widget": {
+            "name": "scheduler"
+          },
+          "link": null
+        },
+        {
+          "label": "cache_device",
+          "name": "device",
+          "type": "COMBO",
+          "widget": {
+            "name": "device"
+          },
+          "link": null
+        },
+        {
+          "label": "dtype",
+          "name": "dtype",
+          "type": "COMBO",
+          "widget": {
+            "name": "dtype"
+          },
+          "link": null
+        },
+        {
+          "label": "PE_model",
+          "name": "clip_name_1",
+          "type": "COMBO",
+          "widget": {
+            "name": "clip_name_1"
+          },
+          "link": null
+        },
+        {
+          "label": "image_1",
+          "name": "images.image_1",
+          "type": "IMAGE",
+          "link": 3
+        },
+        {
+          "label": "image_2",
+          "name": "images.image_2",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_3",
+          "name": "images.image_3",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_4",
+          "name": "images.image_4",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_5",
+          "name": "images.image_5_1",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_6",
+          "name": "images.image_6",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_7",
+          "name": "images.image_7",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_8",
+          "name": "images.image_8",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_9",
+          "name": "images.image_9",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_10",
+          "name": "images.image_10",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            4
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.44.0",
+        "previewExposures": []
+      },
+      "widgets_values": [
+        0,
+        "[Image_1] Full body shot, FRONT VIEW, standing straight, arms relaxed at sides. A 50-year-old chubby Asian man with shoulder-length wavy silver-grey hair, handlebar mustache and goatee. Wearing white T-shirt, beige shorts with gold double-G pattern, thick gold chain necklace, brown wooden bead bracelets, brown sandals. White background. 3D cartoon Pixar animation style, vibrant colors, 8k, highly detailed.",
+        false,
+        false,
+        4096,
+        "photorealistic, real person, ugly, deformed, noisy, blurry, distorted, bad anatomy, bad hands, missing fingers, extra fingers, text, watermark, logo, signature, low resolution, dark, gloomy, 2d, sketch, anime.",
+        1,
+        false,
+        1024,
+        1024,
+        "euler",
+        1042,
+        "qwen_image_2.1_turbo_int8_convrot.safetensors",
+        "qwen3vl_8b_int8_convrot.safetensors",
+        "qwen_image_2.1_vae_bf16.safetensors",
+        "auto",
+        "default",
+        "qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors"
+      ],
+      "widgets_values_named": {
+        "resolution": 0,
+        "prompt": "[Image_1] Full body shot, FRONT VIEW, standing straight, arms relaxed at sides. A 50-year-old chubby Asian man with shoulder-length wavy silver-grey hair, handlebar mustache and goatee. Wearing white T-shirt, beige shorts with gold double-G pattern, thick gold chain necklace, brown wooden bead bracelets, brown sandals. White background. 3D cartoon Pixar animation style, vibrant colors, 8k, highly detailed.",
+        "switch_1": false,
+        "thinking": false,
+        "max_length": 4096,
+        "negative_prompt": "photorealistic, real person, ugly, deformed, noisy, blurry, distorted, bad anatomy, bad hands, missing fingers, extra fingers, text, watermark, logo, signature, low resolution, dark, gloomy, 2d, sketch, anime.",
+        "cfg": 1,
+        "switch": false,
+        "width": 1024,
+        "height": 1024,
+        "scheduler": "euler",
+        "seed": 891836227295375,
+        "unet_name": "qwen_image_2.1_turbo_int8_convrot.safetensors",
+        "clip_name": "qwen3vl_8b_int8_convrot.safetensors",
+        "vae_name": "qwen_image_2.1_vae_bf16.safetensors",
+        "device": "auto",
+        "dtype": "default",
+        "clip_name_1": "qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors"
+      }
+    },
+    {
+      "id": 6,
+      "type": "PreviewImage",
+      "title": "🖼 正面全身",
+      "pos": [
+        1240,
+        770
+      ],
+      "size": [
+        480,
+        580
+      ],
+      "flags": {},
+      "order": 21,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 4
+        }
+      ],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": []
+    },
+    {
+      "id": 7,
+      "type": "bc1c967a-7f6a-4be9-a372-dad16e4f28e3",
+      "pos": [
+        1800,
+        50
+      ],
+      "size": [
+        420,
+        760
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "positive_prompt",
+          "name": "prompt",
+          "type": "STRING",
+          "widget": {
+            "name": "prompt"
+          },
+          "link": null
+        },
+        {
+          "label": "refine_prompt",
+          "name": "switch_1",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "switch_1"
+          },
+          "link": null
+        },
+        {
+          "label": "custom_size",
+          "name": "switch",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "switch"
+          },
+          "link": null
+        },
+        {
+          "label": "sampler",
+          "name": "scheduler",
+          "type": "COMBO",
+          "widget": {
+            "name": "scheduler"
+          },
+          "link": null
+        },
+        {
+          "label": "cache_device",
+          "name": "device",
+          "type": "COMBO",
+          "widget": {
+            "name": "device"
+          },
+          "link": null
+        },
+        {
+          "label": "dtype",
+          "name": "dtype",
+          "type": "COMBO",
+          "widget": {
+            "name": "dtype"
+          },
+          "link": null
+        },
+        {
+          "label": "PE_model",
+          "name": "clip_name_1",
+          "type": "COMBO",
+          "widget": {
+            "name": "clip_name_1"
+          },
+          "link": null
+        },
+        {
+          "label": "image_1",
+          "name": "images.image_1",
+          "type": "IMAGE",
+          "link": 5
+        },
+        {
+          "label": "image_2",
+          "name": "images.image_2",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_3",
+          "name": "images.image_3",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_4",
+          "name": "images.image_4",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_5",
+          "name": "images.image_5_1",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_6",
+          "name": "images.image_6",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_7",
+          "name": "images.image_7",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_8",
+          "name": "images.image_8",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_9",
+          "name": "images.image_9",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_10",
+          "name": "images.image_10",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            6
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.44.0",
+        "previewExposures": []
+      },
+      "widgets_values": [
+        0,
+        "[Image_1] Full body shot, SIDE PROFILE VIEW, 90 degrees, standing, facing right. A 50-year-old chubby Asian man with shoulder-length wavy silver-grey hair, handlebar mustache and goatee. Wearing white T-shirt, beige shorts with gold double-G pattern, thick gold chain necklace, brown wooden bead bracelets, brown sandals. White background. 3D cartoon Pixar animation style, vibrant colors, 8k, highly detailed.",
+        false,
+        false,
+        4096,
+        "photorealistic, real person, ugly, deformed, noisy, blurry, distorted, bad anatomy, bad hands, missing fingers, extra fingers, text, watermark, logo, signature, low resolution, dark, gloomy, 2d, sketch, anime.",
+        1,
+        false,
+        1024,
+        1024,
+        "euler",
+        2042,
+        "qwen_image_2.1_turbo_int8_convrot.safetensors",
+        "qwen3vl_8b_int8_convrot.safetensors",
+        "qwen_image_2.1_vae_bf16.safetensors",
+        "auto",
+        "default",
+        "qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors"
+      ],
+      "widgets_values_named": {
+        "resolution": 0,
+        "prompt": "[Image_1] Full body shot, SIDE PROFILE VIEW, 90 degrees, standing, facing right. A 50-year-old chubby Asian man with shoulder-length wavy silver-grey hair, handlebar mustache and goatee. Wearing white T-shirt, beige shorts with gold double-G pattern, thick gold chain necklace, brown wooden bead bracelets, brown sandals. White background. 3D cartoon Pixar animation style, vibrant colors, 8k, highly detailed.",
+        "switch_1": false,
+        "thinking": false,
+        "max_length": 4096,
+        "negative_prompt": "photorealistic, real person, ugly, deformed, noisy, blurry, distorted, bad anatomy, bad hands, missing fingers, extra fingers, text, watermark, logo, signature, low resolution, dark, gloomy, 2d, sketch, anime.",
+        "cfg": 1,
+        "switch": false,
+        "width": 1024,
+        "height": 1024,
+        "scheduler": "euler",
+        "seed": 891836227295375,
+        "unet_name": "qwen_image_2.1_turbo_int8_convrot.safetensors",
+        "clip_name": "qwen3vl_8b_int8_convrot.safetensors",
+        "vae_name": "qwen_image_2.1_vae_bf16.safetensors",
+        "device": "auto",
+        "dtype": "default",
+        "clip_name_1": "qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors"
+      }
+    },
+    {
+      "id": 8,
+      "type": "PreviewImage",
+      "title": "🖼 侧面全身",
+      "pos": [
+        1800,
+        770
+      ],
+      "size": [
+        480,
+        580
+      ],
+      "flags": {},
+      "order": 22,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 6
+        }
+      ],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": []
+    },
+    {
+      "id": 9,
+      "type": "bc1c967a-7f6a-4be9-a372-dad16e4f28e3",
+      "pos": [
+        680,
+        1170
+      ],
+      "size": [
+        420,
+        760
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "positive_prompt",
+          "name": "prompt",
+          "type": "STRING",
+          "widget": {
+            "name": "prompt"
+          },
+          "link": null
+        },
+        {
+          "label": "refine_prompt",
+          "name": "switch_1",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "switch_1"
+          },
+          "link": null
+        },
+        {
+          "label": "custom_size",
+          "name": "switch",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "switch"
+          },
+          "link": null
+        },
+        {
+          "label": "sampler",
+          "name": "scheduler",
+          "type": "COMBO",
+          "widget": {
+            "name": "scheduler"
+          },
+          "link": null
+        },
+        {
+          "label": "cache_device",
+          "name": "device",
+          "type": "COMBO",
+          "widget": {
+            "name": "device"
+          },
+          "link": null
+        },
+        {
+          "label": "dtype",
+          "name": "dtype",
+          "type": "COMBO",
+          "widget": {
+            "name": "dtype"
+          },
+          "link": null
+        },
+        {
+          "label": "PE_model",
+          "name": "clip_name_1",
+          "type": "COMBO",
+          "widget": {
+            "name": "clip_name_1"
+          },
+          "link": null
+        },
+        {
+          "label": "image_1",
+          "name": "images.image_1",
+          "type": "IMAGE",
+          "link": 7
+        },
+        {
+          "label": "image_2",
+          "name": "images.image_2",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_3",
+          "name": "images.image_3",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_4",
+          "name": "images.image_4",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_5",
+          "name": "images.image_5_1",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_6",
+          "name": "images.image_6",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_7",
+          "name": "images.image_7",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_8",
+          "name": "images.image_8",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_9",
+          "name": "images.image_9",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_10",
+          "name": "images.image_10",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            8
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.44.0",
+        "previewExposures": []
+      },
+      "widgets_values": [
+        0,
+        "[Image_1] FACE CLOSE-UP portrait, head and shoulders. Neutral calm expression, looking directly at camera. A 50-year-old chubby Asian man with shoulder-length wavy silver-grey hair, handlebar mustache and goatee. Wearing white T-shirt, beige shorts with gold double-G pattern, thick gold chain necklace, brown wooden bead bracelets, brown sandals. Blue sky soft background. 3D cartoon Pixar animation style, vibrant colors, 8k, highly detailed.",
+        false,
+        false,
+        4096,
+        "photorealistic, real person, ugly, deformed, noisy, blurry, distorted, bad anatomy, bad hands, missing fingers, extra fingers, text, watermark, logo, signature, low resolution, dark, gloomy, 2d, sketch, anime.",
+        1,
+        false,
+        1024,
+        1024,
+        "euler",
+        3042,
+        "qwen_image_2.1_turbo_int8_convrot.safetensors",
+        "qwen3vl_8b_int8_convrot.safetensors",
+        "qwen_image_2.1_vae_bf16.safetensors",
+        "auto",
+        "default",
+        "qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors"
+      ],
+      "widgets_values_named": {
+        "resolution": 0,
+        "prompt": "[Image_1] FACE CLOSE-UP portrait, head and shoulders. Neutral calm expression, looking directly at camera. A 50-year-old chubby Asian man with shoulder-length wavy silver-grey hair, handlebar mustache and goatee. Wearing white T-shirt, beige shorts with gold double-G pattern, thick gold chain necklace, brown wooden bead bracelets, brown sandals. Blue sky soft background. 3D cartoon Pixar animation style, vibrant colors, 8k, highly detailed.",
+        "switch_1": false,
+        "thinking": false,
+        "max_length": 4096,
+        "negative_prompt": "photorealistic, real person, ugly, deformed, noisy, blurry, distorted, bad anatomy, bad hands, missing fingers, extra fingers, text, watermark, logo, signature, low resolution, dark, gloomy, 2d, sketch, anime.",
+        "cfg": 1,
+        "switch": false,
+        "width": 1024,
+        "height": 1024,
+        "scheduler": "euler",
+        "seed": 891836227295375,
+        "unet_name": "qwen_image_2.1_turbo_int8_convrot.safetensors",
+        "clip_name": "qwen3vl_8b_int8_convrot.safetensors",
+        "vae_name": "qwen_image_2.1_vae_bf16.safetensors",
+        "device": "auto",
+        "dtype": "default",
+        "clip_name_1": "qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors"
+      }
+    },
+    {
+      "id": 10,
+      "type": "PreviewImage",
+      "title": "🖼 面部·中性",
+      "pos": [
+        680,
+        1890
+      ],
+      "size": [
+        480,
+        580
+      ],
+      "flags": {},
+      "order": 23,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 8
+        }
+      ],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": []
+    },
+    {
+      "id": 11,
+      "type": "bc1c967a-7f6a-4be9-a372-dad16e4f28e3",
+      "pos": [
+        1240,
+        1170
+      ],
+      "size": [
+        420,
+        760
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "positive_prompt",
+          "name": "prompt",
+          "type": "STRING",
+          "widget": {
+            "name": "prompt"
+          },
+          "link": null
+        },
+        {
+          "label": "refine_prompt",
+          "name": "switch_1",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "switch_1"
+          },
+          "link": null
+        },
+        {
+          "label": "custom_size",
+          "name": "switch",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "switch"
+          },
+          "link": null
+        },
+        {
+          "label": "sampler",
+          "name": "scheduler",
+          "type": "COMBO",
+          "widget": {
+            "name": "scheduler"
+          },
+          "link": null
+        },
+        {
+          "label": "cache_device",
+          "name": "device",
+          "type": "COMBO",
+          "widget": {
+            "name": "device"
+          },
+          "link": null
+        },
+        {
+          "label": "dtype",
+          "name": "dtype",
+          "type": "COMBO",
+          "widget": {
+            "name": "dtype"
+          },
+          "link": null
+        },
+        {
+          "label": "PE_model",
+          "name": "clip_name_1",
+          "type": "COMBO",
+          "widget": {
+            "name": "clip_name_1"
+          },
+          "link": null
+        },
+        {
+          "label": "image_1",
+          "name": "images.image_1",
+          "type": "IMAGE",
+          "link": 9
+        },
+        {
+          "label": "image_2",
+          "name": "images.image_2",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_3",
+          "name": "images.image_3",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_4",
+          "name": "images.image_4",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_5",
+          "name": "images.image_5_1",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_6",
+          "name": "images.image_6",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_7",
+          "name": "images.image_7",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_8",
+          "name": "images.image_8",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_9",
+          "name": "images.image_9",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_10",
+          "name": "images.image_10",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            10
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.44.0",
+        "previewExposures": []
+      },
+      "widgets_values": [
+        0,
+        "[Image_1] FACE CLOSE-UP portrait, head and shoulders. Big warm happy smile, eyes crinkling with joy, teeth showing. A 50-year-old chubby Asian man with shoulder-length wavy silver-grey hair, handlebar mustache and goatee. Wearing white T-shirt, beige shorts with gold double-G pattern, thick gold chain necklace, brown wooden bead bracelets, brown sandals. Blue sky soft background. 3D cartoon Pixar animation style, vibrant colors, 8k, highly detailed.",
+        false,
+        false,
+        4096,
+        "photorealistic, real person, ugly, deformed, noisy, blurry, distorted, bad anatomy, bad hands, missing fingers, extra fingers, text, watermark, logo, signature, low resolution, dark, gloomy, 2d, sketch, anime.",
+        1,
+        false,
+        1024,
+        1024,
+        "euler",
+        4042,
+        "qwen_image_2.1_turbo_int8_convrot.safetensors",
+        "qwen3vl_8b_int8_convrot.safetensors",
+        "qwen_image_2.1_vae_bf16.safetensors",
+        "auto",
+        "default",
+        "qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors"
+      ],
+      "widgets_values_named": {
+        "resolution": 0,
+        "prompt": "[Image_1] FACE CLOSE-UP portrait, head and shoulders. Big warm happy smile, eyes crinkling with joy, teeth showing. A 50-year-old chubby Asian man with shoulder-length wavy silver-grey hair, handlebar mustache and goatee. Wearing white T-shirt, beige shorts with gold double-G pattern, thick gold chain necklace, brown wooden bead bracelets, brown sandals. Blue sky soft background. 3D cartoon Pixar animation style, vibrant colors, 8k, highly detailed.",
+        "switch_1": false,
+        "thinking": false,
+        "max_length": 4096,
+        "negative_prompt": "photorealistic, real person, ugly, deformed, noisy, blurry, distorted, bad anatomy, bad hands, missing fingers, extra fingers, text, watermark, logo, signature, low resolution, dark, gloomy, 2d, sketch, anime.",
+        "cfg": 1,
+        "switch": false,
+        "width": 1024,
+        "height": 1024,
+        "scheduler": "euler",
+        "seed": 891836227295375,
+        "unet_name": "qwen_image_2.1_turbo_int8_convrot.safetensors",
+        "clip_name": "qwen3vl_8b_int8_convrot.safetensors",
+        "vae_name": "qwen_image_2.1_vae_bf16.safetensors",
+        "device": "auto",
+        "dtype": "default",
+        "clip_name_1": "qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors"
+      }
+    },
+    {
+      "id": 12,
+      "type": "PreviewImage",
+      "title": "🖼 面部·微笑",
+      "pos": [
+        1240,
+        1890
+      ],
+      "size": [
+        480,
+        580
+      ],
+      "flags": {},
+      "order": 24,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 10
+        }
+      ],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": []
+    },
+    {
+      "id": 13,
+      "type": "bc1c967a-7f6a-4be9-a372-dad16e4f28e3",
+      "pos": [
+        1800,
+        1170
+      ],
+      "size": [
+        420,
+        760
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "positive_prompt",
+          "name": "prompt",
+          "type": "STRING",
+          "widget": {
+            "name": "prompt"
+          },
+          "link": null
+        },
+        {
+          "label": "refine_prompt",
+          "name": "switch_1",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "switch_1"
+          },
+          "link": null
+        },
+        {
+          "label": "custom_size",
+          "name": "switch",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "switch"
+          },
+          "link": null
+        },
+        {
+          "label": "sampler",
+          "name": "scheduler",
+          "type": "COMBO",
+          "widget": {
+            "name": "scheduler"
+          },
+          "link": null
+        },
+        {
+          "label": "cache_device",
+          "name": "device",
+          "type": "COMBO",
+          "widget": {
+            "name": "device"
+          },
+          "link": null
+        },
+        {
+          "label": "dtype",
+          "name": "dtype",
+          "type": "COMBO",
+          "widget": {
+            "name": "dtype"
+          },
+          "link": null
+        },
+        {
+          "label": "PE_model",
+          "name": "clip_name_1",
+          "type": "COMBO",
+          "widget": {
+            "name": "clip_name_1"
+          },
+          "link": null
+        },
+        {
+          "label": "image_1",
+          "name": "images.image_1",
+          "type": "IMAGE",
+          "link": 11
+        },
+        {
+          "label": "image_2",
+          "name": "images.image_2",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_3",
+          "name": "images.image_3",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_4",
+          "name": "images.image_4",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_5",
+          "name": "images.image_5_1",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_6",
+          "name": "images.image_6",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_7",
+          "name": "images.image_7",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_8",
+          "name": "images.image_8",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_9",
+          "name": "images.image_9",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_10",
+          "name": "images.image_10",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            12
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.44.0",
+        "previewExposures": []
+      },
+      "widgets_values": [
+        0,
+        "[Image_1] FACE CLOSE-UP portrait, head and shoulders. Serious sharp authoritative expression, eyebrows slightly furrowed. A 50-year-old chubby Asian man with shoulder-length wavy silver-grey hair, handlebar mustache and goatee. Wearing white T-shirt, beige shorts with gold double-G pattern, thick gold chain necklace, brown wooden bead bracelets, brown sandals. Blue sky soft background. 3D cartoon Pixar animation style, vibrant colors, 8k, highly detailed.",
+        false,
+        false,
+        4096,
+        "photorealistic, real person, ugly, deformed, noisy, blurry, distorted, bad anatomy, bad hands, missing fingers, extra fingers, text, watermark, logo, signature, low resolution, dark, gloomy, 2d, sketch, anime.",
+        1,
+        false,
+        1024,
+        1024,
+        "euler",
+        5042,
+        "qwen_image_2.1_turbo_int8_convrot.safetensors",
+        "qwen3vl_8b_int8_convrot.safetensors",
+        "qwen_image_2.1_vae_bf16.safetensors",
+        "auto",
+        "default",
+        "qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors"
+      ],
+      "widgets_values_named": {
+        "resolution": 0,
+        "prompt": "[Image_1] FACE CLOSE-UP portrait, head and shoulders. Serious sharp authoritative expression, eyebrows slightly furrowed. A 50-year-old chubby Asian man with shoulder-length wavy silver-grey hair, handlebar mustache and goatee. Wearing white T-shirt, beige shorts with gold double-G pattern, thick gold chain necklace, brown wooden bead bracelets, brown sandals. Blue sky soft background. 3D cartoon Pixar animation style, vibrant colors, 8k, highly detailed.",
+        "switch_1": false,
+        "thinking": false,
+        "max_length": 4096,
+        "negative_prompt": "photorealistic, real person, ugly, deformed, noisy, blurry, distorted, bad anatomy, bad hands, missing fingers, extra fingers, text, watermark, logo, signature, low resolution, dark, gloomy, 2d, sketch, anime.",
+        "cfg": 1,
+        "switch": false,
+        "width": 1024,
+        "height": 1024,
+        "scheduler": "euler",
+        "seed": 891836227295375,
+        "unet_name": "qwen_image_2.1_turbo_int8_convrot.safetensors",
+        "clip_name": "qwen3vl_8b_int8_convrot.safetensors",
+        "vae_name": "qwen_image_2.1_vae_bf16.safetensors",
+        "device": "auto",
+        "dtype": "default",
+        "clip_name_1": "qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors"
+      }
+    },
+    {
+      "id": 14,
+      "type": "PreviewImage",
+      "title": "🖼 面部·严肃",
+      "pos": [
+        1800,
+        1890
+      ],
+      "size": [
+        480,
+        580
+      ],
+      "flags": {},
+      "order": 25,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 12
+        }
+      ],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": []
+    },
+    {
+      "id": 15,
+      "type": "bc1c967a-7f6a-4be9-a372-dad16e4f28e3",
+      "pos": [
+        680,
+        2290
+      ],
+      "size": [
+        420,
+        760
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "positive_prompt",
+          "name": "prompt",
+          "type": "STRING",
+          "widget": {
+            "name": "prompt"
+          },
+          "link": null
+        },
+        {
+          "label": "refine_prompt",
+          "name": "switch_1",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "switch_1"
+          },
+          "link": null
+        },
+        {
+          "label": "custom_size",
+          "name": "switch",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "switch"
+          },
+          "link": null
+        },
+        {
+          "label": "sampler",
+          "name": "scheduler",
+          "type": "COMBO",
+          "widget": {
+            "name": "scheduler"
+          },
+          "link": null
+        },
+        {
+          "label": "cache_device",
+          "name": "device",
+          "type": "COMBO",
+          "widget": {
+            "name": "device"
+          },
+          "link": null
+        },
+        {
+          "label": "dtype",
+          "name": "dtype",
+          "type": "COMBO",
+          "widget": {
+            "name": "dtype"
+          },
+          "link": null
+        },
+        {
+          "label": "PE_model",
+          "name": "clip_name_1",
+          "type": "COMBO",
+          "widget": {
+            "name": "clip_name_1"
+          },
+          "link": null
+        },
+        {
+          "label": "image_1",
+          "name": "images.image_1",
+          "type": "IMAGE",
+          "link": 13
+        },
+        {
+          "label": "image_2",
+          "name": "images.image_2",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_3",
+          "name": "images.image_3",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_4",
+          "name": "images.image_4",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_5",
+          "name": "images.image_5_1",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_6",
+          "name": "images.image_6",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_7",
+          "name": "images.image_7",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_8",
+          "name": "images.image_8",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_9",
+          "name": "images.image_9",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_10",
+          "name": "images.image_10",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            14
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.44.0",
+        "previewExposures": []
+      },
+      "widgets_values": [
+        0,
+        "[Image_1] MEDIUM SHOT. Sitting comfortably on wooden chair on sunny beach terrace, holding a glass of tea, blowing on it gently. A 50-year-old chubby Asian man with shoulder-length wavy silver-grey hair, handlebar mustache and goatee. Wearing white T-shirt, beige shorts with gold double-G pattern, thick gold chain necklace, brown wooden bead bracelets, brown sandals. Palm trees and ocean in background. 3D cartoon Pixar animation style, vibrant colors, 8k, highly detailed.",
+        false,
+        false,
+        4096,
+        "photorealistic, real person, ugly, deformed, noisy, blurry, distorted, bad anatomy, bad hands, missing fingers, extra fingers, text, watermark, logo, signature, low resolution, dark, gloomy, 2d, sketch, anime.",
+        1,
+        false,
+        1024,
+        1024,
+        "euler",
+        6042,
+        "qwen_image_2.1_turbo_int8_convrot.safetensors",
+        "qwen3vl_8b_int8_convrot.safetensors",
+        "qwen_image_2.1_vae_bf16.safetensors",
+        "auto",
+        "default",
+        "qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors"
+      ],
+      "widgets_values_named": {
+        "resolution": 0,
+        "prompt": "[Image_1] MEDIUM SHOT. Sitting comfortably on wooden chair on sunny beach terrace, holding a glass of tea, blowing on it gently. A 50-year-old chubby Asian man with shoulder-length wavy silver-grey hair, handlebar mustache and goatee. Wearing white T-shirt, beige shorts with gold double-G pattern, thick gold chain necklace, brown wooden bead bracelets, brown sandals. Palm trees and ocean in background. 3D cartoon Pixar animation style, vibrant colors, 8k, highly detailed.",
+        "switch_1": false,
+        "thinking": false,
+        "max_length": 4096,
+        "negative_prompt": "photorealistic, real person, ugly, deformed, noisy, blurry, distorted, bad anatomy, bad hands, missing fingers, extra fingers, text, watermark, logo, signature, low resolution, dark, gloomy, 2d, sketch, anime.",
+        "cfg": 1,
+        "switch": false,
+        "width": 1024,
+        "height": 1024,
+        "scheduler": "euler",
+        "seed": 891836227295375,
+        "unet_name": "qwen_image_2.1_turbo_int8_convrot.safetensors",
+        "clip_name": "qwen3vl_8b_int8_convrot.safetensors",
+        "vae_name": "qwen_image_2.1_vae_bf16.safetensors",
+        "device": "auto",
+        "dtype": "default",
+        "clip_name_1": "qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors"
+      }
+    },
+    {
+      "id": 16,
+      "type": "PreviewImage",
+      "title": "🖼 场景·喝茶",
+      "pos": [
+        680,
+        3010
+      ],
+      "size": [
+        480,
+        580
+      ],
+      "flags": {},
+      "order": 26,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 14
+        }
+      ],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": []
+    },
+    {
+      "id": 17,
+      "type": "bc1c967a-7f6a-4be9-a372-dad16e4f28e3",
+      "pos": [
+        1240,
+        2290
+      ],
+      "size": [
+        420,
+        760
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "positive_prompt",
+          "name": "prompt",
+          "type": "STRING",
+          "widget": {
+            "name": "prompt"
+          },
+          "link": null
+        },
+        {
+          "label": "refine_prompt",
+          "name": "switch_1",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "switch_1"
+          },
+          "link": null
+        },
+        {
+          "label": "custom_size",
+          "name": "switch",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "switch"
+          },
+          "link": null
+        },
+        {
+          "label": "sampler",
+          "name": "scheduler",
+          "type": "COMBO",
+          "widget": {
+            "name": "scheduler"
+          },
+          "link": null
+        },
+        {
+          "label": "cache_device",
+          "name": "device",
+          "type": "COMBO",
+          "widget": {
+            "name": "device"
+          },
+          "link": null
+        },
+        {
+          "label": "dtype",
+          "name": "dtype",
+          "type": "COMBO",
+          "widget": {
+            "name": "dtype"
+          },
+          "link": null
+        },
+        {
+          "label": "PE_model",
+          "name": "clip_name_1",
+          "type": "COMBO",
+          "widget": {
+            "name": "clip_name_1"
+          },
+          "link": null
+        },
+        {
+          "label": "image_1",
+          "name": "images.image_1",
+          "type": "IMAGE",
+          "link": 15
+        },
+        {
+          "label": "image_2",
+          "name": "images.image_2",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_3",
+          "name": "images.image_3",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_4",
+          "name": "images.image_4",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_5",
+          "name": "images.image_5_1",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_6",
+          "name": "images.image_6",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_7",
+          "name": "images.image_7",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_8",
+          "name": "images.image_8",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_9",
+          "name": "images.image_9",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_10",
+          "name": "images.image_10",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            16
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.44.0",
+        "previewExposures": []
+      },
+      "widgets_values": [
+        0,
+        "[Image_1] MEDIUM SHOT, upper body. Sitting at table, raising right hand, pointing index finger forward assertively. A 50-year-old chubby Asian man with shoulder-length wavy silver-grey hair, handlebar mustache and goatee. Wearing white T-shirt, beige shorts with gold double-G pattern, thick gold chain necklace, brown wooden bead bracelets, brown sandals. Beach background. 3D cartoon Pixar animation style, vibrant colors, 8k, highly detailed.",
+        false,
+        false,
+        4096,
+        "photorealistic, real person, ugly, deformed, noisy, blurry, distorted, bad anatomy, bad hands, missing fingers, extra fingers, text, watermark, logo, signature, low resolution, dark, gloomy, 2d, sketch, anime.",
+        1,
+        false,
+        1024,
+        1024,
+        "euler",
+        7042,
+        "qwen_image_2.1_turbo_int8_convrot.safetensors",
+        "qwen3vl_8b_int8_convrot.safetensors",
+        "qwen_image_2.1_vae_bf16.safetensors",
+        "auto",
+        "default",
+        "qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors"
+      ],
+      "widgets_values_named": {
+        "resolution": 0,
+        "prompt": "[Image_1] MEDIUM SHOT, upper body. Sitting at table, raising right hand, pointing index finger forward assertively. A 50-year-old chubby Asian man with shoulder-length wavy silver-grey hair, handlebar mustache and goatee. Wearing white T-shirt, beige shorts with gold double-G pattern, thick gold chain necklace, brown wooden bead bracelets, brown sandals. Beach background. 3D cartoon Pixar animation style, vibrant colors, 8k, highly detailed.",
+        "switch_1": false,
+        "thinking": false,
+        "max_length": 4096,
+        "negative_prompt": "photorealistic, real person, ugly, deformed, noisy, blurry, distorted, bad anatomy, bad hands, missing fingers, extra fingers, text, watermark, logo, signature, low resolution, dark, gloomy, 2d, sketch, anime.",
+        "cfg": 1,
+        "switch": false,
+        "width": 1024,
+        "height": 1024,
+        "scheduler": "euler",
+        "seed": 891836227295375,
+        "unet_name": "qwen_image_2.1_turbo_int8_convrot.safetensors",
+        "clip_name": "qwen3vl_8b_int8_convrot.safetensors",
+        "vae_name": "qwen_image_2.1_vae_bf16.safetensors",
+        "device": "auto",
+        "dtype": "default",
+        "clip_name_1": "qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors"
+      }
+    },
+    {
+      "id": 18,
+      "type": "PreviewImage",
+      "title": "🖼 场景·指向",
+      "pos": [
+        1240,
+        3010
+      ],
+      "size": [
+        480,
+        580
+      ],
+      "flags": {},
+      "order": 27,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 16
+        }
+      ],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": []
+    },
+    {
+      "id": 19,
+      "type": "bc1c967a-7f6a-4be9-a372-dad16e4f28e3",
+      "pos": [
+        1800,
+        2290
+      ],
+      "size": [
+        420,
+        760
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "positive_prompt",
+          "name": "prompt",
+          "type": "STRING",
+          "widget": {
+            "name": "prompt"
+          },
+          "link": null
+        },
+        {
+          "label": "refine_prompt",
+          "name": "switch_1",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "switch_1"
+          },
+          "link": null
+        },
+        {
+          "label": "custom_size",
+          "name": "switch",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "switch"
+          },
+          "link": null
+        },
+        {
+          "label": "sampler",
+          "name": "scheduler",
+          "type": "COMBO",
+          "widget": {
+            "name": "scheduler"
+          },
+          "link": null
+        },
+        {
+          "label": "cache_device",
+          "name": "device",
+          "type": "COMBO",
+          "widget": {
+            "name": "device"
+          },
+          "link": null
+        },
+        {
+          "label": "dtype",
+          "name": "dtype",
+          "type": "COMBO",
+          "widget": {
+            "name": "dtype"
+          },
+          "link": null
+        },
+        {
+          "label": "PE_model",
+          "name": "clip_name_1",
+          "type": "COMBO",
+          "widget": {
+            "name": "clip_name_1"
+          },
+          "link": null
+        },
+        {
+          "label": "image_1",
+          "name": "images.image_1",
+          "type": "IMAGE",
+          "link": 17
+        },
+        {
+          "label": "image_2",
+          "name": "images.image_2",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_3",
+          "name": "images.image_3",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_4",
+          "name": "images.image_4",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_5",
+          "name": "images.image_5_1",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_6",
+          "name": "images.image_6",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_7",
+          "name": "images.image_7",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_8",
+          "name": "images.image_8",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_9",
+          "name": "images.image_9",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "image_10",
+          "name": "images.image_10",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            18
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.44.0",
+        "previewExposures": []
+      },
+      "widgets_values": [
+        0,
+        "[Image_1] MEDIUM SHOT. Sitting at wooden table on beach, arms crossed over chest, leaning back confidently, smiling wisely. A 50-year-old chubby Asian man with shoulder-length wavy silver-grey hair, handlebar mustache and goatee. Wearing white T-shirt, beige shorts with gold double-G pattern, thick gold chain necklace, brown wooden bead bracelets, brown sandals. Sunny beach background. 3D cartoon Pixar animation style, vibrant colors, 8k, highly detailed.",
+        false,
+        false,
+        4096,
+        "photorealistic, real person, ugly, deformed, noisy, blurry, distorted, bad anatomy, bad hands, missing fingers, extra fingers, text, watermark, logo, signature, low resolution, dark, gloomy, 2d, sketch, anime.",
+        1,
+        false,
+        1024,
+        1024,
+        "euler",
+        8042,
+        "qwen_image_2.1_turbo_int8_convrot.safetensors",
+        "qwen3vl_8b_int8_convrot.safetensors",
+        "qwen_image_2.1_vae_bf16.safetensors",
+        "auto",
+        "default",
+        "qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors"
+      ],
+      "widgets_values_named": {
+        "resolution": 0,
+        "prompt": "[Image_1] MEDIUM SHOT. Sitting at wooden table on beach, arms crossed over chest, leaning back confidently, smiling wisely. A 50-year-old chubby Asian man with shoulder-length wavy silver-grey hair, handlebar mustache and goatee. Wearing white T-shirt, beige shorts with gold double-G pattern, thick gold chain necklace, brown wooden bead bracelets, brown sandals. Sunny beach background. 3D cartoon Pixar animation style, vibrant colors, 8k, highly detailed.",
+        "switch_1": false,
+        "thinking": false,
+        "max_length": 4096,
+        "negative_prompt": "photorealistic, real person, ugly, deformed, noisy, blurry, distorted, bad anatomy, bad hands, missing fingers, extra fingers, text, watermark, logo, signature, low resolution, dark, gloomy, 2d, sketch, anime.",
+        "cfg": 1,
+        "switch": false,
+        "width": 1024,
+        "height": 1024,
+        "scheduler": "euler",
+        "seed": 891836227295375,
+        "unet_name": "qwen_image_2.1_turbo_int8_convrot.safetensors",
+        "clip_name": "qwen3vl_8b_int8_convrot.safetensors",
+        "vae_name": "qwen_image_2.1_vae_bf16.safetensors",
+        "device": "auto",
+        "dtype": "default",
+        "clip_name_1": "qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors"
+      }
+    },
+    {
+      "id": 20,
+      "type": "PreviewImage",
+      "title": "🖼 场景·自信坐",
+      "pos": [
+        1800,
+        3010
+      ],
+      "size": [
+        480,
+        580
+      ],
+      "flags": {},
+      "order": 28,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 18
+        }
+      ],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": []
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      3,
+      7,
+      "IMAGE"
+    ],
+    [
+      2,
+      3,
+      0,
+      4,
+      0,
+      "IMAGE"
+    ],
+    [
+      3,
+      1,
+      0,
+      5,
+      7,
+      "IMAGE"
+    ],
+    [
+      4,
+      5,
+      0,
+      6,
+      0,
+      "IMAGE"
+    ],
+    [
+      5,
+      1,
+      0,
+      7,
+      7,
+      "IMAGE"
+    ],
+    [
+      6,
+      7,
+      0,
+      8,
+      0,
+      "IMAGE"
+    ],
+    [
+      7,
+      1,
+      0,
+      9,
+      7,
+      "IMAGE"
+    ],
+    [
+      8,
+      9,
+      0,
+      10,
+      0,
+      "IMAGE"
+    ],
+    [
+      9,
+      1,
+      0,
+      11,
+      7,
+      "IMAGE"
+    ],
+    [
+      10,
+      11,
+      0,
+      12,
+      0,
+      "IMAGE"
+    ],
+    [
+      11,
+      1,
+      0,
+      13,
+      7,
+      "IMAGE"
+    ],
+    [
+      12,
+      13,
+      0,
+      14,
+      0,
+      "IMAGE"
+    ],
+    [
+      13,
+      1,
+      0,
+      15,
+      7,
+      "IMAGE"
+    ],
+    [
+      14,
+      15,
+      0,
+      16,
+      0,
+      "IMAGE"
+    ],
+    [
+      15,
+      1,
+      0,
+      17,
+      7,
+      "IMAGE"
+    ],
+    [
+      16,
+      17,
+      0,
+      18,
+      0,
+      "IMAGE"
+    ],
+    [
+      17,
+      1,
+      0,
+      19,
+      7,
+      "IMAGE"
+    ],
+    [
+      18,
+      19,
+      0,
+      20,
+      0,
+      "IMAGE"
+    ]
+  ],
+  "version": 0.4
+}

@@ -218,36 +218,27 @@ def build():
         "widgets_values_named": {"image": "reference.png", "upload": "image"},
     })
 
-    # ── AFE_NineViewPromptBuilder（角色描述 → 9个独立提示词）────────────────
+    # ── AFE_NineViewPromptBuilder（角色描述预览 + 提示词参考）────────────────
+    # 注：prompt 直接写入每个 Qwen 节点的 widget 值，不用 STRING 连线
+    # 此节点作为"角色描述编辑器"供用户查看，改角色时在这里改描述后重新生成 JSON
     builder_id = nid; nid += 1
     nodes.append({
         "id": builder_id,
         "type": "AFE_NineViewPromptBuilder",
-        "title": "🎬 角色描述 → 9视角提示词",
+        "title": "🎬 角色描述（改这里→重新生成JSON）",
         "pos": [50, 50],
         "size": [560, 300],
         "flags": {}, "order": 0, "mode": 0,
         "inputs": [],
         "outputs": [
-            {"name": f"prompt_{i+1}_{name}", "type": "STRING", "links": []}
-            for i, name in enumerate([
-                "设计参考图","正面全身","侧面全身",
-                "面部中性","面部微笑","面部严肃",
-                "场景喝茶","场景指向","场景自信坐",
-            ])
+            {"name": f"prompt_{i+1}", "type": "STRING", "links": []}
+            for i in range(9)
         ] + [
             {"name": "negative_prompt", "type": "STRING", "links": []},
             {"name": "prompt_preview",  "type": "STRING", "links": []},
         ],
         "properties": {},
-        "widgets_values": [
-            # character_description (multiline)
-            f"{CHAR}",
-            # style_suffix
-            STYLE,
-            # negative_prompt
-            NEGATIVE,
-        ],
+        "widgets_values": [CHAR, STYLE, NEGATIVE],
         "widgets_values_named": {
             "character_description": CHAR,
             "style_suffix": STYLE,
@@ -287,9 +278,14 @@ def build():
         qwen["pos"] = [qx, qy]
         qwen["outputs"][0]["links"] = []
 
-        # max_length fix
+        # Set single-view prompt as WIDGET VALUE (no STRING link needed)
+        prompt = VIEW_PROMPTS[i]
         wv  = qwen["widgets_values"]
         wvn = qwen.get("widgets_values_named", {})
+        wv[1] = prompt
+        if "prompt" in wvn:
+            wvn["prompt"] = prompt
+        # max_length fix
         wv[4] = 4096
         if "max_length" in wvn:
             wvn["max_length"] = 4096
@@ -308,13 +304,6 @@ def build():
         qwen["inputs"][image1_idx]["link"] = link_ref
         nodes[ref_id - 1]["outputs"][0]["links"].append(link_ref)
         links.append([link_ref, ref_id, 0, qwen_id, image1_idx, "IMAGE"])
-
-        # Link: NineViewPromptBuilder.prompt_N → Qwen.prompt
-        # Convert prompt input from widget to connected input
-        link_prompt = lid; lid += 1
-        qwen["inputs"][prompt_idx]["link"] = link_prompt
-        nodes[builder_id - 1]["outputs"][i]["links"].append(link_prompt)
-        links.append([link_prompt, builder_id, i, qwen_id, prompt_idx, "STRING"])
 
         nodes.append(qwen)
 
@@ -335,7 +324,7 @@ def build():
             "outputs": [], "properties": {}, "widgets_values": [],
         })
 
-        print(f"  Branch {i+1}: Builder[{i}]→prompt + LoadImage→image_1 → Qwen{qwen_id} → Preview{prev_id}  [{name}]")
+        print(f"  Branch {i+1}: LoadImage→image_1 → Qwen{qwen_id} → Preview{prev_id}  [{name}]")
 
     return {
         "id": "afe-character-card-9branch-v3",
