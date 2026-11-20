@@ -8,56 +8,6 @@ Output: workflow_templates/afe_script_pipeline.json
 import json
 import os
 
-# ── English system prompt for LLM_local ──────────────────────────────────────
-SYSTEM_PROMPT_EN = (
-    "You are a professional film storyboard artist. Parse the script into a JSON object. "
-    "Return ONLY the JSON object, no other text.\n\n"
-    "OUTPUT FORMAT:\n"
-    '{\n'
-    '  "cast": [\n'
-    '    {"name": "CharacterName", "role_type": "lead|supporting|extra_a|extra_b|extra_other",\n'
-    '     "gender": "male|female|unknown", "age_range": "24-26",\n'
-    '     "appearance_en": "English appearance description",\n'
-    '     "default_costume_en": "English costume description"}\n'
-    '  ],\n'
-    '  "shots": [\n'
-    '    {\n'
-    '      "shot_id": "shot_001", "label": "Scene01-Location",\n'
-    '      "duration_seconds": 5.0,\n'
-    '      "character_names": ["name"],\n'
-    '      "costume_description": "Chinese costume description",\n'
-    '      "costume_en": "English costume description",\n'
-    '      "props_list": ["prop1", "prop2"],\n'
-    '      "scene_name": "Scene Name-Indoor/Outdoor",\n'
-    '      "camera_angle": "medium",\n'
-    '      "camera_motion": "static",\n'
-    '      "lighting_style": "natural light, afternoon",\n'
-    '      "director_notes": "...",\n'
-    '      "shot_description": "English description max 80 words",\n'
-    '      "negative_prompt": "ugly, blurry",\n'
-    '      "dialogue": "dialogue text or \uff08\u65e0\uff09",\n'
-    '      "location": "apartment living room, near window",\n'
-    '      "time_of_day": "morning|afternoon|evening|night",\n'
-    '      "weather": "sunny|cloudy|rainy|snowy|foggy|indoor|clear",\n'
-    '      "lighting": "detailed English lighting description",\n'
-    '      "action": "main character action in English",\n'
-    '      "business": "subtle physical detail, e.g. fingers the rim of the cup",\n'
-    '      "emotion": "character emotion/expression in English"\n'
-    '    }\n'
-    '  ]\n'
-    '}\n\n'
-    "RULES:\n"
-    "- camera_angle: close_up | medium | wide | low_angle | high_angle | eye_level | dutch\n"
-    "- camera_motion: static | pan_left | pan_right | zoom_in | zoom_out | tilt_up | tilt_down | "
-    "orbit | slow_push_in | slow_pull_back | tracking_shot | handheld\n"
-    "- role_type: lead | supporting | extra_a | extra_b | extra_other\n"
-    "- time_of_day: morning | afternoon | evening | night\n"
-    "- weather: sunny | cloudy | rainy | snowy | foggy | indoor | clear\n"
-    "- Return ONLY the JSON object."
-)
-
-SCRIPT_PLACEHOLDER = "在这里输入剧本..."
-
 
 def build_workflow() -> dict:
     """Build the ComfyUI workflow dict.
@@ -256,7 +206,6 @@ def build_workflow() -> dict:
     # ── Node 7: AFE_ShotList ─────────────────────────────────────────────────
     # Outputs: [0]=shot_list_report, [1]=shot_count, [2]=total_duration_seconds, [3]=shot_summary_json
     lnk_shot_list_report = next_link()   # 15
-    lnk_sp7              = next_link()   # 16  shots_prompts_json → node 7
     nodes.append({
         "id": 7,
         "type": "AFE_ShotList",
@@ -266,7 +215,7 @@ def build_workflow() -> dict:
         "order": 6,
         "mode": 0,
         "inputs": [
-            {"name": "shots_prompts_json", "type": "STRING", "link": lnk_sp7},
+            {"name": "shots_prompts_json", "type": "STRING", "link": lnk_shots_prompts},
         ],
         "outputs": [
             {"name": "shot_list_report",       "type": "STRING", "links": [lnk_shot_list_report], "slot_index": 0},
@@ -277,7 +226,7 @@ def build_workflow() -> dict:
         "properties": {"Node name for S&R": "AFE_ShotList"},
         "widgets_values": [],
     })
-    links.append([lnk_sp7, 6, 0, 7, 0, "STRING"])
+    links.append([lnk_shots_prompts, 6, 0, 7, 0, "STRING"])
 
     # ── Nodes 8-13: show_text_party display nodes ─────────────────────────────
     # (node_id, incoming_link, title, pos, source_node, source_slot)

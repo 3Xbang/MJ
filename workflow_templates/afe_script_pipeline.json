@@ -1,6 +1,6 @@
 {
   "last_node_id": 13,
-  "last_link_id": 16,
+  "last_link_id": 15,
   "nodes": [
     {
       "id": 1,
@@ -384,7 +384,7 @@
         {
           "name": "shots_prompts_json",
           "type": "STRING",
-          "link": 16
+          "link": 13
         }
       ],
       "outputs": [
@@ -709,7 +709,7 @@
       "CAST_DATA"
     ],
     [
-      16,
+      13,
       6,
       0,
       7,

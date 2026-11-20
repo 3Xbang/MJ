@@ -66,7 +66,8 @@ Return ONLY a JSON object with these exact fields:
   "shot_description": "Wan2.1 optimized English description max 80 words",
   "costume_description": "Chinese costume description",
   "costume_en": "English costume description",
-  "negative_prompt": "ugly, blurry, low quality, distorted"
+  "negative_prompt": "ugly, blurry, low quality, distorted",
+  "director_notes": "brief director instruction for this shot, e.g. pace is slow, hold on her face"
 }
 
 camera_angle options: close_up, medium, wide, low_angle, high_angle, eye_level, dutch
@@ -221,9 +222,13 @@ class AFE_ScriptFullParser:
                 f"Render Style: {render_style}"
             )
 
-            p2_raw  = self._call_llm(PHASE2_SYSTEM, p2_user, model_path, max_new_tokens=768)
-            p2_data = self._parse_llm_json(p2_raw)
-            if not isinstance(p2_data, dict):
+            try:
+                p2_raw  = self._call_llm(PHASE2_SYSTEM, p2_user, model_path, max_new_tokens=768)
+                p2_data = self._parse_llm_json(p2_raw)
+                if not isinstance(p2_data, dict):
+                    p2_data = {}
+            except Exception as exc:
+                logger.warning(f"[AFE_ScriptFullParser] Phase 2 failed for {shot_id}: {exc}")
                 p2_data = {}
 
             # 5. Merge minimal + phase2 into full shot dict
@@ -239,7 +244,7 @@ class AFE_ScriptFullParser:
                 "camera_angle":        p2_data.get("camera_angle", "medium"),
                 "camera_motion":       p2_data.get("camera_motion", "static"),
                 "lighting_style":      p2_data.get("lighting_style", ""),
-                "director_notes":      "",
+                "director_notes":      p2_data.get("director_notes", ""),
                 "shot_description":    p2_data.get("shot_description", raw_desc),
                 "negative_prompt":     p2_data.get("negative_prompt", "ugly, blurry, low quality, distorted"),
                 "dialogue":            dialogue if dialogue else "（无）",
