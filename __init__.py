@@ -102,6 +102,7 @@ from ai_film_editor_nodes.nodes.generation.character_card_node import (
 )
 from ai_film_editor_nodes.nodes.generation.nine_view_prompt_builder import AFE_NineViewPromptBuilder
 from ai_film_editor_nodes.nodes.generation.qwen_image_split_node import AFE_QwenImageSplit
+from ai_film_editor_nodes.nodes.generation.character_card_9views_node import AFE_CharacterCard9Views
 
 NODE_CLASS_MAPPINGS = {
     # Part 1
@@ -185,6 +186,7 @@ NODE_CLASS_MAPPINGS = {
     "AFE_CharacterCardBatch":     AFE_CharacterCardBatch,
     "AFE_NineViewPromptBuilder":  AFE_NineViewPromptBuilder,
     "AFE_QwenImageSplit":         AFE_QwenImageSplit,
+    "AFE_CharacterCard9Views":    AFE_CharacterCard9Views,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -268,6 +270,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AFE_CharacterCardBatch":   "🎭 Character Card Batch (角色卡批量生成)",
     "AFE_NineViewPromptBuilder":"🎬 Nine View Prompt Builder (九视图提示词生成器)",
     "AFE_QwenImageSplit":       "✂️ Qwen Image Split (Qwen输出切分器)",
+    "AFE_CharacterCard9Views":  "🎭 Character Card 9 Views (角色卡9视图生成器)",
 }
 
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]
