@@ -1,12 +1,4 @@
 {
-  "_afe_meta": {
-    "version": "2.0",
-    "requires": [
-      "comfyui_LLM_party (nodes 1-2: LLM_local_loader, LLM_local; nodes 10-14: show_text_party) — install from https://github.com/heshengtao/comfyui_LLM_party before loading this template",
-      "ai_film_editor_nodes >= v2 — AFE_ScriptParser and AFE_ShotPromptBuilder output slots changed in v2; see MIGRATION.md if rewiring from an older workflow"
-    ],
-    "migration_notes": "See MIGRATION.md for AFE_ScriptParser (5→9 outputs) and AFE_ShotPromptBuilder (5→6 outputs) slot changes."
-  },
   "last_node_id": 14,
   "last_link_id": 20,
   "nodes": [
@@ -99,20 +91,22 @@
         "Node name for S&R": "LLM_local"
       },
       "widgets_values": [
-        "LLM",
         "You are a professional film storyboard artist. Parse the script into a JSON object. Return ONLY the JSON object, no other text.\n\nOUTPUT FORMAT:\n{\n  \"cast\": [\n    {\"name\": \"CharacterName\", \"role_type\": \"lead|supporting|extra_a|extra_b|extra_other\",\n     \"gender\": \"male|female|unknown\", \"age_range\": \"24-26\",\n     \"appearance_en\": \"English appearance description\",\n     \"default_costume_en\": \"English costume description\"}\n  ],\n  \"shots\": [\n    {\n      \"shot_id\": \"shot_001\", \"label\": \"Scene01-Location\",\n      \"duration_seconds\": 5.0,\n      \"character_names\": [\"name\"],\n      \"costume_description\": \"Chinese costume description\",\n      \"costume_en\": \"English costume description\",\n      \"props_list\": [\"prop1\", \"prop2\"],\n      \"scene_name\": \"Scene Name-Indoor/Outdoor\",\n      \"camera_angle\": \"medium\",\n      \"camera_motion\": \"static\",\n      \"lighting_style\": \"natural light, afternoon\",\n      \"director_notes\": \"...\",\n      \"shot_description\": \"English description max 80 words\",\n      \"negative_prompt\": \"ugly, blurry\",\n      \"dialogue\": \"dialogue text or （无）\",\n      \"location\": \"apartment living room, near window\",\n      \"time_of_day\": \"morning|afternoon|evening|night\",\n      \"weather\": \"sunny|cloudy|rainy|snowy|foggy|indoor|clear\",\n      \"lighting\": \"detailed English lighting description\",\n      \"action\": \"main character action in English\",\n      \"business\": \"subtle physical detail, e.g. fingers the rim of the cup\",\n      \"emotion\": \"character emotion/expression in English\"\n    }\n  ]\n}\n\nRULES:\n- camera_angle: close_up | medium | wide | low_angle | high_angle | eye_level | dutch\n- camera_motion: static | pan_left | pan_right | zoom_in | zoom_out | tilt_up | tilt_down | orbit | slow_push_in | slow_pull_back | tracking_shot | handheld\n- role_type: lead | supporting | extra_a | extra_b | extra_other\n- time_of_day: morning | afternoon | evening | night\n- weather: sunny | cloudy | rainy | snowy | foggy | indoor | clear\n- Return ONLY the JSON object.",
         "在这里输入剧本...",
-        null,
-        null,
-        null,
-        null,
+        "LLM",
         0.3,
         4096,
         "disable",
         "disable",
-        100,
+        "enable",
+        "",
+        "",
+        "",
+        "",
+        10,
         "",
         true,
+        "",
         "enable"
       ]
     },

@@ -111,18 +111,25 @@ def build_workflow() -> dict:
         ],
         "properties": {"Node name for S&R": "LLM_local"},
         "widgets_values": [
-            "LLM",
-            SYSTEM_PROMPT_EN,
-            SCRIPT_PLACEHOLDER,
-            None, None, None, None,
-            0.3,
-            4096,
-            "disable",
-            "disable",
-            100,
-            "",
-            True,
-            "enable",
+            # required widgets (model/tokenizer are CUSTOM inputs, not widget values)
+            SYSTEM_PROMPT_EN,    # system_prompt (STRING)
+            SCRIPT_PLACEHOLDER,  # user_prompt (STRING)
+            "LLM",               # model_type (COMBO)
+            0.3,                 # temperature (FLOAT)
+            4096,                # max_length (INT)
+            "disable",           # is_memory (COMBO)
+            "disable",           # is_locked (COMBO)
+            "enable",            # main_brain (COMBO)
+            # optional widgets
+            "",                  # system_prompt_input
+            "",                  # user_prompt_input
+            "",                  # tools
+            "",                  # file_content
+            10,                  # conversation_rounds
+            "",                  # historical_record (COMBO, empty = first option)
+            True,                # is_enable
+            "",                  # user_history
+            "enable",            # is_enable_system_role
         ],
     })
     links.append([lnk_model,     1, 0, 2, 0, "CUSTOM"])
