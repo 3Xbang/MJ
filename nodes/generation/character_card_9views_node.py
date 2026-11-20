@@ -136,42 +136,49 @@ def _generate_one(reference_image: torch.Tensor,
                   prompt: str, negative: str, seed: int) -> torch.Tensor:
     """Run one full Qwen Image 2.1 diffusion pass for one view."""
 
-    TextEnc = _get_node("TextEncodeQwenImageEdit")
-    CFGNode = _get_node("CFGGuider")
+    # TextEncodeQwenImage21: 专为多视角生成设计，支持 [Image_1] 角度指令
+    # 同时创建 positive conditioning、negative conditioning 和 latent
+    TextEnc21 = _get_node("TextEncodeQwenImage21")
+    CFGNode    = _get_node("CFGGuider")
     NoiseNode  = _get_node("RandomNoise")
     SamplerSel = _get_node("KSamplerSelect")
     SamplerAdv = _get_node("SamplerCustomAdvanced")
     VAEDec     = _get_node("VAEDecode")
 
-    # 1. Positive conditioning (with reference image)
-    pos = _call(TextEnc, clip=clip, prompt=prompt, vae=vae, image=reference_image)[0]
+    # 1. 编码：reference image 作为 [Image_1] 角色参考，prompt 指定角度
+    # images 参数格式：{"image_1": tensor}
+    enc_result = _call(TextEnc21,
+                       clip=clip,
+                       prompt=prompt,
+                       negative_prompt=negative,
+                       vae=vae,
+                       resolution=1024,
+                       images={"image_1": reference_image})
 
-    # 2. Negative conditioning (text only, no image)
-    neg = _call(TextEnc, clip=clip, prompt=negative)[0]
+    # TextEncodeQwenImage21 输出：[positive, negative, latent]
+    pos    = enc_result[0]
+    neg    = enc_result[1]
+    latent = enc_result[2]  # 节点内部已创建正确的 layered latent
 
-    # 3. Empty latent — layers=1 保证每次输出1张独立图（不是3层堆叠）
-    EmptyLat = _get_node("EmptyQwenImageLayeredLatentImage")
-    latent = _call(EmptyLat, width=1024, height=1024, layers=1)[0]
-
-    # 4. CFG guidance
+    # 2. CFG guidance
     guider = _call(CFGNode, model=cached_model, positive=pos, negative=neg, cfg=1.0)[0]
 
-    # 5. Noise
+    # 3. Noise
     noise = _call(NoiseNode, noise_seed=seed)[0]
 
-    # 6. Euler sampler
+    # 4. Euler sampler
     sampler = _call(SamplerSel, sampler_name="euler")[0]
 
-    # 7. Sigmas (Qwen 2.1 Turbo 8-step schedule)
+    # 5. Sigmas (Qwen 2.1 Turbo 8-step schedule)
     sigmas = QWEN_TURBO_SIGMAS.clone()
 
-    # 8. Sample
+    # 6. Sample
     output = _call(SamplerAdv,
                    noise=noise, guider=guider, sampler=sampler,
                    sigmas=sigmas, latent_image=latent)
     out_latent = output[0]
 
-    # 9. VAE decode
+    # 7. VAE decode
     image = _call(VAEDec, samples=out_latent, vae=vae)[0]
     return image
 
