@@ -1,36 +1,27 @@
 """
 AFE_CharacterCard9Views — 单节点，1张参考图 → 9张独立视角图
 
-内部调用 Qwen Image 2.1 Turbo 节点9次，每次1个视角。
-9个固定视角模板写死，只有角色描述是动态输入。
+内部直接调用 Qwen Image 2.1 的低级节点：
+  TextEncodeQwenImageEdit  — 文本+图片编码 → CONDITIONING
+  QwenImage21Cache         — 模型缓存
+  CFGGuider / RandomNoise / KSamplerSelect / SamplerCustomAdvanced / VAEDecode
 
-输入:
-  reference_image       — 角色参考照片
-  character_description — 角色外貌描述（动态）
-
-输出:
-  view_1 ~ view_9       — 9张独立 IMAGE，每张对应1个视角
+9次完整 diffusion pipeline，每次1个视角，9个独立 IMAGE 输出。
 """
 from __future__ import annotations
 import torch
 import logging
-import inspect
 
 logger = logging.getLogger("AFE_CharacterCard9Views")
 
-QWEN_NODE_TYPE = "bc1c967a-7f6a-4be9-a372-dad16e4f28e3"
-
-# ─── 9个固定视角模板（写死，永不改变）────────────────────────────────────────
-# {char} = 角色描述（动态），{style} = 风格（动态）
-# 每个都放在 [Image_1] 里，因为每次只有一个输入槽
+# ─── 9个固定视角模板（写死）────────────────────────────────────────────────────
 VIEW_TEMPLATES = [
-    # 1. 角色设计参考图（综合）
+    # 1. 角色设计参考图
     "[Image_1] Professional character design reference sheet on grey background. "
-    "Left side: 3 full-body standing poses side by side — front view, back view, side profile. "
-    "Top right: 4 face close-up portraits with different expressions — neutral, happy, serious, surprised. "
+    "Left: 3 full-body standing poses side by side — front, back, side profile. "
+    "Top right: 4 face close-ups with different expressions — neutral, happy, serious, surprised. "
     "Middle right: 2 action medium shots — sitting drinking tea, sitting arms crossed. "
-    "Bottom: running pose, silhouette, accessories. "
-    "{char}. {style}.",
+    "Bottom: running pose, silhouette. {char}. {style}.",
 
     # 2. 正面全身
     "[Image_1] Full body FRONT VIEW, standing straight, arms relaxed at sides. "
@@ -47,7 +38,7 @@ VIEW_TEMPLATES = [
 
     # 5. 面部·微笑
     "[Image_1] FACE CLOSE-UP portrait, head and shoulders. "
-    "Big warm happy smile, eyes crinkling with joy, teeth showing. "
+    "Big warm happy smile, eyes crinkling with joy. "
     "{char}. Blue sky soft background. {style}.",
 
     # 6. 面部·严肃
@@ -56,133 +47,138 @@ VIEW_TEMPLATES = [
     "{char}. Blue sky soft background. {style}.",
 
     # 7. 场景·喝茶
-    "[Image_1] MEDIUM SHOT. Sitting comfortably on wooden chair on sunny beach terrace, "
-    "holding a glass of tea, blowing on it gently. Palm trees and ocean in background. "
+    "[Image_1] MEDIUM SHOT. Sitting on wooden chair on sunny beach terrace, "
+    "holding a glass of tea, blowing gently. Palm trees and ocean background. "
     "{char}. {style}.",
 
     # 8. 场景·指向
     "[Image_1] MEDIUM SHOT, upper body. Sitting at table, raising right hand, "
-    "pointing index finger forward assertively. Beach background. "
-    "{char}. {style}.",
+    "pointing index finger forward assertively. Beach background. {char}. {style}.",
 
     # 9. 场景·自信坐
     "[Image_1] MEDIUM SHOT. Sitting at wooden table on beach, arms crossed over chest, "
-    "leaning back confidently, smiling wisely. Sunny beach background. "
-    "{char}. {style}.",
+    "leaning back confidently, smiling wisely. {char}. {style}.",
 ]
 
 VIEW_NAMES = [
-    "view_1_设计参考图",
-    "view_2_正面全身",
-    "view_3_侧面全身",
-    "view_4_面部中性",
-    "view_5_面部微笑",
-    "view_6_面部严肃",
-    "view_7_场景喝茶",
-    "view_8_场景指向",
-    "view_9_场景自信坐",
+    "view_1_设计参考图", "view_2_正面全身", "view_3_侧面全身",
+    "view_4_面部中性",   "view_5_面部微笑", "view_6_面部严肃",
+    "view_7_场景喝茶",   "view_8_场景指向", "view_9_场景自信坐",
 ]
 
 DEFAULT_STYLE = "3D cartoon Pixar animation style, vibrant colors, 8k, highly detailed"
 DEFAULT_NEG   = (
-    "photorealistic, real person, ugly, deformed, noisy, blurry, distorted, "
-    "bad anatomy, bad hands, missing fingers, text, watermark, 2d, sketch, anime"
+    "photorealistic, real person, ugly, deformed, noisy, blurry, "
+    "bad anatomy, bad hands, text, watermark, 2d, sketch, anime"
 )
 
-# ─── 默认 Qwen 模型文件 ────────────────────────────────────────────────────
-DEFAULT_UNET   = "qwen_image_2.1_turbo_int8_convrot.safetensors"
-DEFAULT_VAE    = "qwen_image_2.1_vae_bf16.safetensors"
-DEFAULT_CLIP   = "qwen3vl_8b_int8_convrot.safetensors"
-DEFAULT_PE     = "qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors"
+# Qwen Image 2.1 Turbo 8-step sigma schedule
+QWEN_TURBO_SIGMAS = torch.tensor(
+    [1.0, 0.978453, 0.95418, 0.926226, 0.89508, 0.845148, 0.7045, 0.4, 0.0],
+    dtype=torch.float32
+)
+
+# Model file names (hardcoded, matching RunPod installation)
+_UNET = "qwen_image_2.1_turbo_int8_convrot.safetensors"
+_VAE  = "qwen_image_2.1_vae_bf16.safetensors"
+_CLIP = "qwen3vl_8b_int8_convrot.safetensors"
 
 
-def _get_qwen_class():
-    """Find the Qwen Image 2.1 node class in ComfyUI's registry."""
-    try:
-        from nodes import NODE_CLASS_MAPPINGS
-        cls = NODE_CLASS_MAPPINGS.get(QWEN_NODE_TYPE)
-        if cls is not None:
-            logger.info("[AFE] Qwen node found: %s, FUNCTION=%s",
-                        cls.__name__, getattr(cls, "FUNCTION", "?"))
-        return cls
-    except Exception as e:
-        logger.error("[AFE] Cannot access NODE_CLASS_MAPPINGS: %s", e)
-        return None
+# ─── 模型缓存（整个会话共享，避免反复加载）─────────────────────────────────────
+_MODEL_CACHE: dict = {}
 
 
-def _call_qwen(qwen_cls, prompt: str, image: torch.Tensor,
-               negative: str, seed: int,
-               unet: str, vae: str, clip: str, pe: str) -> torch.Tensor:
-    """
-    Call the Qwen Image 2.1 Turbo node's execute function.
-    Handles both old and new ComfyUI calling conventions.
-    """
-    func_name = getattr(qwen_cls, "FUNCTION", "execute")
-    instance  = qwen_cls()
-    func      = getattr(instance, func_name)
+def _get_node(name: str):
+    """Get a ComfyUI node class by its registered type name."""
+    from nodes import NODE_CLASS_MAPPINGS
+    cls = NODE_CLASS_MAPPINGS.get(name)
+    if cls is None:
+        raise RuntimeError(
+            f"ComfyUI 节点 '{name}' 未找到。\n"
+            "请确认 ComfyUI 已更新到支持 Qwen Image 2.1 的版本。"
+        )
+    return cls
 
-    # Discover actual parameter names
-    sig    = inspect.signature(func)
-    params = list(sig.parameters.keys())
-    logger.debug("[AFE] Qwen params: %s", params)
 
-    # Base kwargs (widget-based, always present)
-    base_kwargs = dict(
-        prompt           = prompt,
-        switch_1         = False,   # refine_prompt
-        thinking         = False,
-        max_length       = 4096,
-        negative_prompt  = negative,
-        cfg              = 1.0,
-        switch           = False,   # custom_size
-        width            = 1024,
-        height           = 1024,
-        scheduler        = "euler",
-        seed             = seed,
-        unet_name        = unet,
-        clip_name        = clip,
-        vae_name         = vae,
-        device           = "auto",
-        dtype            = "default",
-        clip_name_1      = pe,
-    )
+def _call(cls, **kwargs):
+    """Call a ComfyUI node's FUNCTION method."""
+    func_name = getattr(cls, "FUNCTION", "execute")
+    instance = cls()
+    func = getattr(instance, func_name)
+    return func(**kwargs)
 
-    # Try different conventions for the image_1 input
-    # ComfyUI may use the full dotted name or just the last segment
-    image_kwargs_options = [
-        {"images.image_1": image},          # full dotted name via **
-        {"image_1": image},                  # last segment only
-        {"image": image},                    # simplified
-    ]
 
-    for img_kwargs in image_kwargs_options:
-        try:
-            result = func(**base_kwargs, **img_kwargs)
-            # Extract IMAGE tensor from result
-            if isinstance(result, (list, tuple)):
-                out = result[0]
-            elif isinstance(result, dict):
-                out = result.get("result", [image])[0]
-            else:
-                out = result
-            logger.info("[AFE] Qwen call succeeded with kwargs: %s",
-                        list(img_kwargs.keys()))
-            return out
-        except TypeError as e:
-            logger.warning("[AFE] Qwen call failed with %s: %s",
-                           list(img_kwargs.keys()), e)
-            continue
+def _load_models():
+    """Load and cache UNet / CLIP / VAE models."""
+    global _MODEL_CACHE
+    key = "qwen_2.1_turbo"
+    if key in _MODEL_CACHE:
+        logger.debug("[AFE] Using cached Qwen models")
+        return _MODEL_CACHE[key]
 
-    raise RuntimeError(
-        "Could not call Qwen node. Check /tmp/comfyui.log for details.\n"
-        f"Function signature: {params}"
-    )
+    logger.info("[AFE] Loading Qwen Image 2.1 models (first run, please wait)...")
+
+    model = _call(_get_node("UNETLoader"),
+                  unet_name=_UNET, weight_dtype="default")[0]
+    clip  = _call(_get_node("CLIPLoader"),
+                  clip_name=_CLIP, type="qwen_image")[0]
+    vae   = _call(_get_node("VAELoader"),
+                  vae_name=_VAE)[0]
+
+    _MODEL_CACHE[key] = (model, clip, vae)
+    logger.info("[AFE] Models loaded ✓")
+    return _MODEL_CACHE[key]
+
+
+def _generate_one(reference_image: torch.Tensor,
+                  clip, vae, cached_model,
+                  prompt: str, negative: str, seed: int) -> torch.Tensor:
+    """Run one full Qwen Image 2.1 diffusion pass for one view."""
+
+    TextEnc = _get_node("TextEncodeQwenImageEdit")
+    CFGNode = _get_node("CFGGuider")
+    NoiseNode  = _get_node("RandomNoise")
+    SamplerSel = _get_node("KSamplerSelect")
+    SamplerAdv = _get_node("SamplerCustomAdvanced")
+    VAEDec     = _get_node("VAEDecode")
+
+    # 1. Positive conditioning (with reference image)
+    pos = _call(TextEnc, clip=clip, prompt=prompt, vae=vae, image=reference_image)[0]
+
+    # 2. Negative conditioning (text only, no image)
+    neg = _call(TextEnc, clip=clip, prompt=negative)[0]
+
+    # 3. Empty latent
+    EmptyLat = _get_node("EmptyQwenImageLayeredLatentImage")
+    latent = _call(EmptyLat, width=1024, height=1024, layers=3)[0]
+
+    # 4. CFG guidance
+    guider = _call(CFGNode, model=cached_model, positive=pos, negative=neg, cfg=1.0)[0]
+
+    # 5. Noise
+    noise = _call(NoiseNode, noise_seed=seed)[0]
+
+    # 6. Euler sampler
+    sampler = _call(SamplerSel, sampler_name="euler")[0]
+
+    # 7. Sigmas (Qwen 2.1 Turbo 8-step schedule)
+    sigmas = QWEN_TURBO_SIGMAS.clone()
+
+    # 8. Sample
+    output = _call(SamplerAdv,
+                   noise=noise, guider=guider, sampler=sampler,
+                   sigmas=sigmas, latent_image=latent)
+    out_latent = output[0]
+
+    # 9. VAE decode
+    image = _call(VAEDec, samples=out_latent, vae=vae)[0]
+    return image
 
 
 class AFE_CharacterCard9Views:
     """
     一个节点，1张参考图 + 角色描述 → 9张独立视角图。
-    内部调用 Qwen Image 2.1 Turbo 9次，每次1个视角。
+    内部调用 Qwen Image 2.1 Turbo 完整 pipeline 9次。
     9个视角模板写死；只有 character_description 是动态输入。
     """
 
@@ -191,28 +187,24 @@ class AFE_CharacterCard9Views:
         return {
             "required": {
                 "reference_image": ("IMAGE", {
-                    "tooltip": "角色参考照片（正面，白背景最佳）",
+                    "tooltip": "角色参考照片（正面，白背景最佳）"
                 }),
                 "character_description": ("STRING", {
                     "multiline": True,
                     "default": "",
-                    "tooltip": (
-                        "角色外貌描述（来自 Cast Analyzer 的 appearance_en）\n"
-                        "例: 50-year-old chubby Asian man, shoulder-length wavy "
-                        "silver-grey hair, handlebar mustache..."
-                    ),
+                    "tooltip": "角色外貌描述（来自 Cast Analyzer 的 appearance_en）",
                 }),
             },
             "optional": {
                 "style": ("STRING", {
                     "default": DEFAULT_STYLE,
-                    "tooltip": "渲染风格（影响所有9张图）",
+                    "tooltip": "渲染风格",
                 }),
                 "negative_prompt": ("STRING", {
                     "default": DEFAULT_NEG,
                 }),
                 "seed": ("INT", {
-                    "default": 42, "min": 0, "max": 2 ** 31 - 1,
+                    "default": 42, "min": 0, "max": 2**31 - 1,
                     "tooltip": "每张图的 seed = seed + view_index * 1000",
                 }),
             },
@@ -231,45 +223,37 @@ class AFE_CharacterCard9Views:
         style: str = DEFAULT_STYLE,
         negative_prompt: str = DEFAULT_NEG,
         seed: int = 42,
-        unet_name: str = DEFAULT_UNET,
-        vae_name:  str = DEFAULT_VAE,
-        clip_name: str = DEFAULT_CLIP,
-        pe_model:  str = DEFAULT_PE,
     ):
         char = character_description.strip()
         if not char:
-            raise ValueError("character_description 不能为空，请填写角色描述")
+            raise ValueError("character_description 不能为空")
 
-        qwen_cls = _get_qwen_class()
-        if qwen_cls is None:
-            raise RuntimeError(
-                f"未找到 Qwen Image 2.1 Turbo 节点 (type={QWEN_NODE_TYPE})。\n"
-                "请确认 ComfyUI 已安装 Qwen Image 2.1 插件，并重启 ComfyUI。"
-            )
+        # 加载模型（带缓存，只在第一次跑时加载）
+        model, clip, vae = _load_models()
+
+        # 缓存模型 KV cache
+        cached_model = _call(_get_node("QwenImage21Cache"),
+                             model=model, device="auto", dtype="default")[0]
 
         results = []
         for i, (template, name) in enumerate(zip(VIEW_TEMPLATES, VIEW_NAMES)):
             prompt = template.replace("{char}", char).replace("{style}", style)
-            logger.info("[AFE] 生成视角 %d/9: %s", i + 1, name)
+            logger.info("[AFE] 视角 %d/9: %s", i + 1, name)
 
             try:
-                img = _call_qwen(
-                    qwen_cls  = qwen_cls,
-                    prompt    = prompt,
-                    image     = reference_image,
-                    negative  = negative_prompt,
-                    seed      = seed + i * 1000,
-                    unet      = unet_name,
-                    vae       = vae_name,
-                    clip      = clip_name,
-                    pe        = pe_model,
+                img = _generate_one(
+                    reference_image = reference_image,
+                    clip  = clip,
+                    vae   = vae,
+                    cached_model = cached_model,
+                    prompt   = prompt,
+                    negative = negative_prompt,
+                    seed     = seed + i * 1000,
                 )
                 results.append(img)
-                logger.info("[AFE]   ✓ view %d shape=%s", i + 1, img.shape)
-
+                logger.info("[AFE]   ✓ shape=%s", img.shape)
             except Exception as e:
-                logger.error("[AFE]   ✗ view %d failed: %s", i + 1, e)
-                # 失败时用参考图占位，不中断整个流程
+                logger.error("[AFE]   ✗ 视角 %d 失败: %s", i + 1, e)
                 results.append(reference_image)
 
         return tuple(results)
