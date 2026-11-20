@@ -188,6 +188,7 @@ class AFE_CharacterCard9Views:
 
     @classmethod
     def INPUT_TYPES(cls):
+        import folder_paths
         return {
             "required": {
                 "reference_image": ("IMAGE", {
@@ -215,10 +216,12 @@ class AFE_CharacterCard9Views:
                     "default": 42, "min": 0, "max": 2 ** 31 - 1,
                     "tooltip": "每张图的 seed = seed + view_index * 1000",
                 }),
-                "unet_name": ("STRING", {"default": DEFAULT_UNET}),
-                "vae_name":  ("STRING", {"default": DEFAULT_VAE}),
-                "clip_name": ("STRING", {"default": DEFAULT_CLIP}),
-                "pe_model":  ("STRING", {"default": DEFAULT_PE}),
+                "unet_name": (folder_paths.get_filename_list("unet"),    {"default": DEFAULT_UNET}),
+                "vae_name":  (folder_paths.get_filename_list("vae"),     {"default": DEFAULT_VAE}),
+                "clip_name": (folder_paths.get_filename_list("text_encoders") or
+                              folder_paths.get_filename_list("clip"),    {"default": DEFAULT_CLIP}),
+                "pe_model":  (folder_paths.get_filename_list("text_encoders") or
+                              folder_paths.get_filename_list("clip"),    {"default": DEFAULT_PE}),
             },
         }
 
