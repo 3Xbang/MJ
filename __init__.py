@@ -106,6 +106,9 @@ from ai_film_editor_nodes.nodes.generation.nine_view_prompt_builder import AFE_N
 from ai_film_editor_nodes.nodes.generation.qwen_image_split_node import AFE_QwenImageSplit
 from ai_film_editor_nodes.nodes.generation.character_card_9views_node import AFE_CharacterCard9Views
 
+# Part 14 - Script Full Parser (direct transformers, two-phase LLM)
+from ai_film_editor_nodes.nodes.director.script_full_parser_node import AFE_ScriptFullParser
+
 NODE_CLASS_MAPPINGS = {
     # Part 1
     "AFE_CharacterAsset": AFE_CharacterAsset,
@@ -191,6 +194,8 @@ NODE_CLASS_MAPPINGS = {
     "AFE_NineViewPromptBuilder":  AFE_NineViewPromptBuilder,
     "AFE_QwenImageSplit":         AFE_QwenImageSplit,
     "AFE_CharacterCard9Views":    AFE_CharacterCard9Views,
+    # Part 14
+    "AFE_ScriptFullParser":       AFE_ScriptFullParser,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -277,6 +282,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AFE_NineViewPromptBuilder":"🎬 Nine View Prompt Builder (九视图提示词生成器)",
     "AFE_QwenImageSplit":       "✂️ Qwen Image Split (Qwen输出切分器)",
     "AFE_CharacterCard9Views":  "🎭 Character Card 9 Views (角色卡9视图生成器)",
+    # Part 14
+    "AFE_ScriptFullParser":     "🎬 Script Full Parser (全剧本深度解析器)",
 }
 
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]
