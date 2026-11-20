@@ -100,6 +100,7 @@ from ai_film_editor_nodes.nodes.generation.single_asset_generator_node import AF
 from ai_film_editor_nodes.nodes.generation.character_card_node import (
     AFE_CharacterCardSetup, AFE_CharacterSlotGenerate, AFE_CharacterCardBatch
 )
+from ai_film_editor_nodes.nodes.generation.nine_view_prompt_builder import AFE_NineViewPromptBuilder
 
 NODE_CLASS_MAPPINGS = {
     # Part 1
@@ -181,6 +182,7 @@ NODE_CLASS_MAPPINGS = {
     "AFE_CharacterCardSetup":     AFE_CharacterCardSetup,
     "AFE_CharacterSlotGenerate":  AFE_CharacterSlotGenerate,
     "AFE_CharacterCardBatch":     AFE_CharacterCardBatch,
+    "AFE_NineViewPromptBuilder":  AFE_NineViewPromptBuilder,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -262,6 +264,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AFE_CharacterCardSetup":   "🎭 Character Card Setup (角色卡设置)",
     "AFE_CharacterSlotGenerate":"🎭 Character Slot Generate (单槽生成)",
     "AFE_CharacterCardBatch":   "🎭 Character Card Batch (角色卡批量生成)",
+    "AFE_NineViewPromptBuilder":"🎬 Nine View Prompt Builder (九视图提示词生成器)",
 }
 
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]
