@@ -36,10 +36,26 @@ SYSTEM_PROMPT = """你是一位专业影视分镜师。将剧本解析为JSON对
       "director_notes": "表现随意感",
       "shot_description": "Medium shot. Young man sits alone in apartment. Warm afternoon light. Contemplative mood.",
       "negative_prompt": "ugly, blurry, low quality",
-      "dialogue": "台词或（无）"
+      "dialogue": "台词或（无）",
+      "location": "apartment living room, near window",
+      "time_of_day": "afternoon",
+      "weather": "indoor",
+      "lighting": "warm afternoon sunlight streaming through window, soft diffused shadows on the wall",
+      "action": "sits on the sofa, staring blankly at the wall",
+      "business": "fingers the rim of the coffee cup",
+      "emotion": "melancholic, contemplative"
     }
   ]
 }
+
+【新增字段说明】
+- location: 物理子场景，英文描述（例："apartment living room, near window"）
+- time_of_day: 只能是 "morning"|"afternoon"|"evening"|"night"
+- weather: 只能是 "sunny"|"cloudy"|"rainy"|"snowy"|"foggy"|"indoor"|"clear"
+- lighting: 详细的英文布光描述
+- action: 角色主要动作，英文
+- business: 细节动作（细节动作），英文，例 "fingers the rim of the cup"
+- emotion: 角色情绪/表情，英文
 
 【严格规则】
 1. 禁止"同上"，每个分镜必须写完整 costume_description
@@ -101,10 +117,11 @@ class AFE_ScriptParser:
             }
         }
 
-    RETURN_TYPES = ("SHOT_SEQUENCE", "CAST_DATA", "INT", "STRING", "STRING")
-    RETURN_NAMES = ("shot_sequence", "cast_data", "shot_count", "sequence_json", "prompt_for_llm")
+    RETURN_TYPES = ("SHOT_SEQUENCE", "CAST_DATA", "STRING", "STRING", "INT", "INT", "INT", "STRING", "STRING")
+    RETURN_NAMES = ("shot_sequence", "cast_data", "unique_scenes_json", "props_list_json",
+                    "shot_count", "scene_count", "props_count", "sequence_json", "prompt_for_llm")
     FUNCTION = "parse_script"
-    CATEGORY = "AI Film Editor/Director"
+    CATEGORY = "AI Film Editor/Script"
     OUTPUT_NODE = True
 
     def parse_script(self, script_text, custom_system_prompt="",
@@ -156,13 +173,42 @@ class AFE_ScriptParser:
                 "LLM 提示词：\n\n" + prompt_for_llm
             )
             logger.warning("未提供 LLM 响应或 API Key")
-            return ([], [], 0, hint, prompt_for_llm)
+            empty_scenes = json.dumps([], ensure_ascii=False)
+            empty_props = json.dumps([], ensure_ascii=False)
+            return {"ui": {"text": [hint]},
+                    "result": ([], [], empty_scenes, empty_props, 0, 0, 0, hint, prompt_for_llm)}
 
         # ── 解析 JSON ────────────────────────────────────────
         cast_list, shots = self._parse_json(raw)
+
+        # Derive unique_scenes (deduplicated ordered list)
+        seen_scenes: list[str] = []
+        for shot in shots:
+            sn = shot.get("scene_name", "").strip()
+            if sn and sn not in seen_scenes:
+                seen_scenes.append(sn)
+
+        # Derive props_list_all (deduplicated flat list)
+        seen_props: list[str] = []
+        for shot in shots:
+            props = shot.get("props_list", [])
+            if isinstance(props, list):
+                for p in props:
+                    p = str(p).strip()
+                    if p and p not in seen_props:
+                        seen_props.append(p)
+
         sequence_json = json.dumps(shots, ensure_ascii=False, indent=2)
-        logger.info(f"解析完成：{len(shots)} 个分镜，{len(cast_list)} 个角色")
-        return (shots, cast_list, len(shots), sequence_json, prompt_for_llm)
+        unique_scenes_json = json.dumps(seen_scenes, ensure_ascii=False)
+        props_list_json = json.dumps(seen_props, ensure_ascii=False)
+
+        logger.info(f"解析完成：{len(shots)} 个分镜，{len(cast_list)} 个角色，"
+                    f"{len(seen_scenes)} 个场景，{len(seen_props)} 件道具")
+
+        return {"ui": {"text": [sequence_json]},
+                "result": (shots, cast_list, unique_scenes_json, props_list_json,
+                           len(shots), len(seen_scenes), len(seen_props),
+                           sequence_json, prompt_for_llm)}
 
     def _call_api(self, prompt, api_key, base_url, model):
         import asyncio

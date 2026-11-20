@@ -93,6 +93,8 @@ from ai_film_editor_nodes.nodes.analyzer.scene_analyzer_node import AFE_SceneAna
 from ai_film_editor_nodes.nodes.analyzer.shot_list_viewer_node import AFE_ShotListViewer
 from ai_film_editor_nodes.nodes.analyzer.asset_selector_node import AFE_AssetSelector
 from ai_film_editor_nodes.nodes.analyzer.asset_approval_node import AFE_AssetApproval
+from ai_film_editor_nodes.nodes.analyzer.shot_list_node import AFE_ShotList
+from ai_film_editor_nodes.nodes.analyzer.character_tracker_node import AFE_CharacterTracker
 
 # Part 13 - Batch Image Generation
 from ai_film_editor_nodes.nodes.generation.batch_image_generator_node import AFE_BatchImageGenerator
@@ -178,6 +180,8 @@ NODE_CLASS_MAPPINGS = {
     "AFE_ShotListViewer":         AFE_ShotListViewer,
     "AFE_AssetSelector":  AFE_AssetSelector,
     "AFE_AssetApproval":  AFE_AssetApproval,
+    "AFE_ShotList":       AFE_ShotList,
+    "AFE_CharacterTracker": AFE_CharacterTracker,
     # Part 13 - Batch Generation
     "AFE_BatchImageGenerator":    AFE_BatchImageGenerator,
     "AFE_SingleAssetGenerator":   AFE_SingleAssetGenerator,
@@ -262,6 +266,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AFE_ShotListViewer":      "🎬 Shot List Viewer (分镜列表)",
     "AFE_AssetSelector":  "🎯 Asset Selector (资产选择器)",
     "AFE_AssetApproval":  "✅ Asset Approval (资产确认器)",
+    "AFE_ShotList":       "\U0001f3ac Shot List (分镜清单)",
+    "AFE_CharacterTracker": "\U0001f465 Character Tracker (角色追踪器)",
     # Part 13 - Batch Generation
     "AFE_BatchImageGenerator":  "🖼️ Batch Image Generator (批量图像生成)",
     "AFE_SingleAssetGenerator": "🎯 Single Asset Generator (单图重生成)",

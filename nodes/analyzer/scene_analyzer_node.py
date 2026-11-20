@@ -69,6 +69,7 @@ class AFE_SceneAnalyzer:
     场景分析器。
     从所有分镜的 scene_name 字段提取所有场景，
     统计场景数量，生成每个场景的 AI 提示词（背景描述风格）。
+    包含 environment_3view_prompt 供三视图背景生成使用。
     """
 
     @classmethod
@@ -88,13 +89,13 @@ class AFE_SceneAnalyzer:
     RETURN_TYPES = ("STRING", "INT", "STRING")
     RETURN_NAMES = ("scenes_json", "scenes_count", "scene_report")
     FUNCTION = "analyze_scenes"
-    CATEGORY = "AI Film Editor/Analyzers"
+    CATEGORY = "AI Film Editor/Script"
     OUTPUT_NODE = True
 
     def analyze_scenes(self, shot_sequence, style_suffix: str = DEFAULT_STYLE):
         shots = _get_shots(shot_sequence)
 
-        # scene_name → {shots, lighting_style}
+        # scene_name → {shots, lighting_style, time_of_day, weather, location}
         scene_map: dict[str, dict] = {}
         seen_order: list[str] = []
 
@@ -102,31 +103,81 @@ class AFE_SceneAnalyzer:
             shot_id = shot.get("shot_id") or shot.get("label", "")
             scene_name = shot.get("scene_name", "").strip()
             lighting = shot.get("lighting_style", "").strip()
+            time_of_day = shot.get("time_of_day", "").strip()
+            weather = shot.get("weather", "").strip()
+            location = shot.get("location", "").strip()
             if not scene_name:
                 continue
 
             if scene_name not in scene_map:
                 seen_order.append(scene_name)
-                scene_map[scene_name] = {"shots": [], "lighting_style": lighting}
+                scene_map[scene_name] = {
+                    "shots": [],
+                    "lighting_style": lighting,
+                    "time_of_day": time_of_day,
+                    "weather": weather,
+                    "location": location,
+                }
             scene_map[scene_name]["shots"].append(shot_id)
-            # Keep first non-empty lighting description
-            if not scene_map[scene_name]["lighting_style"] and lighting:
-                scene_map[scene_name]["lighting_style"] = lighting
+            info = scene_map[scene_name]
+            # Keep first non-empty value per field
+            if not info["lighting_style"] and lighting:
+                info["lighting_style"] = lighting
+            if not info["time_of_day"] and time_of_day:
+                info["time_of_day"] = time_of_day
+            if not info["weather"] and weather:
+                info["weather"] = weather
+            if not info["location"] and location:
+                info["location"] = location
 
         scenes: list[dict] = []
+        suffix = style_suffix.strip() or DEFAULT_STYLE
+
         for idx, name in enumerate(seen_order):
             info = scene_map[name]
             lighting = info["lighting_style"]
+            time_of_day = info["time_of_day"]
+            weather = info["weather"]
+            location = info["location"]
+
             base_en = _scene_to_english(name, lighting)
-            suffix = style_suffix.strip() or DEFAULT_STYLE
-            # 场景图：明确无人，只拍空场景背景
+
+            # Build environment_description_en
+            tod_weather = " ".join(filter(None, [time_of_day, weather]))
+            atm_part = f"{tod_weather} atmosphere" if tod_weather else ""
+            env_parts = [name]
+            if location:
+                env_parts.append(location)
+            if atm_part:
+                env_parts.append(atm_part)
+            if lighting:
+                env_parts.append(lighting)
+            environment_description_en = ", ".join(filter(None, env_parts))
+
+            # Build positive_prompt (uses translated base_en)
             positive_prompt = f"{SCENE_PREFIX}, {base_en}, {suffix}"
+
+            # Build environment_3view_prompt
+            env_desc = environment_description_en
+            environment_3view_prompt = (
+                f"empty scene no people, {env_desc}, front view, eye level, {suffix} | "
+                f"empty scene no people, {env_desc}, side angle, {suffix} | "
+                f"empty scene no people, {env_desc}, overhead bird eye view, {suffix}"
+            )
 
             scenes.append({
                 "index": idx + 1,
-                "name": name,
-                "appears_in_shots": info["shots"],
-                "lighting_style": lighting,
+                "scene_name": name,
+                "name": name,                                # compat alias
+                "location": location,
+                "time_of_day": time_of_day,
+                "weather": weather,
+                "lighting_mood": lighting,
+                "lighting_style": lighting,                  # compat alias
+                "shot_appearances": info["shots"],
+                "appears_in_shots": info["shots"],           # compat alias
+                "environment_description_en": environment_description_en,
+                "environment_3view_prompt": environment_3view_prompt,
                 "positive_prompt": positive_prompt,
                 "negative_prompt": DEFAULT_NEGATIVE,
             })
@@ -138,12 +189,17 @@ class AFE_SceneAnalyzer:
             f"共 {len(scenes)} 个场景：",
         ]
         for s in scenes:
-            shot_ids = ", ".join(s["appears_in_shots"])
-            lines.append(f"场景{s['index']}：{s['name']}")
-            if s["lighting_style"]:
-                lines.append(f"  布光：{s['lighting_style']}")
+            shot_ids = ", ".join(s["shot_appearances"])
+            lines.append(f"场景{s['index']}：{s['scene_name']}")
+            if s["location"]:
+                lines.append(f"  地点：{s['location']}")
+            if s["time_of_day"] or s["weather"]:
+                lines.append(f"  时间/天气：{s['time_of_day']} {s['weather']}".strip())
+            if s["lighting_mood"]:
+                lines.append(f"  布光：{s['lighting_mood']}")
             lines.append(f"  出现分镜：{shot_ids}")
-            lines.append(f"  AI提示词：{s['positive_prompt'][:80]}")
+            lines.append(f"  环境描述：{s['environment_description_en'][:80]}")
+            lines.append(f"  三视图提示词：{s['environment_3view_prompt'][:100]}...")
 
         scene_report = "\n".join(lines)
         scenes_json = json.dumps(scenes, ensure_ascii=False)

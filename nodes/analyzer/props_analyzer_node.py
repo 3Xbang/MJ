@@ -5,11 +5,10 @@ from ai_film_editor_nodes.lib.utils.logger import get_logger
 logger = get_logger("AFE_PropsAnalyzer")
 
 DEFAULT_NEGATIVE = "blurry, damaged, low quality, distorted, person, human, hands, body, background, scene, room, table, surface"
-DEFAULT_STYLE = "3D CG animation, CGI rendering, clean white background, studio lighting"
+DEFAULT_STYLE = "product photography style, studio lighting, clean white background, sharp focus"
 
 # 道具固定词 — 白底单品，无人无背景
 PROPS_PREFIX = "single object on white background, pure white background, no person, no hands, no scene, isolated product shot, clean white backdrop"
-DEFAULT_STYLE = "product photography style, studio lighting, clean white background, sharp focus"
 
 
 def _get_shots(shot_sequence) -> list:
@@ -67,7 +66,7 @@ class AFE_PropsAnalyzer:
     RETURN_TYPES = ("STRING", "INT", "STRING")
     RETURN_NAMES = ("props_json", "props_count", "props_report")
     FUNCTION = "analyze_props"
-    CATEGORY = "AI Film Editor/Analyzers"
+    CATEGORY = "AI Film Editor/Script"
     OUTPUT_NODE = True
 
     def analyze_props(self, shot_sequence, style_suffix: str = DEFAULT_STYLE):
@@ -95,15 +94,20 @@ class AFE_PropsAnalyzer:
         props_list: list[dict] = []
         for idx, name in enumerate(seen_order):
             info = prop_map[name]
-            en_name = _prop_to_english(name)
-            # 道具图：白底单品，风格跟 Director Group 统一
+            name_en = _prop_to_english(name)
             suffix = style_suffix.strip() or DEFAULT_STYLE
-            positive_prompt = f"{PROPS_PREFIX}, {en_name}, {suffix}"
+            # 道具图：白底单品，风格跟 Director Group 统一
+            prompt = f"product photography, white background, clean isolated {name_en}, no shadows, no environment, {suffix}"
+            description_en = f"a {name_en}, clean isolated object"
             props_list.append({
                 "index": idx + 1,
                 "name": name,
-                "appears_in_shots": info["shots"],
-                "positive_prompt": positive_prompt,
+                "name_en": name_en,
+                "description_en": description_en,
+                "which_shots": info["shots"],
+                "appears_in_shots": info["shots"],    # compat alias
+                "prompt": prompt,
+                "positive_prompt": prompt,            # compat alias
                 "negative_prompt": DEFAULT_NEGATIVE,
             })
 
@@ -114,10 +118,10 @@ class AFE_PropsAnalyzer:
             f"共 {len(props_list)} 件道具：",
         ]
         for p in props_list:
-            shot_ids = ", ".join(p["appears_in_shots"])
-            lines.append(f"道具{p['index']}：{p['name']}")
+            shot_ids = ", ".join(p["which_shots"])
+            lines.append(f"道具{p['index']}：{p['name']} ({p['name_en']})")
             lines.append(f"  出现分镜：{shot_ids}")
-            lines.append(f"  AI提示词：{p['positive_prompt'][:80]}")
+            lines.append(f"  AI提示词：{p['prompt'][:80]}")
 
         props_report = "\n".join(lines)
         props_json = json.dumps(props_list, ensure_ascii=False)
