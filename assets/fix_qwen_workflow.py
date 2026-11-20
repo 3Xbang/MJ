@@ -66,17 +66,66 @@ def patch(src_path: str, dst_path: str):
         raise RuntimeError("Prompt Enhancer node not found")
     print(f"PE node id={pe_node['id']}")
 
+    # 提前确定 link id 的起始值（后面各步骤都会用到）
+    next_link_id = (max((l[0] for l in data.get("links", [])), default=0)) + 1
+
     wv = pe_node.get("widgets_values", [])
     if len(wv) > 1:
         wv[1] = PROMPT
     if "prompt" in pe_node.get("widgets_values_named", {}):
         pe_node["widgets_values_named"]["prompt"] = PROMPT
-    # 也更新负向提示词（通常在 widget index 4）
+    if "negative_prompt" in pe_node.get("widgets_values_named", {}):
+        pe_node["widgets_values_named"]["negative_prompt"] = NEGATIVE
+        if len(wv) > 5:
+            wv[5] = NEGATIVE
+    # 显式确保 max_length（index 4）是整数，防止被之前的脚本覆盖成 NaN
     if len(wv) > 4:
-        wv[4] = NEGATIVE
+        wv[4] = 4096
+    if "max_length" in pe_node.get("widgets_values_named", {}):
+        pe_node["widgets_values_named"]["max_length"] = 4096
+    print(f"  wv[1]=prompt({len(str(wv[1]))} chars), wv[4]=max_length={wv[4]}, wv[5]=negative({len(str(wv[5]))} chars)")
     print("  Prompt updated ✓")
 
-    # ── 2. 移除所有 SaveImageAdvanced 和 ImageCompare 节点及其关联 link ───────
+    # ── 2. 确保 image_2~9 都连接到同一个参考图（node 470）────────────────────
+    # 原版 10张.json 把相同参考图连接到所有 image 槽，这是生成干净9格网格的关键
+    ref_node_id = None
+    for n in data["nodes"]:
+        if n.get("type") == "LoadImage" and n["id"] == 470:
+            ref_node_id = n["id"]
+            break
+    if not ref_node_id:
+        # fallback: find any LoadImage
+        for n in data["nodes"]:
+            if n.get("type") == "LoadImage":
+                ref_node_id = n["id"]
+                break
+
+    if ref_node_id:
+        label_to_idx = {inp.get("label"): i
+                        for i, inp in enumerate(pe_node.get("inputs", []))}
+        ref_node = next(n for n in data["nodes"] if n["id"] == ref_node_id)
+
+        for slot_label in ["image_2","image_3","image_4","image_5",
+                           "image_6","image_7","image_8","image_9"]:
+            inp_idx = label_to_idx.get(slot_label)
+            if inp_idx is None:
+                continue
+            inp = pe_node["inputs"][inp_idx]
+            if inp.get("link") is not None:
+                continue  # already connected
+            # Create new link
+            lnk_id = next_link_id; next_link_id += 1
+            data["links"].append([lnk_id, ref_node_id, 0, pe_node["id"], inp_idx, "IMAGE"])
+            inp["link"] = lnk_id
+            if "links" not in ref_node["outputs"][0]:
+                ref_node["outputs"][0]["links"] = []
+            ref_node["outputs"][0]["links"].append(lnk_id)
+
+        print(f"  Reconnected image_2~9 → LoadImage {ref_node_id} ✓")
+    else:
+        print("  WARNING: Could not find LoadImage node to reconnect image_2~9")
+
+    # ── 3. 移除所有 SaveImageAdvanced 和 ImageCompare 节点及其关联 link ───────
     keep_types = {"bc1c967a-7f6a-4be9-a372-dad16e4f28e3", "LoadImage", "MarkdownNote"}
     nodes_to_remove = {
         n["id"] for n in data["nodes"]
@@ -102,9 +151,9 @@ def patch(src_path: str, dst_path: str):
 
     print(f"  Removed {len(nodes_to_remove)} old nodes, {len(links_to_remove)} old links")
 
-    # ── 3. 确定新节点/link 的起始 id ─────────────────────────────────────────
+    # ── 3. 确定新节点 id 的起始值 ────────────────────────────────────────────
     next_node_id = max(n["id"] for n in data["nodes"]) + 1
-    next_link_id = (max((l[0] for l in data.get("links", [])), default=0)) + 1
+    # next_link_id already initialized at the top of this function
 
     # ── 4. 加入 AFE_QwenImageSplit 节点 ──────────────────────────────────────
     pe_x, pe_y = pe_node["pos"][0], pe_node["pos"][1]
@@ -126,8 +175,8 @@ def patch(src_path: str, dst_path: str):
             for i, name in enumerate(VIEW_NAMES)
         ],
         "properties": {},
-        "widgets_values": [3, 3],   # cols=3, rows=3
-        "widgets_values_named": {"cols": 3, "rows": 3},
+        "widgets_values": [3, 900, 1700],   # cols=3, row_cut_1=900, row_cut_2=1700
+        "widgets_values_named": {"cols": 3, "row_cut_1": 900, "row_cut_2": 1700},
     }
     data["nodes"].append(split_node)
 
