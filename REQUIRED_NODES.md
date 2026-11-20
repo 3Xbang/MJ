@@ -72,3 +72,48 @@ KSampler, KSamplerAdvanced, CLIPTextEncode, VAEDecode, VAELoader, CLIPLoader, Ch
 ### No additional downloads required
 - Part 4 uses VideoHelperSuite (`VHS_VideoCombine`) already listed in Part 1
 - `AFE_ShotSequenceBuilder`, `AFE_ProjectExport`, and `AFE_Watermark` are self-contained
+
+---
+
+## Section 5 — 剧本解析流水线 (Script Analysis Pipeline)
+
+### Required: comfyui_LLM_party
+
+The `afe_script_pipeline.json` workflow template uses nodes from
+[comfyui_LLM_party](https://github.com/heshengtao/comfyui_LLM_party):
+
+| Node used in template | Purpose |
+|-----------------------|---------|
+| `LLM_local_loader` | Load a local LLM model (e.g. Qwen2.5-7B-Instruct) |
+| `LLM_local` | Run inference with the loaded model |
+| `show_text_party` | Display text output in the ComfyUI canvas (×5 display nodes) |
+
+**Install steps (RunPod / Linux):**
+```bash
+cd /workspace/runpod-slim/ComfyUI/custom_nodes
+git clone https://github.com/heshengtao/comfyui_LLM_party
+pip install -r comfyui_LLM_party/requirements.txt
+```
+
+**Install steps (ComfyUI Manager):**
+ComfyUI Manager → Search "LLM Party" → Install
+
+> ⚠️ **Without comfyui_LLM_party installed, the `afe_script_pipeline.json`
+> template will fail to open.** The AFE analysis nodes (AFE_ScriptParser,
+> AFE_SceneAnalyzer, AFE_PropsAnalyzer, AFE_CharacterTracker,
+> AFE_ShotPromptBuilder, AFE_ShotList) work independently and do not require
+> LLM Party.
+
+### Required: Local LLM model
+
+Place your model under `models/LLM/`, e.g.:
+
+```
+models/LLM/Qwen2.5-7B-Instruct/
+```
+
+The workflow template is pre-configured for `models/LLM/Qwen2.5-7B-Instruct/`.
+Any model compatible with `LLM_local_loader` can be substituted by editing
+Node 1's widget value.
+
+See **MIGRATION.md** for slot-change notes if you are updating existing workflows.

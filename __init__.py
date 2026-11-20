@@ -203,8 +203,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AFE_ShotCalculator": "🎬 Director Group (导演组)",  # 向后兼容
     "AFE_CastListBuilder": "🎭 Cast List Builder (演员表构建器)",
     "AFE_CastSetup":          "🎭 Cast Setup (演员表设定器)",
-    "AFE_ShotPromptBuilder":  "🎬 Shot Prompt Builder (分镜提示词合成器)",
-    "AFE_ScriptParser": "AFE Script Parser",
+    "AFE_ShotPromptBuilder":  "🎬 Shot Prompt Builder v2 (分镜提示词合成器)",
+    "AFE_ScriptParser": "📋 Script Parser v2 (剧本解析器)",
     "AFE_ShotDuration": "AFE Shot Duration",
     "AFE_TailFrameExtractor": "AFE Tail Frame Extractor",
     "AFE_ToneCompensation": "AFE Tone Compensation",
