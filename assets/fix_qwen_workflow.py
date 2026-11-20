@@ -213,8 +213,8 @@ def patch_workflow(src_path, dst_path, char_description=CHAR_DESCRIPTION):
 
 
 if __name__ == "__main__":
-    src = "D:/xia/10x.json"
-    dst = "D:/xia/10x_v4.json"
+    src = "D:/下载/10张.json"
+    dst = "D:/下载/10张_v4.json"
     print(f"Patching: {src} -> {dst}\n")
     patch_workflow(src, dst)
     print("\nWorkflow slot summary:")
