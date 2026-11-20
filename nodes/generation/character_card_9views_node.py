@@ -31,20 +31,26 @@ VIEW_TEMPLATES = [
     "[Image_1] Full body SIDE PROFILE VIEW, 90 degrees, standing, facing right. "
     "{char}. White background. {style}.",
 
-    # 4. 面部·中性
-    "[Image_1] FACE CLOSE-UP portrait, head and shoulders. "
-    "Neutral calm expression, looking directly at camera. "
-    "{char}. Blue sky soft background. {style}.",
+    # 4. 面部·中性 — 大头照
+    "[Image_1] EXTREME CLOSE-UP HEADSHOT. "
+    "Tight portrait crop, face filling 80% of the frame, head and neck only, NO body visible. "
+    "Neutral calm expression, eyes open wide, looking directly at camera. "
+    "Plain white or soft blue background, studio lighting. "
+    "{char}. {style}.",
 
-    # 5. 面部·微笑
-    "[Image_1] FACE CLOSE-UP portrait, head and shoulders. "
-    "Big warm happy smile, eyes crinkling with joy. "
-    "{char}. Blue sky soft background. {style}.",
+    # 5. 面部·微笑 — 大头照
+    "[Image_1] EXTREME CLOSE-UP HEADSHOT. "
+    "Tight portrait crop, face filling 80% of the frame, head and neck only, NO body visible. "
+    "Big warm happy smile, teeth showing, eyes crinkling with joy, cheeks raised. "
+    "Plain white or soft blue background, studio lighting. "
+    "{char}. {style}.",
 
-    # 6. 面部·严肃
-    "[Image_1] FACE CLOSE-UP portrait, head and shoulders. "
-    "Serious sharp authoritative expression, eyebrows slightly furrowed. "
-    "{char}. Blue sky soft background. {style}.",
+    # 6. 面部·严肃 — 大头照
+    "[Image_1] EXTREME CLOSE-UP HEADSHOT. "
+    "Tight portrait crop, face filling 80% of the frame, head and neck only, NO body visible. "
+    "Serious sharp authoritative expression, eyebrows slightly furrowed, intense direct gaze. "
+    "Plain white or soft blue background, studio lighting. "
+    "{char}. {style}.",
 
     # 7. 场景·喝茶
     "[Image_1] MEDIUM SHOT. Sitting on wooden chair on sunny beach terrace, "
@@ -131,9 +137,25 @@ def _load_models():
     return _MODEL_CACHE[key]
 
 
+def _crop_face_region(image: torch.Tensor) -> torch.Tensor:
+    """
+    从全身图中裁剪出脸部区域（上方 35% 的正方形区域），
+    作为面部视角的参考图，引导模型生成大头照而非全身图。
+    """
+    B, H, W, C = image.shape
+    face_h = int(H * 0.38)   # 取上方 38% 高度
+    # 水平居中裁剪正方形
+    face_w = face_h
+    x0 = max(0, (W - face_w) // 2)
+    x1 = min(W, x0 + face_w)
+    face = image[:, 0:face_h, x0:x1, :]
+    return face
+
+
 def _generate_one(reference_image: torch.Tensor,
                   clip, vae, cached_model,
-                  prompt: str, negative: str, seed: int) -> torch.Tensor:
+                  prompt: str, negative: str, seed: int,
+                  use_face_crop: bool = False) -> torch.Tensor:
     """Run one full Qwen Image 2.1 diffusion pass for one view."""
 
     # TextEncodeQwenImage21: 专为多视角生成设计，支持 [Image_1] 角度指令
@@ -146,14 +168,15 @@ def _generate_one(reference_image: torch.Tensor,
     VAEDec     = _get_node("VAEDecode")
 
     # 1. 编码：reference image 作为 [Image_1] 角色参考，prompt 指定角度
-    # images 参数格式：{"image_1": tensor}
+    # 面部视角用裁剪后的脸部图作为参考，引导模型输出大头照
+    ref = _crop_face_region(reference_image) if use_face_crop else reference_image
     enc_result = _call(TextEnc21,
                        clip=clip,
                        prompt=prompt,
                        negative_prompt=negative,
                        vae=vae,
                        resolution=1024,
-                       images={"image_1": reference_image})
+                       images={"image_1": ref})
 
     # TextEncodeQwenImage21 输出：[positive, negative, latent]
     pos    = enc_result[0]
@@ -248,6 +271,9 @@ class AFE_CharacterCard9Views:
             prompt = template.replace("{char}", char).replace("{style}", style)
             logger.info("[AFE] 视角 %d/9: %s", i + 1, name)
 
+            # 视角 4-6（面部特写）用脸部裁剪图作为参考，引导大头照构图
+            is_face_view = (3 <= i <= 5)
+
             try:
                 img = _generate_one(
                     reference_image = reference_image,
@@ -257,6 +283,7 @@ class AFE_CharacterCard9Views:
                     prompt   = prompt,
                     negative = negative_prompt,
                     seed     = seed + i * 1000,
+                    use_face_crop = is_face_view,
                 )
                 results.append(img)
                 logger.info("[AFE]   ✓ shape=%s", img.shape)
