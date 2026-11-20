@@ -71,7 +71,7 @@ def build_workflow() -> dict:
             "在这里输入剧本...",                        # raw_script
             "3D cartoon Pixar animation style",         # render_style
             5,                                          # seconds_per_shot
-            "models/LLM/Qwen2.5-7B-Instruct",          # model_path
+            "LLM/Qwen2.5-7B-Instruct",                 # model_path
         ],
     })
 

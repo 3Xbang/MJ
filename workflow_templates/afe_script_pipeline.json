@@ -86,7 +86,7 @@
         "在这里输入剧本...",
         "3D cartoon Pixar animation style",
         5,
-        "models/LLM/Qwen2.5-7B-Instruct"
+        "LLM/Qwen2.5-7B-Instruct"
       ]
     },
     {
