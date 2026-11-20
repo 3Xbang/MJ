@@ -149,9 +149,9 @@ def _generate_one(reference_image: torch.Tensor,
     # 2. Negative conditioning (text only, no image)
     neg = _call(TextEnc, clip=clip, prompt=negative)[0]
 
-    # 3. Empty latent
+    # 3. Empty latent — layers=1 保证每次输出1张独立图（不是3层堆叠）
     EmptyLat = _get_node("EmptyQwenImageLayeredLatentImage")
-    latent = _call(EmptyLat, width=1024, height=1024, layers=3)[0]
+    latent = _call(EmptyLat, width=1024, height=1024, layers=1)[0]
 
     # 4. CFG guidance
     guider = _call(CFGNode, model=cached_model, positive=pos, negative=neg, cfg=1.0)[0]
