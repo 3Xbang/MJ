@@ -67,20 +67,31 @@ class AFE_QwenImageSplit:
 
     def split(self, image: torch.Tensor, cols: int = 3, rows: int = 3):
         """
-        image: [B, H, W, C] — B 通常为 1（Qwen 单次输出1张合并图）
-        返回 9 个 [1, cell_h, cell_w, C] 张量
-        """
-        # 取第一张（Qwen 输出 batch=1）
-        if image.shape[0] > 1:
-            logger.warning("Input batch > 1, using first image only")
-        img = image[0:1]  # [1, H, W, C]
+        image: 两种可能的输入格式：
+          A) [1, H, W, C]  — Qwen 输出的单张合并网格图（例如 1440×2560）
+          B) [9, H, W, C]  — Qwen 输出的 batch（9张独立图，每张 1024×1024）
 
-        _, H, W, C = img.shape
+        对应处理：
+          A → 按 rows×cols 裁剪成 9 个小图
+          B → 直接按 batch index 拆开成 9 张
+        """
+        B, H, W, C = image.shape
+        logger.info("QwenImageSplit input: B=%d H=%d W=%d C=%d", B, H, W, C)
+
+        # ── 情况 B：已经是 batch，直接按 index 拆分 ───────────────────────────
+        if B > 1:
+            logger.info("Batch mode: splitting %d images by index", B)
+            cells = [image[i:i+1] for i in range(B)]
+            # 补齐到 9
+            while len(cells) < 9:
+                cells.append(cells[-1])
+            return tuple(cells[:9])
+
+        # ── 情况 A：单张合并图，按网格裁剪 ───────────────────────────────────
+        img = image  # [1, H, W, C]
         cell_h = H // rows
         cell_w = W // cols
-
-        logger.info("QwenImageSplit: %dx%d → %d×%d cells (%dx%d each)",
-                    W, H, cols, rows, cell_w, cell_h)
+        logger.info("Grid crop mode: %dx%d cells (%dx%d each)", cols, rows, cell_w, cell_h)
 
         cells = []
         for r in range(rows):
@@ -90,8 +101,6 @@ class AFE_QwenImageSplit:
                 cell = img[:, y0:y0 + cell_h, x0:x0 + cell_w, :]
                 cells.append(cell)
 
-        # 保证恰好9个输出（不足的复制最后一张）
         while len(cells) < 9:
             cells.append(cells[-1])
-
         return tuple(cells[:9])
