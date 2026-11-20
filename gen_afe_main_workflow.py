@@ -111,7 +111,6 @@ def build_workflow() -> dict:
         ],
         "properties": {"Node name for S&R": "LLM_local"},
         "widgets_values": [
-            # required widgets only (optional inputs are connectable, not widget values)
             SYSTEM_PROMPT_EN,    # system_prompt (STRING)
             SCRIPT_PLACEHOLDER,  # user_prompt (STRING)
             "LLM",               # model_type (COMBO)
@@ -120,8 +119,10 @@ def build_workflow() -> dict:
             "disable",           # is_memory (COMBO)
             "disable",           # is_locked (COMBO)
             "enable",            # main_brain (COMBO)
-            # is_enable (BOOLEAN) - optional
-            True,
+            1,                   # conversation_rounds (INT)
+            "",                  # historical_record (COMBO, '' = first/only option)
+            True,                # is_enable (BOOLEAN)
+            "enable",            # is_enable_system_role (COMBO)
         ],
     })
     links.append([lnk_model,     1, 0, 2, 0, "CUSTOM"])

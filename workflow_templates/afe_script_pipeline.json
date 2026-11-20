@@ -99,7 +99,10 @@
         "disable",
         "disable",
         "enable",
-        true
+        1,
+        "",
+        true,
+        "enable"
       ]
     },
     {
