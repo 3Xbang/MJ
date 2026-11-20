@@ -114,11 +114,19 @@ class AFE_NineViewPromptBuilder:
             },
         }
 
-    RETURN_TYPES = ("STRING", "STRING", "STRING")
+    RETURN_TYPES = ("STRING",) * 9 + ("STRING", "STRING")
     RETURN_NAMES = (
-        "nine_view_prompt",   # [Image_1]~[Image_9] 完整提示词 → 接 Qwen
-        "negative_prompt",    # 负向提示词
-        "prompt_preview",     # 文字预览
+        "prompt_1_设计参考图",
+        "prompt_2_正面全身",
+        "prompt_3_侧面全身",
+        "prompt_4_面部中性",
+        "prompt_5_面部微笑",
+        "prompt_6_面部严肃",
+        "prompt_7_场景喝茶",
+        "prompt_8_场景指向",
+        "prompt_9_场景自信坐",
+        "negative_prompt",
+        "prompt_preview",
     )
     FUNCTION = "build_prompts"
     CATEGORY = "AI Film Editor/Character Card"
@@ -135,40 +143,42 @@ class AFE_NineViewPromptBuilder:
 
         if not char:
             msg = "⚠️ 请填写角色描述"
-            return {"ui": {"text": [msg]}, "result": ("", negative_prompt, msg)}
+            empty = ("",) * 9
+            return {"ui": {"text": [msg]}, "result": empty + (negative_prompt, msg)}
 
-        # 每个 slot 都包含完整角色描述 + 角度描述
+        # 生成 9 个独立提示词，每个包含完整角色描述 + 对应视角描述
         view_names = [
-            "三视图合一", "正面全身", "背面全身", "侧面全身",
+            "角色设计参考图", "正面全身", "侧面全身",
             "面部·中性", "面部·微笑", "面部·严肃",
-            "场景·喝茶", "场景·自信坐姿"
+            "场景·喝茶", "场景·指向", "场景·自信坐",
         ]
-        parts = []
-        for i, (template, name) in enumerate(zip(VIEW_TEMPLATES, view_names)):
-            filled = template.replace("{char}", char).replace("{style}", style)
-            parts.append(f"[Image_{i+1}] {filled}")
+        prompts = []
+        for template in VIEW_TEMPLATES:
+            filled = "[Image_1] " + template.replace("{char}", char).replace("{style}", style)
+            prompts.append(filled)
 
-        nine_view_prompt = "\n\n".join(parts)
         neg = negative_prompt.strip() or (
             "photorealistic, real person, ugly, deformed, "
             "blurry, bad anatomy, watermark, text, 2d, sketch"
         )
 
-        lines = ["🎭 九视图提示词已生成", "━" * 40]
+        # 预览
+        lines = ["🎭 九视图提示词已生成（9个独立输出）", "━" * 40]
         lines.append(f"角色描述: {char[:60]}{'...' if len(char)>60 else ''}")
         lines.append(f"风格: {style[:40]}")
         lines.append("━" * 40)
-        lines.append("每个 [Image_N] 均包含完整角色描述 + 角度描述：")
+        lines.append("输出接口:")
         for i, name in enumerate(view_names):
-            lines.append(f"  [Image_{i+1}] {name}")
+            lines.append(f"  prompt_{i+1} → Qwen节点_{i+1} ({name})")
         lines.append("━" * 40)
-        lines.append("✅ nine_view_prompt → Qwen PE 节点的 prompt 输入")
-        lines.append("⚠️  输出的合并图接 AFE_QwenImageSplit → 9张独立图")
+        lines.append("✅ 每个 prompt_N 直接接对应 Qwen 节点的 prompt 输入")
+        lines.append("⚠️  视角描述已写死，只需修改 character_description")
 
         preview = "\n".join(lines)
-        logger.info("NineViewPromptBuilder: char=%s... style=%s", char[:40], style[:20])
+        logger.info("NineViewPromptBuilder: 9 prompts for: %s...", char[:40])
 
         return {
             "ui": {"text": [preview]},
-            "result": (nine_view_prompt, neg, preview),
+            "result": tuple(prompts) + (neg, preview),
         }
+

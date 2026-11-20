@@ -186,6 +186,13 @@ def make_qwen_node(node_id, prompt, pos_x, pos_y, link_image1, seed=None):
 
 
 def build():
+    # ── 读取原版 10张.json，克隆 Qwen PE 节点 ──────────────────────────────
+    with open("D:/下载/10张.json", encoding="utf-8") as f:
+        orig = json.load(f)
+
+    orig_pe = next(n for n in orig["nodes"] if "bc1c967a" in n.get("type", ""))
+    print(f"Cloning Qwen PE node from original (id={orig_pe['id']})")
+
     nodes = []
     links = []
     nid = 1
@@ -197,54 +204,124 @@ def build():
         "id": ref_id,
         "type": "LoadImage",
         "title": "🎭 角色参考图",
-        "pos": [50, 400],
+        "pos": [50, 300],
         "size": [300, 420],
-        "flags": {},
-        "order": 0,
-        "mode": 0,
+        "flags": {}, "order": 0, "mode": 0,
         "inputs": [],
         "outputs": [
             {"name": "IMAGE", "type": "IMAGE", "links": []},
             {"name": "MASK",  "type": "MASK",  "links": None},
         ],
-        "properties": {"cnr_id": "comfy-core", "ver": "0.44.0"},
+        "properties": {"cnr_id": "comfy-core", "ver": "0.44.0",
+                       "Node name for S&R": "LoadImage"},
         "widgets_values": ["reference.png", "image"],
+        "widgets_values_named": {"image": "reference.png", "upload": "image"},
     })
 
-    # ── 9 个独立 Qwen 节点 + 对应 PreviewImage ────────────────────────────
-    COL_W   = 540   # 每个 Qwen 节点宽度 + 间距
-    PREV_H  = 1120  # Qwen节点高度 + 预览节点高度 + 间距
-    QX_BASE = 400   # 起始 X 坐标
-    QY_BASE = 50    # 起始 Y 坐标
+    # ── AFE_NineViewPromptBuilder（角色描述 → 9个独立提示词）────────────────
+    builder_id = nid; nid += 1
+    nodes.append({
+        "id": builder_id,
+        "type": "AFE_NineViewPromptBuilder",
+        "title": "🎬 角色描述 → 9视角提示词",
+        "pos": [50, 50],
+        "size": [560, 300],
+        "flags": {}, "order": 0, "mode": 0,
+        "inputs": [],
+        "outputs": [
+            {"name": f"prompt_{i+1}_{name}", "type": "STRING", "links": []}
+            for i, name in enumerate([
+                "设计参考图","正面全身","侧面全身",
+                "面部中性","面部微笑","面部严肃",
+                "场景喝茶","场景指向","场景自信坐",
+            ])
+        ] + [
+            {"name": "negative_prompt", "type": "STRING", "links": []},
+            {"name": "prompt_preview",  "type": "STRING", "links": []},
+        ],
+        "properties": {},
+        "widgets_values": [
+            # character_description (multiline)
+            f"{CHAR}",
+            # style_suffix
+            STYLE,
+            # negative_prompt
+            NEGATIVE,
+        ],
+        "widgets_values_named": {
+            "character_description": CHAR,
+            "style_suffix": STYLE,
+            "negative_prompt": NEGATIVE,
+        },
+    })
 
-    for i, (prompt, name) in enumerate(zip(VIEW_PROMPTS, VIEW_NAMES)):
+    # 找到 image_1 在 Qwen inputs 数组中的位置
+    image1_idx = next(
+        i for i, inp in enumerate(orig_pe["inputs"])
+        if inp.get("label") == "image_1"
+    )
+    # 找到 prompt 在 Qwen inputs 数组中的位置
+    prompt_idx = next(
+        i for i, inp in enumerate(orig_pe["inputs"])
+        if inp.get("label") == "positive_prompt"
+    )
+    print(f"  image_1 idx={image1_idx}, prompt idx={prompt_idx}")
+
+    # ── 9 个独立 Qwen 节点 + 对应 PreviewImage ────────────────────────────
+    COL_W   = 560
+    PREV_H  = 1120
+    QX_BASE = 680
+    QY_BASE = 50
+
+    for i, name in enumerate(VIEW_NAMES):
         col = i % 3
         row = i // 3
         qx = QX_BASE + col * COL_W
         qy = QY_BASE + row * PREV_H
 
-        # link: LoadImage → Qwen image_1 slot
+        qwen_id = nid; nid += 1
+
+        # Deep clone from original
+        qwen = copy.deepcopy(orig_pe)
+        qwen["id"]  = qwen_id
+        qwen["pos"] = [qx, qy]
+        qwen["outputs"][0]["links"] = []
+
+        # max_length fix
+        wv  = qwen["widgets_values"]
+        wvn = qwen.get("widgets_values_named", {})
+        wv[4] = 4096
+        if "max_length" in wvn:
+            wvn["max_length"] = 4096
+        # Different seed per branch
+        for j, v in enumerate(wv):
+            if isinstance(v, int) and v > 100000000:
+                wv[j] = 42 + i * 1000
+                break
+
+        # Disconnect ALL image slots, reconnect only image_1
+        for inp in qwen["inputs"]:
+            inp["link"] = None
+
+        # Link: LoadImage → Qwen image_1
         link_ref = lid; lid += 1
-        qwen_id  = nid; nid += 1
-
+        qwen["inputs"][image1_idx]["link"] = link_ref
         nodes[ref_id - 1]["outputs"][0]["links"].append(link_ref)
-        links.append([link_ref, ref_id, 0, qwen_id, 7, "IMAGE"])
-        # input index 7 = image_1 (0-indexed: prompt=0,switch_1=1,switch=2,scheduler=3,device=4,dtype=5,clip_name_1=6,image_1=7)
+        links.append([link_ref, ref_id, 0, qwen_id, image1_idx, "IMAGE"])
 
-        qwen_node = make_qwen_node(
-            node_id=qwen_id,
-            prompt=prompt,
-            pos_x=qx, pos_y=qy,
-            link_image1=link_ref,
-            seed=42 + i * 1000,
-        )
-        nodes.append(qwen_node)
+        # Link: NineViewPromptBuilder.prompt_N → Qwen.prompt
+        # Convert prompt input from widget to connected input
+        link_prompt = lid; lid += 1
+        qwen["inputs"][prompt_idx]["link"] = link_prompt
+        nodes[builder_id - 1]["outputs"][i]["links"].append(link_prompt)
+        links.append([link_prompt, builder_id, i, qwen_id, prompt_idx, "STRING"])
+
+        nodes.append(qwen)
 
         # PreviewImage
         link_prev = lid; lid += 1
         prev_id   = nid; nid += 1
-
-        qwen_node["outputs"][0]["links"].append(link_prev)
+        qwen["outputs"][0]["links"].append(link_prev)
         links.append([link_prev, qwen_id, 0, prev_id, 0, "IMAGE"])
 
         nodes.append({
@@ -253,19 +330,15 @@ def build():
             "title": f"🖼 {name}",
             "pos": [qx, qy + 720],
             "size": [480, 580],
-            "flags": {},
-            "order": 10 + i,
-            "mode": 0,
+            "flags": {}, "order": 20 + i, "mode": 0,
             "inputs": [{"name": "images", "type": "IMAGE", "link": link_prev}],
-            "outputs": [],
-            "properties": {},
-            "widgets_values": [],
+            "outputs": [], "properties": {}, "widgets_values": [],
         })
 
-        print(f"  Branch {i+1}: Qwen{qwen_id} → Preview{prev_id}  [{name}]")
+        print(f"  Branch {i+1}: Builder[{i}]→prompt + LoadImage→image_1 → Qwen{qwen_id} → Preview{prev_id}  [{name}]")
 
     return {
-        "id": "afe-character-card-9branch-v1",
+        "id": "afe-character-card-9branch-v3",
         "last_node_id": nid - 1,
         "last_link_id": lid - 1,
         "nodes": nodes,
