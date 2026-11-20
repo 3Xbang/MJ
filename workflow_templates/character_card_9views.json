@@ -143,11 +143,7 @@
         "A 50-year-old chubby Asian man with shoulder-length wavy silver-grey hair, handlebar mustache and goatee. Wearing white T-shirt, beige shorts with gold double-G pattern, thick gold chain necklace, brown wooden bead bracelets, brown sandals",
         "3D cartoon Pixar animation style, vibrant colors, 8k, highly detailed",
         "photorealistic, real person, ugly, deformed, noisy, blurry, bad anatomy, watermark, text, 2d, sketch, anime",
-        42,
-        "qwen_image_2.1_turbo_int8_convrot.safetensors",
-        "qwen_image_2.1_vae_bf16.safetensors",
-        "qwen3vl_8b_int8_convrot.safetensors",
-        "qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors"
+        42
       ]
     },
     {

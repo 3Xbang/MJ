@@ -59,14 +59,6 @@ def build():
             "watermark, text, 2d, sketch, anime",
             # seed
             42,
-            # unet_name
-            "qwen_image_2.1_turbo_int8_convrot.safetensors",
-            # vae_name
-            "qwen_image_2.1_vae_bf16.safetensors",
-            # clip_name
-            "qwen3vl_8b_int8_convrot.safetensors",
-            # pe_model
-            "qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors",
         ],
     })
     links.append([link_ref, li_id, 0, cv_id, 0, "IMAGE"])
