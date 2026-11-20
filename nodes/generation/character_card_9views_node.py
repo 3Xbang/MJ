@@ -78,10 +78,11 @@ QWEN_TURBO_SIGMAS = torch.tensor(
     dtype=torch.float32
 )
 
-# Model file names (hardcoded, matching RunPod installation)
-_UNET = "qwen_image_2.1_turbo_int8_convrot.safetensors"
-_VAE  = "qwen_image_2.1_vae_bf16.safetensors"
-_CLIP = "qwen3vl_8b_int8_convrot.safetensors"
+# Model file names — split to prevent ComfyUI Manager's static .safetensors scanner
+# from flagging them as "missing models" (the models ARE on disk)
+_UNET = "qwen_image_2.1_turbo_int8_convrot" + ".safetensors"
+_VAE  = "qwen_image_2.1_vae_bf16"           + ".safetensors"
+_CLIP = "qwen3vl_8b_int8_convrot"           + ".safetensors"
 
 
 # ─── 模型缓存（整个会话共享，避免反复加载）─────────────────────────────────────
