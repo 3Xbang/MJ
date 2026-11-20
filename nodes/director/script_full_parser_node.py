@@ -141,7 +141,7 @@ class AFE_ScriptFullParser:
             "optional": {
                 "render_style":      ("STRING", {"default": "3D cartoon Pixar animation style"}),
                 "seconds_per_shot":  ("INT",    {"default": 5, "min": 1, "max": 60}),
-                "model_path":        ("STRING", {"default": "models/LLM/Qwen2.5-7B-Instruct"}),
+                "model_path":        ("STRING", {"default": "LLM/Qwen2.5-7B-Instruct"}),
             },
         }
 
@@ -157,7 +157,7 @@ class AFE_ScriptFullParser:
     def parse_script(self, raw_script: str,
                      render_style: str = "3D cartoon Pixar animation style",
                      seconds_per_shot: int = 5,
-                     model_path: str = "models/LLM/Qwen2.5-7B-Instruct"):
+                     model_path: str = "LLM/Qwen2.5-7B-Instruct"):
 
         if not raw_script.strip():
             raise ValueError("raw_script 不能为空")
