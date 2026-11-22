@@ -46,6 +46,10 @@ def build_workflow() -> dict:
     lnk_ss6          = next_link()   #  7 shot_sequence → node 6
     lnk_cd6          = next_link()   #  8 cast_data     → node 6
     lnk_report13     = next_link()   #  9 report        → node 13
+    lnk_scene_to_gen  = next_link()   # scene_report → AFE_SceneImageGenerator
+    lnk_est_preview   = next_link()   # establishing_shots_batch → PreviewImage
+    lnk_med_preview   = next_link()   # medium_shots_batch → PreviewImage
+    lnk_atm_preview   = next_link()   # atmosphere_shots_batch → PreviewImage
 
     nodes.append({
         "id": 1,
@@ -96,12 +100,73 @@ def build_workflow() -> dict:
         "outputs": [
             {"name": "scenes_json",  "type": "STRING", "links": None,               "slot_index": 0},
             {"name": "scenes_count", "type": "INT",    "links": None,               "slot_index": 1},
-            {"name": "scene_report", "type": "STRING", "links": [lnk_scene_report], "slot_index": 2},
+            {"name": "scene_report", "type": "STRING", "links": [lnk_scene_report, lnk_scene_to_gen], "slot_index": 2},
         ],
         "properties": {"Node name for S&R": "AFE_SceneAnalyzer"},
         "widgets_values": ["3D CG animation, CGI rendering, cinematic"],
     })
     links.append([lnk_ss2, 1, 0, 2, 0, "SHOT_SEQUENCE"])
+
+    # ── Node 14: AFE_SceneImageGenerator ────────────────────────────────────
+    # Outputs: [0]=establishing_shots_batch, [1]=medium_shots_batch,
+    #          [2]=atmosphere_shots_batch,   [3]=generation_report
+    nodes.append({
+        "id": 14,
+        "type": "AFE_SceneImageGenerator",
+        "pos": [960, -200],
+        "size": {"0": 420, "1": 260},
+        "flags": {},
+        "order": 14,
+        "mode": 0,
+        "inputs": [
+            {"name": "scene_report", "type": "STRING", "link": lnk_scene_to_gen},
+        ],
+        "outputs": [
+            {"name": "establishing_shots_batch", "type": "IMAGE",  "links": [lnk_est_preview], "slot_index": 0},
+            {"name": "medium_shots_batch",       "type": "IMAGE",  "links": [lnk_med_preview], "slot_index": 1},
+            {"name": "atmosphere_shots_batch",   "type": "IMAGE",  "links": [lnk_atm_preview], "slot_index": 2},
+            {"name": "generation_report",        "type": "STRING", "links": None,              "slot_index": 3},
+        ],
+        "properties": {"Node name for S&R": "AFE_SceneImageGenerator"},
+        "widgets_values": [
+            "3D cartoon Pixar animation style, vibrant colors, 8k, highly detailed",
+            "flux1-dev.safetensors",
+            "ae.safetensors",
+            "clip_l.safetensors",
+            "t5xxl_fp16.safetensors",
+            1024,
+            576,
+            20,
+            3.5,
+            42,
+        ],
+    })
+    links.append([lnk_scene_to_gen, 2, 2, 14, 0, "STRING"])
+
+    # ── Nodes 15-17: PreviewImage for each batch output ──────────────────────
+    preview_configs = [
+        (15, lnk_est_preview, "establishing_shots_batch", [1400, -280], 14, 0),
+        (16, lnk_med_preview, "medium_shots_batch",       [1400, -100], 14, 1),
+        (17, lnk_atm_preview, "atmosphere_shots_batch",   [1400,  80],  14, 2),
+    ]
+    for node_id, lnk_in, title, pos, src_node, src_slot in preview_configs:
+        nodes.append({
+            "id": node_id,
+            "type": "PreviewImage",
+            "pos": pos,
+            "size": {"0": 360, "1": 220},
+            "flags": {},
+            "order": node_id,
+            "mode": 0,
+            "inputs": [
+                {"name": "images", "type": "IMAGE", "link": lnk_in},
+            ],
+            "outputs": [],
+            "title": title,
+            "properties": {"Node name for S&R": "PreviewImage"},
+            "widgets_values": [],
+        })
+        links.append([lnk_in, src_node, src_slot, node_id, 0, "IMAGE"])
 
     # ── Node 3: AFE_PropsAnalyzer ────────────────────────────────────────────
     # Outputs: [0]=props_json, [1]=props_count, [2]=props_report
@@ -264,7 +329,7 @@ def build_workflow() -> dict:
         links.append([lnk_in, src_node, src_slot, node_id, 0, "STRING"])
 
     workflow = {
-        "last_node_id": 13,
+        "last_node_id": 17,
         "last_link_id": link_id,
         "nodes": nodes,
         "links": links,
@@ -288,11 +353,14 @@ def main():
 
     # Also save to user's local downloads folder
     downloads_dir = "D:/下载"
-    os.makedirs(downloads_dir, exist_ok=True)
-    downloads_path = os.path.join(downloads_dir, "afe_script_pipeline.json")
-    with open(downloads_path, "w", encoding="utf-8") as f:
-        json.dump(workflow, f, ensure_ascii=False, indent=2)
-    print(f"✅ Also saved to: {downloads_path}")
+    try:
+        os.makedirs(downloads_dir, exist_ok=True)
+        downloads_path = os.path.join(downloads_dir, "afe_script_pipeline.json")
+        with open(downloads_path, "w", encoding="utf-8") as f:
+            json.dump(workflow, f, ensure_ascii=False, indent=2)
+        print(f"✅ Also saved to: {downloads_path}")
+    except OSError as e:
+        print(f"⚠️ Could not save to {downloads_dir}: {e}")
     print(f"   Nodes: {len(workflow['nodes'])}")
     print(f"   Links: {len(workflow['links'])}")
 

@@ -108,6 +108,8 @@ from ai_film_editor_nodes.nodes.generation.character_card_9views_node import AFE
 
 # Part 14 - Script Full Parser (direct transformers, two-phase LLM)
 from ai_film_editor_nodes.nodes.director.script_full_parser_node import AFE_ScriptFullParser
+# Part 15 - Scene Image Generator
+from ai_film_editor_nodes.nodes.analyzer.scene_image_generator_node import AFE_SceneImageGenerator
 
 NODE_CLASS_MAPPINGS = {
     # Part 1
@@ -196,6 +198,8 @@ NODE_CLASS_MAPPINGS = {
     "AFE_CharacterCard9Views":    AFE_CharacterCard9Views,
     # Part 14
     "AFE_ScriptFullParser":       AFE_ScriptFullParser,
+    # Part 15 - Scene Image Generator
+    "AFE_SceneImageGenerator": AFE_SceneImageGenerator,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -284,6 +288,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AFE_CharacterCard9Views":  "🎭 Character Card 9 Views (角色卡9视图生成器)",
     # Part 14
     "AFE_ScriptFullParser":     "🎬 Script Full Parser (全剧本深度解析器)",
+    "AFE_SceneImageGenerator": "🌄 Scene Image Generator (场景三视图生成器)",
 }
 
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]
