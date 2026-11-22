@@ -38,6 +38,8 @@ Format:
       "character_names": ["name"],
       "dialogue": "quoted text or null",
       "props_list": ["prop1", "prop2"],
+      "raw_description": "max 60 English words describing action and emotion",
+      "duration_seconds": 8
       "raw_description": "max 60 word description of what happens in this shot"
     }
   ]
@@ -46,6 +48,7 @@ Format:
 Rules:
 - role_type: lead | supporting | extra_a | extra_b | extra_other
 - gender: male | female | unknown
+- duration_seconds: assign based on content — dialogue-heavy shots 10-15s, action/transition shots 3-6s. ALL shots must sum to the target total duration given in the user message.
 - Return ONLY the JSON object."""
 
 # ── Phase 2 system prompt ─────────────────────────────────────────────────────
@@ -309,7 +312,7 @@ class AFE_ScriptFullParser:
             full_shot = {
                 "shot_id":          shot_id,
                 "label":            f"第{i + 1:02d}场-{scene_name}",
-                "duration_seconds": float(seconds_per_shot),
+                "duration_seconds": float(shot.get("duration_seconds", seconds_per_shot)),
                 "character_names":  char_names,
                 "costume_description": p2_data.get("costume_description", ""),
                 "costume_en":          p2_data.get("costume_en", ""),
