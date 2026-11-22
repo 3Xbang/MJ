@@ -297,7 +297,7 @@ class AFE_ScriptFullParser:
             PHASE1_SYSTEM,
             phase1_user,
             model_path,
-            max_new_tokens=2048,
+            max_new_tokens=8192,  # 36 shots × ~100 tokens = ~3600, need headroom
         )
         phase1_data = self._parse_llm_json(phase1_raw)
         if not isinstance(phase1_data, dict):
