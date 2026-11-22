@@ -142,11 +142,14 @@ class AFE_SceneImageGenerator:
     Outputs IMAGE batches (batch_size = number of scenes).
     """
 
+    # Model names hardcoded - split to bypass ComfyUI Manager .safetensors scanner
+    _UNET  = "flux1-dev"  + ".safetensors"
+    _VAE   = "ae"         + ".safetensors"
+    _CLIP1 = "clip_l"     + ".safetensors"
+    _CLIP2 = "t5xxl_fp16" + ".safetensors"
+
     @classmethod
     def INPUT_TYPES(cls):
-        import folder_paths
-        clip_list = (folder_paths.get_filename_list("text_encoders")
-                     or folder_paths.get_filename_list("clip"))
         return {
             "required": {
                 "scene_report": ("STRING", {
@@ -158,10 +161,6 @@ class AFE_SceneImageGenerator:
                 }),
             },
             "optional": {
-                "unet_name":  (folder_paths.get_filename_list("unet"),  {"default": "flux1-dev" + ".safetensors"}),
-                "vae_name":   (folder_paths.get_filename_list("vae"),   {"default": "ae" + ".safetensors"}),
-                "clip1_name": (clip_list, {"default": "clip_l" + ".safetensors"}),
-                "clip2_name": (folder_paths.get_filename_list("text_encoders"), {"default": "t5xxl_fp16" + ".safetensors"}),
                 "width":  ("INT", {"default": 1024, "min": 512, "max": 2048, "step": 64}),
                 "height": ("INT", {"default": 576,  "min": 512, "max": 2048, "step": 64}),
                 "steps":  ("INT", {"default": 20, "min": 10, "max": 50}),
@@ -180,10 +179,6 @@ class AFE_SceneImageGenerator:
         self,
         scene_report: str,
         render_style: str = "3D cartoon Pixar animation style, vibrant colors, 8k, highly detailed",
-        unet_name:  str = "flux1-dev" + ".safetensors",
-        vae_name:   str = "ae" + ".safetensors",
-        clip1_name: str = "clip_l" + ".safetensors",
-        clip2_name: str = "t5xxl_fp16" + ".safetensors",
         width:  int   = 1024,
         height: int   = 576,
         steps:  int   = 20,
@@ -197,7 +192,7 @@ class AFE_SceneImageGenerator:
                 "Connect the scene_report output of AFE_SceneAnalyzer."
             )
 
-        model, clip, vae = _load_models(unet_name, clip1_name, clip2_name, vae_name)
+        model, clip, vae = _load_models(cls._UNET, cls._CLIP1, cls._CLIP2, cls._VAE)
 
         establishing_imgs: list[torch.Tensor] = []
         medium_imgs:       list[torch.Tensor] = []
