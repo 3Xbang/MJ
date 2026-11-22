@@ -178,6 +178,10 @@ class AFE_SceneImageGenerator:
                 }),
             },
             "optional": {
+                "scenes_json": ("STRING", {
+                    "multiline": True,
+                    "tooltip": "scenes_json from AFE_SceneAnalyzer (preferred — has full descriptions)",
+                }),
                 "width":  ("INT",   {"default": 1024, "min": 512, "max": 2048, "step": 64}),
                 "height": ("INT",   {"default": 576,  "min": 512, "max": 2048, "step": 64}),
                 "steps":  ("INT",   {"default": 8,    "min": 4,   "max": 20}),
@@ -197,13 +201,30 @@ class AFE_SceneImageGenerator:
         self,
         scene_report: str,
         render_style: str = "3D cartoon Pixar animation style, vibrant colors, 8k, highly detailed",
+        scenes_json: str = "",
         width:  int   = 1024,
         height: int   = 576,
         steps:  int   = 8,
         cfg:    float = 1.0,
         seed:   int   = 42,
     ):
-        scenes = _parse_scene_report(scene_report)
+        # Prefer scenes_json (full descriptions) over scene_report (formatted text)
+        if scenes_json and scenes_json.strip():
+            try:
+                data = json.loads(scenes_json)
+                if isinstance(data, list):
+                    scenes = data
+                elif isinstance(data, dict) and "scenes" in data:
+                    scenes = data["scenes"]
+                else:
+                    scenes = []
+            except Exception:
+                scenes = []
+        else:
+            scenes = []
+
+        if not scenes:
+            scenes = _parse_scene_report(scene_report)
         if not scenes:
             raise ValueError(
                 "No scenes found in scene_report. "
