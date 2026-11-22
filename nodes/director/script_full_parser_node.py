@@ -294,7 +294,9 @@ class AFE_ScriptFullParser:
                 f"Character Appearance:\n{char_context}\n"
                 f"Description: {raw_desc}\n"
                 f"Render Style: {style_full}\nShot duration: {seconds_per_shot}s"
-            )            try:
+            )
+
+            try:
                 p2_raw  = self._call_llm(PHASE2_SYSTEM, p2_user, model_path, max_new_tokens=768)
                 p2_data = self._parse_llm_json(p2_raw)
                 if not isinstance(p2_data, dict):
