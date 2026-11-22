@@ -202,10 +202,6 @@
       },
       "widgets_values": [
         "3D cartoon Pixar animation style, vibrant colors, 8k, highly detailed",
-        "flux1-dev.safetensors",
-        "ae.safetensors",
-        "clip_l.safetensors",
-        "t5xxl_fp16.safetensors",
         1024,
         576,
         20,

@@ -129,16 +129,12 @@ def build_workflow() -> dict:
         ],
         "properties": {"Node name for S&R": "AFE_SceneImageGenerator"},
         "widgets_values": [
-            "3D cartoon Pixar animation style, vibrant colors, 8k, highly detailed",
-            "flux1-dev.safetensors",
-            "ae.safetensors",
-            "clip_l.safetensors",
-            "t5xxl_fp16.safetensors",
-            1024,
-            576,
-            20,
-            3.5,
-            42,
+            "3D cartoon Pixar animation style, vibrant colors, 8k, highly detailed",  # render_style
+            1024,   # width
+            576,    # height
+            20,     # steps
+            3.5,    # cfg
+            42,     # seed
         ],
     })
     links.append([lnk_scene_to_gen, 2, 2, 14, 0, "STRING"])
