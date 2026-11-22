@@ -192,7 +192,7 @@ class AFE_SceneImageGenerator:
                 "Connect the scene_report output of AFE_SceneAnalyzer."
             )
 
-        model, clip, vae = _load_models(cls._UNET, cls._CLIP1, cls._CLIP2, cls._VAE)
+        model, clip, vae = _load_models(self.__class__._UNET, self.__class__._CLIP1, self.__class__._CLIP2, self.__class__._VAE)
 
         establishing_imgs: list[torch.Tensor] = []
         medium_imgs:       list[torch.Tensor] = []
