@@ -129,6 +129,7 @@ def build_workflow() -> dict:
         ],
         "properties": {"Node name for S&R": "AFE_SceneImageGenerator"},
         "widgets_values": [
+            "",     # scene_report (connected via link from SceneAnalyzer, placeholder needed)
             "3D cartoon Pixar animation style, vibrant colors, 8k, highly detailed",  # render_style
             1024,   # width
             576,    # height

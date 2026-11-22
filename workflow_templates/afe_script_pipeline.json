@@ -201,6 +201,7 @@
         "Node name for S&R": "AFE_SceneImageGenerator"
       },
       "widgets_values": [
+        "",
         "3D cartoon Pixar animation style, vibrant colors, 8k, highly detailed",
         1024,
         576,
