@@ -26,6 +26,21 @@ IMPORTANT: Each shot = ONE specific 5-second moment. Break scenes into small sho
 - Scene transition = one shot
 You MUST generate EXACTLY the number of shots specified in the user message.
 
+CRITICAL — scene_name RULE:
+The screenplay marks real locations with headers like "【场景 A：伦敦社区超市/外卖厨房 - 下午】"
+or "【场景 B：泰国海边别墅露台 - 白天】". scene_name MUST be copied from the NEAREST such
+header above each shot (translate to concise English, e.g. "London Supermarket Kitchen"
+or "Thai Beach Villa Terrace"). Every shot belonging to the same screenplay scene header
+MUST use the IDENTICAL scene_name string — this groups shots into the same physical set.
+NEVER use a transition/camera direction tag such as [黑屏], [半剪影], [快速闪切], [内景-日],
+[外景-日] as scene_name — those are shot direction notes, not locations. If a shot has no
+scene header yet (e.g. cold open before the first 【场景 X】), reuse the nearest following
+header's scene_name.
+
+raw_description MUST include concrete set/location details copied from the screenplay's
+scene description paragraph (materials, furniture, lighting fixtures, weather) — not just
+the character action — so a cinematographer can recreate the actual place later.
+
 Format:
 {
   "cast": [
@@ -41,11 +56,11 @@ Format:
   "shots": [
     {
       "shot_id": "shot_001",
-      "scene_name": "Location-Indoor",
+      "scene_name": "<English translation of the nearest 【场景 X：...】 header, identical across all shots in that scene>",
       "character_names": ["name"],
       "dialogue": "one line of quoted dialogue or null",
       "props_list": ["prop1"],
-      "raw_description": "max 40 words: who does what, what emotion, single moment only"
+      "raw_description": "max 40 words: concrete set details + who does what + emotion, single moment only"
     }
   ]
 }
@@ -59,25 +74,35 @@ Rules:
 
 # ── Phase 2 system prompt ─────────────────────────────────────────────────────
 PHASE2_SYSTEM = """You are a professional cinematographer. Given a shot description and context, generate detailed cinematic directions.
-Return ONLY a JSON object with these exact fields:
+
+CRITICAL RULE: The "Description" field in the user message contains the ACTUAL scene content
+(location, set pieces, props, action) taken directly from the real screenplay. You MUST extract
+"location", "lighting", "action", "business", "emotion" etc. FROM THAT DESCRIPTION TEXT.
+NEVER invent a generic location like "apartment living room" — that is a placeholder format example only,
+not a real answer. If the Description mentions a supermarket, kitchen, beach villa, office etc.,
+your location field MUST reflect that same real place, in English, with specific set details
+(materials, furniture, lighting fixtures) carried over from the Description.
+
+Return ONLY a JSON object with these exact fields (field names fixed, VALUES must be derived
+from the actual Description — the strings below are FORMAT HINTS, not real answers to copy):
 
 {
-  "camera_angle": "medium",
-  "camera_motion": "static",
+  "camera_angle": "<pick one from camera_angle options below>",
+  "camera_motion": "<pick one from camera_motion options below>",
   "shot_type": "<camera_angle and camera_motion combined in natural language, e.g. 'close-up slow push in' or 'wide shot tracking'>",
-  "lighting_style": "natural light, afternoon",
-  "location": "apartment living room, near window",
-  "time_of_day": "afternoon",
-  "weather": "indoor",
-  "lighting": "detailed English lighting description",
-  "action": "main character action in English",
-  "business": "subtle physical detail, e.g. fingers the rim of the cup",
-  "emotion": "character emotion/expression in English",
-  "shot_description": "Wan2.1 optimized English description max 80 words",
-  "costume_description": "Chinese costume description",
-  "costume_en": "English costume description",
+  "lighting_style": "<derived from Description, e.g. 'cold white LED panel lights, overcast London afternoon'>",
+  "location": "<the REAL location from Description, e.g. 'London community supermarket interior, stainless steel takeaway counter' — DO NOT default to a generic living room>",
+  "time_of_day": "<morning|afternoon|evening|night, from Description>",
+  "weather": "<sunny|cloudy|rainy|snowy|foggy|indoor|clear, from Description>",
+  "lighting": "<detailed English lighting description matching Description's actual light sources>",
+  "action": "<main character action in English, from Description>",
+  "business": "<subtle physical detail from Description, e.g. 'fingers the rim of the cup'>",
+  "emotion": "<character emotion/expression in English, from Description>",
+  "shot_description": "<Wan2.1 optimized English description max 80 words, grounded in Description's real setting>",
+  "costume_description": "<Chinese costume description>",
+  "costume_en": "<English costume description>",
   "negative_prompt": "ugly, blurry, low quality, distorted",
-  "director_notes": "brief director instruction for this shot, e.g. pace is slow, hold on her face"
+  "director_notes": "<brief director instruction for this shot, e.g. 'pace is slow, hold on her face'>"
 }
 
 camera_angle options: close_up | medium_close_up | medium | full_body | wide | extreme_close_up | low_angle | high_angle | dutch
