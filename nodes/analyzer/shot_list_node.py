@@ -22,6 +22,12 @@ class AFE_ShotList:
                     "tooltip": "Connect to AFE_ShotPromptBuilder shots_prompts_json output",
                 }),
             },
+            "optional": {
+                "target_duration_seconds": ("INT", {
+                    "default": 0, "min": 0, "max": 7200,
+                    "tooltip": "目标总时长（秒），用于与实际总时长对比（0=不对比）",
+                }),
+            },
         }
 
     RETURN_TYPES = ("STRING", "INT", "FLOAT", "STRING")
@@ -30,7 +36,7 @@ class AFE_ShotList:
     CATEGORY = "AI Film Editor/Shot"
     OUTPUT_NODE = True
 
-    def build_shot_list(self, shots_prompts_json: str):
+    def build_shot_list(self, shots_prompts_json: str, target_duration_seconds: int = 0):
         try:
             shots = json.loads(shots_prompts_json)
             if not isinstance(shots, list):
@@ -80,6 +86,15 @@ class AFE_ShotList:
             f"共 {len(shots)} 个分镜  |  总时长：{total_duration:.1f}s "
             f"({total_duration/60:.1f}min)"
         )
+        if target_duration_seconds > 0:
+            diff = abs(total_duration - target_duration_seconds)
+            if diff > 5:
+                report_lines.append(
+                    f"⚠️ 总时长 {total_duration:.1f}s 与目标 {target_duration_seconds}s "
+                    f"相差 {diff:.1f}s"
+                )
+            else:
+                report_lines.append(f"✅ 总时长与目标一致 ({total_duration:.1f}s)")
         shot_list_report = "\n".join(report_lines)
         shot_summary_json = json.dumps(summary_list, ensure_ascii=False)
 

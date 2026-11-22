@@ -58,6 +58,7 @@ Return ONLY a JSON object with these exact fields:
 {
   "camera_angle": "medium",
   "camera_motion": "static",
+  "shot_type": "<camera_angle and camera_motion combined in natural language, e.g. 'close-up slow push in' or 'wide shot tracking'>",
   "lighting_style": "natural light, afternoon",
   "location": "apartment living room, near window",
   "time_of_day": "afternoon",
@@ -73,12 +74,47 @@ Return ONLY a JSON object with these exact fields:
   "director_notes": "brief director instruction for this shot, e.g. pace is slow, hold on her face"
 }
 
-camera_angle options: close_up, medium, wide, low_angle, high_angle, eye_level, dutch
-camera_motion options: static, pan_left, pan_right, zoom_in, zoom_out, tilt_up, tilt_down, orbit, slow_push_in, slow_pull_back, tracking_shot, handheld
+camera_angle options: close_up | medium_close_up | medium | full_body | wide | extreme_close_up | low_angle | high_angle | dutch
+camera_motion options: static | slow_push_in | slow_pull_back | pan_left | pan_right | tracking_shot | crane_up | crane_down | handheld | orbit
 time_of_day options: morning, afternoon, evening, night
 weather options: sunny, cloudy, rainy, snowy, foggy, indoor, clear
 
+CAMERA SELECTION RULES (must follow these):
+- Opening scene / establishing shot → wide shot (wide_shot), camera: slow_push_in
+- Character introduced for first time → medium shot, camera: static
+- Dialogue (one person speaking) → medium close-up, camera: static or slow_push_in
+- Two people talking (shot/reverse) → medium shot, alternating eye-level
+- Emotional climax / reaction → close_up, camera: static (hold)
+- Action / movement → medium or wide, camera: tracking_shot or pan
+- Object / prop detail → close_up or extreme close-up, camera: static
+- Ending / resolution → wide shot, camera: slow_pull_back
+- Character thinking / internal moment → close_up, camera: slow_push_in
+- Scene transition → wide shot, camera: static or pan
+
 Return ONLY the JSON object."""
+
+
+def _normalize_durations(shots: list, target_seconds: int, default_secs: int) -> list:
+    """
+    Redistribute durations so total ≈ target_seconds.
+    Weights: shots with dialogue get 2x weight vs shots without.
+    """
+    if not shots:
+        return shots
+    weights = []
+    for shot in shots:
+        dialogue = shot.get("dialogue")
+        has_dialogue = dialogue and dialogue not in ("null", "(无)", "none", "")
+        desc_words = len(shot.get("raw_description", "").split())
+        weight = 2.0 if has_dialogue else 1.0
+        weight += desc_words / 50.0
+        weights.append(weight)
+    total_weight = sum(weights)
+    for i, shot in enumerate(shots):
+        shot["duration_seconds"] = round(
+            max(default_secs, (weights[i] / total_weight) * target_seconds), 1
+        )
+    return shots
 
 
 class AFE_ScriptFullParser:
@@ -262,6 +298,7 @@ class AFE_ScriptFullParser:
 
         cast_list    = phase1_data.get("cast", [])
         minimal_shots = phase1_data.get("shots", [])
+        minimal_shots = _normalize_durations(minimal_shots, target_duration_seconds, seconds_per_shot)
         logger.info(f"[AFE_ScriptFullParser] Phase 1 done: {len(cast_list)} cast, {len(minimal_shots)} shots")
 
         # 3. Build cast lookup by name
@@ -320,6 +357,7 @@ class AFE_ScriptFullParser:
                 "scene_name":          scene_name,
                 "camera_angle":        p2_data.get("camera_angle", "medium"),
                 "camera_motion":       p2_data.get("camera_motion", "static"),
+                "shot_type":           p2_data.get("shot_type", ""),
                 "lighting_style":      p2_data.get("lighting_style", ""),
                 "director_notes":      p2_data.get("director_notes", ""),
                 "shot_description":    p2_data.get("shot_description", raw_desc),

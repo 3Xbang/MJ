@@ -422,7 +422,9 @@
       "properties": {
         "Node name for S&R": "AFE_ShotList"
       },
-      "widgets_values": []
+      "widgets_values": [
+        0
+      ]
     },
     {
       "id": 8,

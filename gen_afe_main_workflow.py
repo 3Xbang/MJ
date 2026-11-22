@@ -228,7 +228,7 @@ def build_workflow() -> dict:
             {"name": "shot_summary_json",      "type": "STRING", "links": None,                   "slot_index": 3},
         ],
         "properties": {"Node name for S&R": "AFE_ShotList"},
-        "widgets_values": [],
+        "widgets_values": [0],  # target_duration_seconds (0 = no comparison)
     })
     links.append([lnk_shots_prompts, 6, 0, 7, 0, "STRING"])
 
