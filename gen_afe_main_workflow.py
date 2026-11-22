@@ -68,10 +68,14 @@ def build_workflow() -> dict:
         ],
         "properties": {"Node name for S&R": "AFE_ScriptFullParser"},
         "widgets_values": [
-            "在这里输入剧本...",                        # raw_script
-            "3D cartoon Pixar animation style",         # render_style
-            5,                                          # seconds_per_shot
-            "LLM/Qwen2.5-7B-Instruct",                 # model_path
+            "在这里输入剧本...",                             # raw_script
+            "3D cartoon Pixar animation style, vibrant colors, 8k",  # render_style (COMBO)
+            "迷你剧集 Mini Episode (5-10 min)",             # episode_format (COMBO)
+            180,                                             # target_duration_seconds
+            5,                                               # seconds_per_shot
+            "auto (from script)",                            # lighting_mood (COMBO)
+            "auto (from style)",                             # color_palette (COMBO)
+            "LLM/Qwen2.5-7B-Instruct",                      # model_path
         ],
     })
 

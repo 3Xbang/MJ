@@ -84,8 +84,12 @@
       },
       "widgets_values": [
         "在这里输入剧本...",
-        "3D cartoon Pixar animation style",
+        "3D cartoon Pixar animation style, vibrant colors, 8k",
+        "迷你剧集 Mini Episode (5-10 min)",
+        180,
         5,
+        "auto (from script)",
+        "auto (from style)",
         "LLM/Qwen2.5-7B-Instruct"
       ]
     },
