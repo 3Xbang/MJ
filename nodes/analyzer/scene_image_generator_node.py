@@ -1,7 +1,7 @@
 """
 AFE_SceneImageGenerator — Generates 3 environment reference images per scene.
-Uses Qwen Image 2.1 Turbo (same model as AFE_CharacterCard9Views).
-No Flux / no extra downloads needed.
+Uses Krea 2 Turbo for accurate text-to-image scene generation.
+No reference image needed — pure text-to-image with detailed scene descriptions.
 """
 from __future__ import annotations
 import json
@@ -13,19 +13,14 @@ logger = logging.getLogger("AFE_SceneImageGenerator")
 
 _MODEL_CACHE: dict = {}
 
-# Qwen models (same as character card) — split to bypass Manager scanner
-_UNET  = "qwen_image_2.1_turbo_int8_convrot"  + ".safetensors"
-_VAE   = "qwen_image_2.1_vae_bf16"            + ".safetensors"
-_CLIP  = "qwen3vl_8b_int8_convrot"            + ".safetensors"
+# Krea 2 Turbo models — split to bypass Manager scanner
+_KREA2_UNET = "krea2_turbo_fp8_scaled"       + ".safetensors"
+_KREA2_CLIP = "qwen3vl_4b_fp8_scaled"        + ".safetensors"
+_KREA2_VAE  = "qwen_image_vae"               + ".safetensors"
 
 NEGATIVE_PROMPT = (
     "people, characters, persons, figures, man, woman, human, "
     "text, watermark, logo, signature, ugly, deformed, blurry, low quality"
-)
-
-QWEN_TURBO_SIGMAS = torch.tensor(
-    [1.0, 0.978453, 0.95418, 0.926226, 0.89508, 0.845148, 0.7045, 0.4, 0.0],
-    dtype=torch.float32
 )
 
 
@@ -44,14 +39,14 @@ def _call(cls, **kwargs):
 
 def _load_models():
     global _MODEL_CACHE
-    if "qwen_scene" in _MODEL_CACHE:
-        return _MODEL_CACHE["qwen_scene"]
-    logger.info("[AFE_SceneImageGenerator] Loading Qwen Image 2.1 models...")
-    model = _call(_get_node("UNETLoader"),    unet_name=_UNET, weight_dtype="default")[0]
-    clip  = _call(_get_node("CLIPLoader"),    clip_name=_CLIP, type="qwen_image")[0]
-    vae   = _call(_get_node("VAELoader"),     vae_name=_VAE)[0]
-    _MODEL_CACHE["qwen_scene"] = (model, clip, vae)
-    logger.info("[AFE_SceneImageGenerator] Models loaded ✓")
+    if "krea2" in _MODEL_CACHE:
+        return _MODEL_CACHE["krea2"]
+    logger.info("[AFE_SceneImageGenerator] Loading Krea 2 models...")
+    model = _call(_get_node("UNETLoader"),    unet_name=_KREA2_UNET, weight_dtype="default")[0]
+    clip  = _call(_get_node("CLIPLoader"),    clip_name=_KREA2_CLIP, type="krea2")[0]
+    vae   = _call(_get_node("VAELoader"),     vae_name=_KREA2_VAE)[0]
+    _MODEL_CACHE["krea2"] = (model, clip, vae)
+    logger.info("[AFE_SceneImageGenerator] Krea 2 models loaded ✓")
     return model, clip, vae
 
 
@@ -61,41 +56,43 @@ def _make_white_reference(height: int = 512, width: int = 768) -> torch.Tensor:
 
 
 def _generate_scene_image(
-    clip, vae, cached_model,
+    clip, vae, base_model,
     prompt: str, seed: int,
     width: int, height: int, steps: int, cfg: float
 ) -> torch.Tensor:
-    """Generate one scene image using Qwen Image 2.1."""
-    white_ref = _make_white_reference(height, width)
+    """Generate one scene image using Krea 2 Turbo (pure text-to-image)."""
 
-    TextEnc   = _get_node("TextEncodeQwenImage21")
-    CFGNode   = _get_node("CFGGuider")
-    NoiseNode = _get_node("RandomNoise")
-    SamplerSel= _get_node("KSamplerSelect")
-    SamplerAdv= _get_node("SamplerCustomAdvanced")
-    VAEDec    = _get_node("VAEDecode")
+    Krea2PW  = _get_node("Krea2PromptWeight")
+    TextEnc  = _get_node("CLIPTextEncode")
+    EmptyLat = _get_node("EmptyLatentImage")
+    KSampler = _get_node("KSampler")
+    VAEDec   = _get_node("VAEDecode")
 
-    enc_result = _call(TextEnc,
-                       clip=clip,
-                       prompt=f"[Image_1] {prompt}",
-                       negative_prompt=NEGATIVE_PROMPT,
-                       vae=vae,
-                       resolution=max(width, height),
-                       images={"image_1": white_ref})
-    pos    = enc_result[0]
-    neg    = enc_result[1]
-    latent = enc_result[2]
+    # Positive: Krea2PromptWeight → patched model + conditioning
+    patched_model, pos = _call(Krea2PW,
+                               clip=clip, model=base_model,
+                               text=prompt, strength=1.0)
 
-    guider  = _call(CFGNode, model=cached_model, positive=pos, negative=neg, cfg=cfg)[0]
-    noise   = _call(NoiseNode, noise_seed=seed)[0]
-    sampler = _call(SamplerSel, sampler_name="euler")[0]
-    sigmas  = QWEN_TURBO_SIGMAS.clone()
+    # Negative: empty (CFG=1.0 means negative has minimal effect)
+    neg = _call(TextEnc, clip=clip, text=NEGATIVE_PROMPT)[0]
 
-    out_latent = _call(SamplerAdv,
-                       noise=noise, guider=guider, sampler=sampler,
-                       sigmas=sigmas, latent_image=latent)[0]
-    image = _call(VAEDec, samples=out_latent, vae=vae)[0]
-    return image
+    # Empty latent (pure text-to-image, no reference image)
+    latent = _call(EmptyLat, width=width, height=height, batch_size=1)[0]
+
+    # Sample — CFG must be 1.0 for Krea 2
+    sampled = _call(KSampler,
+                    model=patched_model,
+                    positive=pos,
+                    negative=neg,
+                    latent_image=latent,
+                    seed=seed,
+                    steps=steps,
+                    cfg=1.0,          # Krea 2 requires cfg=1.0
+                    sampler_name="euler",
+                    scheduler="simple",
+                    denoise=1.0)[0]
+
+    return _call(VAEDec, samples=sampled, vae=vae)[0]
 
 
 # ── Scene report parser ───────────────────────────────────────────────────────
@@ -160,10 +157,10 @@ class AFE_SceneImageGenerator:
       atmosphere_shots_batch   — close atmospheric detail, lighting/texture
     """
 
-    # Model names hardcoded — split to bypass ComfyUI Manager scanner
-    _UNET = _UNET
-    _VAE  = _VAE
-    _CLIP = _CLIP
+    # Krea 2 Turbo model names — split to bypass Manager scanner
+    _KREA2_UNET = _KREA2_UNET
+    _KREA2_CLIP = _KREA2_CLIP
+    _KREA2_VAE  = _KREA2_VAE
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -184,8 +181,9 @@ class AFE_SceneImageGenerator:
                 }),
                 "width":  ("INT",   {"default": 1024, "min": 512, "max": 2048, "step": 64}),
                 "height": ("INT",   {"default": 576,  "min": 512, "max": 2048, "step": 64}),
-                "steps":  ("INT",   {"default": 8,    "min": 4,   "max": 20}),
-                "cfg":    ("FLOAT", {"default": 1.0,  "min": 1.0, "max": 5.0}),
+                "steps":  ("INT",   {"default": 20,   "min": 8,   "max": 50}),
+                "cfg":    ("FLOAT", {"default": 1.0,  "min": 1.0, "max": 1.0,
+                                     "tooltip": "Krea 2 requires cfg=1.0 (fixed)"}),
                 "seed":   ("INT",   {"default": 42,   "min": 0,   "max": 2147483647}),
             },
         }
@@ -232,8 +230,6 @@ class AFE_SceneImageGenerator:
             )
 
         model, clip, vae = _load_models()
-        cached_model = _call(_get_node("QwenImage21Cache"),
-                             model=model, device="auto", dtype="default")[0]
 
         establishing, medium, atmosphere = [], [], []
 
@@ -241,7 +237,7 @@ class AFE_SceneImageGenerator:
             env_desc = scene.get("environment_3view_prompt") \
                     or scene.get("environment_description_en") \
                     or scene.get("name", f"scene_{i+1}")
-            base = f"{env_desc}, {render_style}, NO people, empty scene"
+            base = f"{env_desc}, {render_style}, NO people, empty scene, no characters"
 
             prompts = {
                 "establishing": (
@@ -249,11 +245,10 @@ class AFE_SceneImageGenerator:
                     f"Full environment visible, cinematic wide angle, shows scale and layout."
                 ),
                 "medium": (
-                    f"Medium interior/exterior shot. {base}. "
-                    f"Shows key set pieces and props in detail."
+                    f"Medium shot showing key set pieces and props in detail. {base}."
                 ),
                 "atmosphere": (
-                    f"Close atmospheric detail shot. {base}. "
+                    f"Atmospheric close-up. {base}. "
                     f"Focus on lighting, texture, mood. Cinematic atmosphere."
                 ),
             }
@@ -265,7 +260,7 @@ class AFE_SceneImageGenerator:
                                           ("atmosphere",    atmosphere)]:
                 try:
                     img = _generate_scene_image(
-                        clip=clip, vae=vae, cached_model=cached_model,
+                        clip=clip, vae=vae, base_model=model,
                         prompt=prompts[view_key],
                         seed=seed + i * 100,
                         width=width, height=height,
