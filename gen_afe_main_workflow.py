@@ -86,6 +86,8 @@ def build_workflow() -> dict:
     # ── Node 2: AFE_SceneAnalyzer ────────────────────────────────────────────
     # Outputs: [0]=scenes_json, [1]=scenes_count, [2]=scene_report
     lnk_scene_report = next_link()   # 10
+    lnk_scenes_json_to_gen = next_link()   # scenes_json → SceneImageGenerator
+
     nodes.append({
         "id": 2,
         "type": "AFE_SceneAnalyzer",
@@ -98,9 +100,9 @@ def build_workflow() -> dict:
             {"name": "shot_sequence", "type": "SHOT_SEQUENCE", "link": lnk_ss2},
         ],
         "outputs": [
-            {"name": "scenes_json",  "type": "STRING", "links": None,               "slot_index": 0},
-            {"name": "scenes_count", "type": "INT",    "links": None,               "slot_index": 1},
-            {"name": "scene_report", "type": "STRING", "links": [lnk_scene_report, lnk_scene_to_gen], "slot_index": 2},
+            {"name": "scenes_json",  "type": "STRING", "links": [lnk_scenes_json_to_gen], "slot_index": 0},
+            {"name": "scenes_count", "type": "INT",    "links": None,                      "slot_index": 1},
+            {"name": "scene_report", "type": "STRING", "links": [lnk_scene_report],        "slot_index": 2},
         ],
         "properties": {"Node name for S&R": "AFE_SceneAnalyzer"},
         "widgets_values": ["3D CG animation, CGI rendering, cinematic"],
@@ -120,6 +122,7 @@ def build_workflow() -> dict:
         "mode": 0,
         "inputs": [
             {"name": "scene_report", "type": "STRING", "link": lnk_scene_to_gen},
+            {"name": "scenes_json",  "type": "STRING", "link": lnk_scenes_json_to_gen},
         ],
         "outputs": [
             {"name": "establishing_shots_batch", "type": "IMAGE",  "links": [lnk_est_preview], "slot_index": 0},
