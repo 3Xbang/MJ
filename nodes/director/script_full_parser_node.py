@@ -27,15 +27,25 @@ IMPORTANT: Each shot = ONE specific 5-second moment. Break scenes into small sho
 You MUST generate EXACTLY the number of shots specified in the user message.
 
 CRITICAL — scene_name RULE:
-The screenplay marks real locations with headers like "【场景 A：伦敦社区超市/外卖厨房 - 下午】"
-or "【场景 B：泰国海边别墅露台 - 白天】". scene_name MUST be copied from the NEAREST such
-header above each shot (translate to concise English, e.g. "London Supermarket Kitchen"
-or "Thai Beach Villa Terrace"). Every shot belonging to the same screenplay scene header
-MUST use the IDENTICAL scene_name string — this groups shots into the same physical set.
+Screenplays mark real locations with a scene header. This can appear in MANY formats —
+recognize ANY of these patterns as a scene header:
+  - Chinese bracketed: 【场景 A：伦敦社区超市 - 下午】, 【场景1：咖啡厅】
+  - Chinese plain: 场景一：咖啡厅, 场景A：咖啡厅
+  - English slugline: INT. COFFEE SHOP - DAY, EXT. BEACH VILLA - AFTERNOON
+  - Numbered: Scene 1, Scene A, 第一场
+  - Any line that names a physical place and appears right before a block of action/dialogue
+scene_name MUST be copied from the NEAREST such header ABOVE each shot (translate to
+concise English, e.g. "London Supermarket Kitchen" or "Thai Beach Villa Terrace").
+Every shot belonging to the same screenplay scene header MUST use the IDENTICAL scene_name
+string — this groups shots into the same physical set.
+If the screenplay has NO explicit scene headers at all, infer the scene_name from the
+physical location described in the action text itself (e.g. if the text says characters
+are in a supermarket, use "Supermarket Interior"), and still keep it IDENTICAL across
+consecutive shots that are clearly in the same place.
 NEVER use a transition/camera direction tag such as [黑屏], [半剪影], [快速闪切], [内景-日],
-[外景-日] as scene_name — those are shot direction notes, not locations. If a shot has no
-scene header yet (e.g. cold open before the first 【场景 X】), reuse the nearest following
-header's scene_name.
+[外景-日], [INTERCUT], [MONTAGE], [FADE IN] as scene_name — those are shot direction notes
+or editing instructions, not locations. If a shot occurs before any scene header is found
+(e.g. a cold open), reuse the nearest FOLLOWING header's scene_name.
 
 raw_description MUST include concrete set/location details copied from the screenplay's
 scene description paragraph (materials, furniture, lighting fixtures, weather) — not just
