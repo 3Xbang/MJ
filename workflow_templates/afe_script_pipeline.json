@@ -209,10 +209,11 @@
       "widgets_values": [
         "",
         "3D cartoon Pixar animation style, vibrant colors, 8k, highly detailed",
+        "",
         1024,
         576,
-        20,
-        3.5,
+        8,
+        1.0,
         42
       ]
     },
