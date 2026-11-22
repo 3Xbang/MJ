@@ -11,9 +11,111 @@ via transformers, keeping each phase's output budget well under the model limit.
 
 import json
 import os
+import re
 from ai_film_editor_nodes.lib.utils.logger import get_logger
 
 logger = get_logger("AFE_ScriptFullParser")
+
+
+# ── Scene pre-segmentation (code-level, NOT LLM-dependent) ───────────────────
+#
+# Qwen2.5-7B cannot reliably track scene boundaries across a long script with
+# many scene switches (e.g. Scene A / Scene B alternating 10+ times) — it
+# tends to collapse everything into one scene or invent generic names.
+# So we pre-segment the script with regex BEFORE calling the LLM, build a
+# numbered "scene map", and ask the LLM to only pick a scene_index per shot
+# (a classification task) instead of generating/repeating a scene_name string
+# from memory (an unreliable generation task).
+
+_SCENE_HEADER_PATTERNS = [
+    r'【场景\s*[A-Za-z0-9]+[：:].*?】',          # 【场景 A：XXX - YYY】
+    r'场景[一二三四五六七八九十\d]+[：:][^\n]{0,40}',  # 场景一：XXX
+    r'第[一二三四五六七八九十\d]+场[：:]?[^\n]{0,40}', # 第一场：XXX
+    r'(?:INT|EXT)[./]\s*[^\n]{0,60}',           # INT. XXX - DAY
+    r'Scene\s*[A-Za-z0-9]+[：:.][^\n]{0,40}',    # Scene 1: XXX
+]
+_HEADER_RE = re.compile('|'.join(f'(?:{p})' for p in _SCENE_HEADER_PATTERNS))
+
+
+def _normalize_scene_key(header: str) -> str:
+    """Extract a stable grouping key from a scene header, e.g. 'A' from
+    '【场景 A：伦敦超市 - 下午】' so repeated appearances of the same physical
+    scene (场景A, 场景A-连续, 场景A-续) group together."""
+    m = re.search(r'场景\s*([A-Za-z0-9]+)', header)
+    if m:
+        return f"scene_{m.group(1).upper()}"
+    m = re.search(r'Scene\s*([A-Za-z0-9]+)', header, re.IGNORECASE)
+    if m:
+        return f"scene_{m.group(1).upper()}"
+    m = re.search(r'第([一二三四五六七八九十\d]+)场', header)
+    if m:
+        return f"scene_{m.group(1)}"
+    # Fallback: location text with trailing time/status stripped
+    cleaned = re.sub(r'[-－—][^】\n]*$', '', header)
+    cleaned = re.sub(r'[【】:：.]', '', cleaned).strip()
+    return cleaned or header.strip()
+
+
+def _build_scene_map(raw_script: str) -> list[dict]:
+    """
+    Pre-segment the screenplay into scene blocks using regex, independent of
+    LLM memory. Returns an ordered list of unique scenes:
+      [{"scene_index": 1, "sample_header": "...", "preview": "..."}]
+    """
+    matches = list(_HEADER_RE.finditer(raw_script))
+    if not matches:
+        return [{"scene_index": 1, "sample_header": "Unnamed Location",
+                 "preview": raw_script[:200]}]
+
+    grouped: dict[str, dict] = {}
+    order: list[str] = []
+    for i, m in enumerate(matches):
+        header = m.group().strip()
+        key = _normalize_scene_key(header)
+        start = m.end()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(raw_script)
+        block_text = raw_script[start:end].strip()
+
+        if key not in grouped:
+            order.append(key)
+            grouped[key] = {"headers": [], "preview": block_text[:200]}
+        grouped[key]["headers"].append(header)
+
+    scene_map = []
+    for idx, key in enumerate(order):
+        g = grouped[key]
+        scene_map.append({
+            "scene_index": idx + 1,
+            "sample_header": g["headers"][0],
+            "preview": g["preview"],
+        })
+    return scene_map
+
+
+def _header_to_scene_name(header: str) -> str:
+    """
+    Convert a raw scene header into a readable scene_name for grouping/display.
+    Keeps original text (Chinese or English) — downstream SceneAnalyzer already
+    has keyword-based CN→EN translation for display; what matters here is that
+    the SAME header always produces the SAME scene_name (code-guaranteed).
+    """
+    # Strip bracket/punctuation wrapper, keep the descriptive text
+    cleaned = re.sub(r'[【】]', '', header).strip()
+    # Drop leading "场景 X：" / "Scene X:" prefix, keep the location + time part
+    cleaned = re.sub(r'^(场景\s*[A-Za-z0-9]+[：:]|Scene\s*[A-Za-z0-9]+[：:.])\s*', '', cleaned, flags=re.IGNORECASE)
+    return cleaned.strip() or header.strip()
+
+
+def _scene_map_to_prompt_text(scene_map: list[dict]) -> str:
+    """Format the scene map as text for the LLM prompt."""
+    lines = ["PRE-SEGMENTED SCENE MAP (use these EXACT scene_index values, "
+             "do not invent new ones):"]
+    for s in scene_map:
+        lines.append(
+            f"  scene_index={s['scene_index']}: \"{s['sample_header']}\" "
+            f"— starts with: {s['preview'][:80]}..."
+        )
+    return "\n".join(lines)
 
 # ── Phase 1 system prompt ─────────────────────────────────────────────────────
 PHASE1_SYSTEM = """You are a professional film storyboard artist. Break the screenplay into individual shots for video production.
@@ -26,26 +128,14 @@ IMPORTANT: Each shot = ONE specific 5-second moment. Break scenes into small sho
 - Scene transition = one shot
 You MUST generate EXACTLY the number of shots specified in the user message.
 
-CRITICAL — scene_name RULE:
-Screenplays mark real locations with a scene header. This can appear in MANY formats —
-recognize ANY of these patterns as a scene header:
-  - Chinese bracketed: 【场景 A：伦敦社区超市 - 下午】, 【场景1：咖啡厅】
-  - Chinese plain: 场景一：咖啡厅, 场景A：咖啡厅
-  - English slugline: INT. COFFEE SHOP - DAY, EXT. BEACH VILLA - AFTERNOON
-  - Numbered: Scene 1, Scene A, 第一场
-  - Any line that names a physical place and appears right before a block of action/dialogue
-scene_name MUST be copied from the NEAREST such header ABOVE each shot (translate to
-concise English, e.g. "London Supermarket Kitchen" or "Thai Beach Villa Terrace").
-Every shot belonging to the same screenplay scene header MUST use the IDENTICAL scene_name
-string — this groups shots into the same physical set.
-If the screenplay has NO explicit scene headers at all, infer the scene_name from the
-physical location described in the action text itself (e.g. if the text says characters
-are in a supermarket, use "Supermarket Interior"), and still keep it IDENTICAL across
-consecutive shots that are clearly in the same place.
-NEVER use a transition/camera direction tag such as [黑屏], [半剪影], [快速闪切], [内景-日],
-[外景-日], [INTERCUT], [MONTAGE], [FADE IN] as scene_name — those are shot direction notes
-or editing instructions, not locations. If a shot occurs before any scene header is found
-(e.g. a cold open), reuse the nearest FOLLOWING header's scene_name.
+CRITICAL — scene_index RULE:
+The user message includes a PRE-SEGMENTED SCENE MAP listing every distinct physical scene
+in this screenplay, each with a scene_index number. For EVERY shot, you MUST set
+"scene_index" to the number from that map matching where the shot's text falls.
+DO NOT invent scene_index values outside the given map. DO NOT merge different
+scene_index values together — if the map lists 2 scenes, shots alternate between
+scene_index 1 and 2 exactly as the screenplay text alternates between them; re-read
+the screenplay text near each shot to determine which scene block it falls in.
 
 raw_description MUST include concrete set/location details copied from the screenplay's
 scene description paragraph (materials, furniture, lighting fixtures, weather) — not just
@@ -66,7 +156,7 @@ Format:
   "shots": [
     {
       "shot_id": "shot_001",
-      "scene_name": "<English translation of the nearest 【场景 X：...】 header, identical across all shots in that scene>",
+      "scene_index": 1,
       "character_names": ["name"],
       "dialogue": "one line of quoted dialogue or null",
       "props_list": ["prop1"],
@@ -318,6 +408,14 @@ class AFE_ScriptFullParser:
                 pass
         logger.info(f"[AFE_ScriptFullParser] Using model: {model_path}")
 
+        # 1b. Pre-segment scenes by regex (code-level, not LLM memory)
+        scene_map = _build_scene_map(raw_script)
+        scene_map_text = _scene_map_to_prompt_text(scene_map)
+        logger.info("[AFE_ScriptFullParser] Pre-segmented %d unique scene(s) from screenplay",
+                    len(scene_map))
+        for s in scene_map:
+            logger.info("  scene_index=%d: %s", s["scene_index"], s["sample_header"][:60])
+
         # 2. Phase 1: single LLM call → cast + minimal shots
         logger.info("[AFE_ScriptFullParser] Phase 1: parsing script (target %d shots × %ds = %ds)...",
                     target_shot_count, seconds_per_shot, target_duration_seconds)
@@ -325,7 +423,8 @@ class AFE_ScriptFullParser:
             f"Generate EXACTLY {target_shot_count} shots "
             f"(total {target_duration_seconds}s at {seconds_per_shot}s each). "
             f"Episode format: {episode_format}. "
-            f"Break scenes and dialogue into individual {seconds_per_shot}-second moments.\n"
+            f"Break scenes and dialogue into individual {seconds_per_shot}-second moments.\n\n"
+            f"{scene_map_text}\n\n"
             f"Screenplay:\n{raw_script}"
         )
         phase1_raw = self._call_llm(
@@ -343,7 +442,29 @@ class AFE_ScriptFullParser:
         minimal_shots = _normalize_durations(minimal_shots, target_duration_seconds, seconds_per_shot)
         logger.info(f"[AFE_ScriptFullParser] Phase 1 done: {len(cast_list)} cast, {len(minimal_shots)} shots")
 
-        # 3. Build cast lookup by name
+        # 3a. Build scene_index → scene_name lookup (code-level, guaranteed consistent).
+        # scene_name is derived directly from the regex-detected header text, NOT
+        # regenerated by the LLM each time — this is what prevents scene collapse/drift.
+        scene_index_to_name = {
+            s["scene_index"]: _header_to_scene_name(s["sample_header"])
+            for s in scene_map
+        }
+
+        # Sanity check: verify the LLM actually spread shots across scene_index values
+        used_indices = {shot.get("scene_index") for shot in minimal_shots if isinstance(shot, dict)}
+        if len(scene_map) > 1 and len(used_indices) <= 1:
+            logger.warning(
+                "[AFE_ScriptFullParser] LLM assigned scene_index=%s to ALL shots despite "
+                "%d scenes in the pre-segmented map — falling back to even distribution",
+                used_indices, len(scene_map)
+            )
+            # Fallback: distribute shots across scenes in round-robin proportional to
+            # their relative position (better than collapsing everything into scene 1)
+            n_scenes = len(scene_map)
+            for i, shot in enumerate(minimal_shots):
+                shot["scene_index"] = (i * n_scenes) // max(len(minimal_shots), 1) + 1
+
+        # 3b. Build cast lookup by name
         cast_lookup = {c["name"]: c for c in cast_list if isinstance(c, dict) and "name" in c}
 
         # 4. Phase 2: deep analysis per shot
@@ -352,7 +473,8 @@ class AFE_ScriptFullParser:
 
         for i, shot in enumerate(minimal_shots):
             shot_id    = shot.get("shot_id", f"shot_{i + 1:03d}")
-            scene_name = shot.get("scene_name", "")
+            scene_idx  = shot.get("scene_index", 1)
+            scene_name = scene_index_to_name.get(scene_idx, f"Scene_{scene_idx}")
             char_names = shot.get("character_names", [])
             raw_desc   = shot.get("raw_description", "")
             dialogue   = shot.get("dialogue", None)
