@@ -132,16 +132,69 @@ class AFE_ScriptFullParser:
 
     # ── ComfyUI interface ─────────────────────────────────────────────────────
 
+    RENDER_STYLES = [
+        "3D cartoon Pixar animation style, vibrant colors, 8k",
+        "3D cartoon Disney animation style, warm tones, 8k",
+        "3D realistic CGI, photorealistic, cinematic lighting, 8k",
+        "2.5D flat illustration, clean lines, vibrant palette",
+        "Anime / cel-shading style, bold outlines, vivid colors",
+        "Watercolor animation, soft brushstrokes, pastel tones",
+        "Stop-motion clay animation, tactile textures, warm light",
+        "Comic-book / graphic-novel style, bold lines, high contrast",
+        "High-key 3D cartoon, super-bright lighting, no shadows",
+        "Low-key 3D cinematic, moody, dramatic shadows",
+    ]
+
+    EPISODE_FORMATS = [
+        "短片 Short Film (1-3 min)",
+        "竖版短剧 Vertical Short Drama (3-5 min)",
+        "迷你剧集 Mini Episode (5-10 min)",
+        "标准剧集 Standard Episode (20-30 min)",
+        "电影 Feature Film (90-120 min)",
+    ]
+
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "raw_script": ("STRING", {"multiline": True, "default": "在这里输入剧本..."}),
+                "raw_script": ("STRING", {
+                    "multiline": True,
+                    "default": "在这里输入剧本...",
+                    "tooltip": "粘贴完整剧本文本",
+                }),
+                "render_style": (cls.RENDER_STYLES, {
+                    "default": cls.RENDER_STYLES[0],
+                    "tooltip": "整体渲染风格，影响所有分镜提示词",
+                }),
+                "episode_format": (cls.EPISODE_FORMATS, {
+                    "default": cls.EPISODE_FORMATS[2],
+                    "tooltip": "集数格式，决定总时长预期",
+                }),
             },
             "optional": {
-                "render_style":      ("STRING", {"default": "3D cartoon Pixar animation style"}),
-                "seconds_per_shot":  ("INT",    {"default": 5, "min": 1, "max": 60}),
-                "model_path":        ("STRING", {"default": "LLM/Qwen2.5-7B-Instruct"}),
+                "target_duration_seconds": ("INT", {
+                    "default": 180, "min": 30, "max": 7200,
+                    "tooltip": "目标总时长（秒）。180=3分钟。LLM 会据此决定镜头数量",
+                }),
+                "seconds_per_shot": ("INT", {
+                    "default": 5, "min": 3, "max": 15,
+                    "tooltip": "每个分镜的默认时长（秒）",
+                }),
+                "lighting_mood": (["auto (from script)", "High-key bright", "Low-key moody",
+                                   "Golden hour warm", "Cool blue night", "Neon cyberpunk",
+                                   "Natural daylight", "Studio flat light"], {
+                    "default": "auto (from script)",
+                    "tooltip": "整体光线风格（auto = 由剧本场景决定）",
+                }),
+                "color_palette": (["auto (from style)", "Vibrant saturated",
+                                   "Pastel soft", "Warm amber", "Cool desaturated",
+                                   "High contrast B&W", "Earthy natural"], {
+                    "default": "auto (from style)",
+                }),
+                "model_path": ("STRING", {
+                    "default": "LLM/Qwen2.5-7B-Instruct",
+                    "tooltip": "Qwen LLM 模型路径（相对于 models/ 目录）",
+                }),
             },
         }
 
@@ -155,12 +208,26 @@ class AFE_ScriptFullParser:
     # ── Main entry point ──────────────────────────────────────────────────────
 
     def parse_script(self, raw_script: str,
-                     render_style: str = "3D cartoon Pixar animation style",
+                     render_style: str = "3D cartoon Pixar animation style, vibrant colors, 8k",
+                     episode_format: str = "迷你剧集 Mini Episode (5-10 min)",
+                     target_duration_seconds: int = 180,
                      seconds_per_shot: int = 5,
+                     lighting_mood: str = "auto (from script)",
+                     color_palette: str = "auto (from style)",
                      model_path: str = "LLM/Qwen2.5-7B-Instruct"):
 
         if not raw_script.strip():
             raise ValueError("raw_script 不能为空")
+
+        # 组合风格参数
+        style_full = render_style
+        if lighting_mood != "auto (from script)":
+            style_full += f", {lighting_mood}"
+        if color_palette != "auto (from style)":
+            style_full += f", {color_palette} color palette"
+
+        # 目标镜头数 = 总时长 / 每镜时长
+        target_shot_count = max(1, round(target_duration_seconds / seconds_per_shot))
 
         # 1. Resolve model_path to absolute
         if not os.path.isabs(model_path):
@@ -172,10 +239,17 @@ class AFE_ScriptFullParser:
         logger.info(f"[AFE_ScriptFullParser] Using model: {model_path}")
 
         # 2. Phase 1: single LLM call → cast + minimal shots
-        logger.info("[AFE_ScriptFullParser] Phase 1: parsing script...")
+        logger.info("[AFE_ScriptFullParser] Phase 1: parsing script (target %d shots × %ds = %ds)...",
+                    target_shot_count, seconds_per_shot, target_duration_seconds)
+        phase1_user = (
+            f"Target: approximately {target_shot_count} shots "
+            f"(total {target_duration_seconds}s, {seconds_per_shot}s each).\n"
+            f"Episode format: {episode_format}\n"
+            f"Screenplay:\n{raw_script}"
+        )
         phase1_raw = self._call_llm(
             PHASE1_SYSTEM,
-            f"Screenplay:\n{raw_script}",
+            phase1_user,
             model_path,
             max_new_tokens=2048,
         )
@@ -219,8 +293,7 @@ class AFE_ScriptFullParser:
                 f"Characters: {', '.join(char_names) if char_names else 'none'}\n"
                 f"Character Appearance:\n{char_context}\n"
                 f"Description: {raw_desc}\n"
-                f"Render Style: {render_style}"
-            )
+                f"Render Style: {style_full}\nShot duration: {seconds_per_shot}s"
 
             try:
                 p2_raw  = self._call_llm(PHASE2_SYSTEM, p2_user, model_path, max_new_tokens=768)
