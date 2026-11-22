@@ -16,8 +16,15 @@ from ai_film_editor_nodes.lib.utils.logger import get_logger
 logger = get_logger("AFE_ScriptFullParser")
 
 # ── Phase 1 system prompt ─────────────────────────────────────────────────────
-PHASE1_SYSTEM = """You are a professional film storyboard artist. Parse the following screenplay into a compact JSON object.
+PHASE1_SYSTEM = """You are a professional film storyboard artist. Break the screenplay into individual shots for video production.
 Return ONLY the JSON object, no explanation, no markdown.
+
+IMPORTANT: Each shot = ONE specific 5-second moment. Break scenes into small shots:
+- One line of dialogue = one shot
+- One physical action = one shot  
+- Reaction / pause / expression change = one shot
+- Scene transition = one shot
+You MUST generate EXACTLY the number of shots specified in the user message.
 
 Format:
 {
@@ -27,7 +34,7 @@ Format:
       "role_type": "lead",
       "gender": "male",
       "age_range": "24-26",
-      "appearance_en": "English physical description (age, gender, hair, build, etc.)",
+      "appearance_en": "English physical description",
       "default_costume_en": "English default outfit description"
     }
   ],
@@ -36,19 +43,18 @@ Format:
       "shot_id": "shot_001",
       "scene_name": "Location-Indoor",
       "character_names": ["name"],
-      "dialogue": "quoted text or null",
-      "props_list": ["prop1", "prop2"],
-      "raw_description": "max 60 English words describing action and emotion",
-      "duration_seconds": 8
-      "raw_description": "max 60 word description of what happens in this shot"
+      "dialogue": "one line of quoted dialogue or null",
+      "props_list": ["prop1"],
+      "raw_description": "max 40 words: who does what, what emotion, single moment only"
     }
   ]
 }
 
 Rules:
 - role_type: lead | supporting | extra_a | extra_b | extra_other
-- gender: male | female | unknown
-- duration_seconds: assign based on content — dialogue-heavy shots 10-15s, action/transition shots 3-6s. ALL shots must sum to the target total duration given in the user message.
+- Each shot covers ONLY one specific moment, not an entire scene
+- Split long dialogue into separate shots (one line per shot)
+- Split long action sequences into separate shots
 - Return ONLY the JSON object."""
 
 # ── Phase 2 system prompt ─────────────────────────────────────────────────────
@@ -281,9 +287,10 @@ class AFE_ScriptFullParser:
         logger.info("[AFE_ScriptFullParser] Phase 1: parsing script (target %d shots × %ds = %ds)...",
                     target_shot_count, seconds_per_shot, target_duration_seconds)
         phase1_user = (
-            f"Target: approximately {target_shot_count} shots "
-            f"(total {target_duration_seconds}s, {seconds_per_shot}s each).\n"
-            f"Episode format: {episode_format}\n"
+            f"Generate EXACTLY {target_shot_count} shots "
+            f"(total {target_duration_seconds}s at {seconds_per_shot}s each). "
+            f"Episode format: {episode_format}. "
+            f"Break scenes and dialogue into individual {seconds_per_shot}-second moments.\n"
             f"Screenplay:\n{raw_script}"
         )
         phase1_raw = self._call_llm(
@@ -349,7 +356,7 @@ class AFE_ScriptFullParser:
             full_shot = {
                 "shot_id":          shot_id,
                 "label":            f"第{i + 1:02d}场-{scene_name}",
-                "duration_seconds": float(shot.get("duration_seconds", seconds_per_shot)),
+                "duration_seconds": float(seconds_per_shot),
                 "character_names":  char_names,
                 "costume_description": p2_data.get("costume_description", ""),
                 "costume_en":          p2_data.get("costume_en", ""),
