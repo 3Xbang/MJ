@@ -1,6 +1,6 @@
 {
-  "last_node_id": 17,
-  "last_link_id": 20,
+  "last_node_id": 19,
+  "last_link_id": 23,
   "nodes": [
     {
       "id": 1,
@@ -119,7 +119,7 @@
           "name": "scenes_json",
           "type": "STRING",
           "links": [
-            15
+            18
           ],
           "slot_index": 0
         },
@@ -133,7 +133,7 @@
           "name": "scene_report",
           "type": "STRING",
           "links": [
-            14
+            17
           ],
           "slot_index": 2
         }
@@ -168,7 +168,7 @@
         {
           "name": "scenes_json",
           "type": "STRING",
-          "link": 15
+          "link": 18
         }
       ],
       "outputs": [
@@ -176,7 +176,7 @@
           "name": "establishing_shots_batch",
           "type": "IMAGE",
           "links": [
-            11
+            12
           ],
           "slot_index": 0
         },
@@ -184,7 +184,7 @@
           "name": "medium_shots_batch",
           "type": "IMAGE",
           "links": [
-            12
+            13
           ],
           "slot_index": 1
         },
@@ -192,7 +192,7 @@
           "name": "atmosphere_shots_batch",
           "type": "IMAGE",
           "links": [
-            13
+            14
           ],
           "slot_index": 2
         },
@@ -212,10 +212,86 @@
         "",
         1024,
         576,
-        8,
+        20,
         1.0,
         42
       ]
+    },
+    {
+      "id": 18,
+      "type": "AFE_PropsImageGenerator",
+      "pos": [
+        960,
+        -450
+      ],
+      "size": {
+        "0": 420,
+        "1": 220
+      },
+      "flags": {},
+      "order": 18,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "props_report",
+          "type": "STRING",
+          "link": 15
+        }
+      ],
+      "outputs": [
+        {
+          "name": "props_images_batch",
+          "type": "IMAGE",
+          "links": [
+            16
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "generation_report",
+          "type": "STRING",
+          "links": null,
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AFE_PropsImageGenerator"
+      },
+      "widgets_values": [
+        "",
+        "",
+        1024,
+        20,
+        42
+      ]
+    },
+    {
+      "id": 19,
+      "type": "PreviewImage",
+      "pos": [
+        1400,
+        -450
+      ],
+      "size": {
+        "0": 400,
+        "1": 280
+      },
+      "flags": {},
+      "order": 19,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 16
+        }
+      ],
+      "outputs": [],
+      "title": "🔧 道具白底图 (Krea 2)",
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": []
     },
     {
       "id": 15,
@@ -235,7 +311,7 @@
         {
           "name": "images",
           "type": "IMAGE",
-          "link": 11
+          "link": 12
         }
       ],
       "outputs": [],
@@ -263,7 +339,7 @@
         {
           "name": "images",
           "type": "IMAGE",
-          "link": 12
+          "link": 13
         }
       ],
       "outputs": [],
@@ -291,7 +367,7 @@
         {
           "name": "images",
           "type": "IMAGE",
-          "link": 13
+          "link": 14
         }
       ],
       "outputs": [],
@@ -339,7 +415,8 @@
           "name": "props_report",
           "type": "STRING",
           "links": [
-            16
+            19,
+            15
           ],
           "slot_index": 2
         }
@@ -435,7 +512,7 @@
           "name": "tracking_report",
           "type": "STRING",
           "links": [
-            17
+            20
           ],
           "slot_index": 1
         },
@@ -482,7 +559,7 @@
           "name": "shots_prompts_json",
           "type": "STRING",
           "links": [
-            18
+            21
           ],
           "slot_index": 0
         },
@@ -514,7 +591,7 @@
           "name": "report",
           "type": "STRING",
           "links": [
-            19
+            22
           ],
           "slot_index": 5
         }
@@ -546,7 +623,7 @@
         {
           "name": "shots_prompts_json",
           "type": "STRING",
-          "link": 18
+          "link": 21
         }
       ],
       "outputs": [
@@ -554,7 +631,7 @@
           "name": "shot_list_report",
           "type": "STRING",
           "links": [
-            20
+            23
           ],
           "slot_index": 0
         },
@@ -602,7 +679,7 @@
         {
           "name": "text",
           "type": "STRING",
-          "link": 14
+          "link": 17
         }
       ],
       "outputs": [
@@ -639,7 +716,7 @@
         {
           "name": "text",
           "type": "STRING",
-          "link": 16
+          "link": 19
         }
       ],
       "outputs": [
@@ -676,7 +753,7 @@
         {
           "name": "text",
           "type": "STRING",
-          "link": 17
+          "link": 20
         }
       ],
       "outputs": [
@@ -713,7 +790,7 @@
         {
           "name": "text",
           "type": "STRING",
-          "link": 19
+          "link": 22
         }
       ],
       "outputs": [
@@ -750,7 +827,7 @@
         {
           "name": "text",
           "type": "STRING",
-          "link": 20
+          "link": 23
         }
       ],
       "outputs": [
@@ -825,7 +902,31 @@
       "STRING"
     ],
     [
-      11,
+      18,
+      2,
+      0,
+      14,
+      1,
+      "STRING"
+    ],
+    [
+      15,
+      3,
+      2,
+      18,
+      0,
+      "STRING"
+    ],
+    [
+      16,
+      18,
+      0,
+      19,
+      0,
+      "IMAGE"
+    ],
+    [
+      12,
       14,
       0,
       15,
@@ -833,7 +934,7 @@
       "IMAGE"
     ],
     [
-      12,
+      13,
       14,
       1,
       16,
@@ -841,7 +942,7 @@
       "IMAGE"
     ],
     [
-      13,
+      14,
       14,
       2,
       17,
@@ -905,7 +1006,7 @@
       "CAST_DATA"
     ],
     [
-      18,
+      21,
       6,
       0,
       7,
@@ -913,7 +1014,7 @@
       "STRING"
     ],
     [
-      14,
+      17,
       2,
       2,
       8,
@@ -921,7 +1022,7 @@
       "STRING"
     ],
     [
-      16,
+      19,
       3,
       2,
       9,
@@ -929,7 +1030,7 @@
       "STRING"
     ],
     [
-      17,
+      20,
       5,
       1,
       10,
@@ -937,7 +1038,7 @@
       "STRING"
     ],
     [
-      19,
+      22,
       6,
       5,
       11,
@@ -945,7 +1046,7 @@
       "STRING"
     ],
     [
-      20,
+      23,
       7,
       0,
       12,

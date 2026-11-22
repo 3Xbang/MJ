@@ -45,11 +45,15 @@ def build_workflow() -> dict:
     lnk_cd5          = next_link()   #  6 cast_data     → node 5
     lnk_ss6          = next_link()   #  7 shot_sequence → node 6
     lnk_cd6          = next_link()   #  8 cast_data     → node 6
-    lnk_report13     = next_link()   #  9 report        → node 13
+    lnk_report13      = next_link()   #  9 report        → node 13
     lnk_scene_to_gen  = next_link()   # scene_report → AFE_SceneImageGenerator
+    lnk_scenes_json_to_gen = next_link()  # scenes_json → AFE_SceneImageGenerator
     lnk_est_preview   = next_link()   # establishing_shots_batch → PreviewImage
     lnk_med_preview   = next_link()   # medium_shots_batch → PreviewImage
     lnk_atm_preview   = next_link()   # atmosphere_shots_batch → PreviewImage
+    # Props image generator links
+    lnk_props_to_gen  = next_link()   # props_report → AFE_PropsImageGenerator
+    lnk_props_preview = next_link()   # props_images_batch → PreviewImage
 
     nodes.append({
         "id": 1,
@@ -137,14 +141,59 @@ def build_workflow() -> dict:
             "",     # scenes_json (connected via link, placeholder)
             1024,   # width
             576,    # height
-            8,      # steps
-            1.0,    # cfg
+            20,     # steps (Krea 2 needs 20)
+            1.0,    # cfg (Krea 2 requires 1.0)
             42,     # seed
         ],
     })
     links.append([lnk_scene_to_gen, 2, 2, 14, 0, "STRING"])
+    links.append([lnk_scenes_json_to_gen, 2, 0, 14, 1, "STRING"])
 
-    # ── Nodes 15-17: PreviewImage for each batch output ──────────────────────
+    # ── Node 18: AFE_PropsImageGenerator ─────────────────────────────────────
+    nodes.append({
+        "id": 18,
+        "type": "AFE_PropsImageGenerator",
+        "pos": [960, -450],
+        "size": {"0": 420, "1": 220},
+        "flags": {},
+        "order": 18,
+        "mode": 0,
+        "inputs": [
+            {"name": "props_report", "type": "STRING", "link": lnk_props_to_gen},
+        ],
+        "outputs": [
+            {"name": "props_images_batch", "type": "IMAGE",  "links": [lnk_props_preview], "slot_index": 0},
+            {"name": "generation_report",  "type": "STRING", "links": None,                "slot_index": 1},
+        ],
+        "properties": {"Node name for S&R": "AFE_PropsImageGenerator"},
+        "widgets_values": [
+            "",     # props_report placeholder
+            "",     # props_json placeholder
+            1024,   # size
+            20,     # steps
+            42,     # seed
+        ],
+    })
+    links.append([lnk_props_to_gen, 3, 2, 18, 0, "STRING"])
+
+    # ── Node 19: PreviewImage for props ──────────────────────────────────────
+    nodes.append({
+        "id": 19,
+        "type": "PreviewImage",
+        "pos": [1400, -450],
+        "size": {"0": 400, "1": 280},
+        "flags": {},
+        "order": 19,
+        "mode": 0,
+        "inputs": [{"name": "images", "type": "IMAGE", "link": lnk_props_preview}],
+        "outputs": [],
+        "title": "🔧 道具白底图 (Krea 2)",
+        "properties": {"Node name for S&R": "PreviewImage"},
+        "widgets_values": [],
+    })
+    links.append([lnk_props_preview, 18, 0, 19, 0, "IMAGE"])
+
+    # ── Nodes 15-17: PreviewImage for scene batch outputs ────────────────────
     preview_configs = [
         (15, lnk_est_preview, "establishing_shots_batch", [1400, -280], 14, 0),
         (16, lnk_med_preview, "medium_shots_batch",       [1400, -100], 14, 1),
@@ -184,9 +233,9 @@ def build_workflow() -> dict:
             {"name": "shot_sequence", "type": "SHOT_SEQUENCE", "link": lnk_ss3},
         ],
         "outputs": [
-            {"name": "props_json",   "type": "STRING", "links": None,              "slot_index": 0},
-            {"name": "props_count",  "type": "INT",    "links": None,              "slot_index": 1},
-            {"name": "props_report", "type": "STRING", "links": [lnk_props_report],"slot_index": 2},
+            {"name": "props_json",   "type": "STRING", "links": None,                              "slot_index": 0},
+            {"name": "props_count",  "type": "INT",    "links": None,                              "slot_index": 1},
+            {"name": "props_report", "type": "STRING", "links": [lnk_props_report, lnk_props_to_gen],"slot_index": 2},
         ],
         "properties": {"Node name for S&R": "AFE_PropsAnalyzer"},
         "widgets_values": ["product photography style, studio lighting, clean white background, sharp focus"],
@@ -330,7 +379,7 @@ def build_workflow() -> dict:
         links.append([lnk_in, src_node, src_slot, node_id, 0, "STRING"])
 
     workflow = {
-        "last_node_id": 17,
+        "last_node_id": 19,
         "last_link_id": link_id,
         "nodes": nodes,
         "links": links,
