@@ -179,6 +179,7 @@ class AFE_PropsImageGenerator:
         model = clip = vae = None
         images = []
         manifest = []
+        failures = []
         made = reused = 0
 
         for i, prop in enumerate(props):
@@ -221,9 +222,12 @@ class AFE_PropsImageGenerator:
                     logger.info("[AFE_PropsImageGenerator]   ✓ %s", name[:30])
                 except Exception as e:
                     logger.error("[AFE_PropsImageGenerator]   ✗ %s: %s", name, e)
-                    images.append(torch.ones(1, size, size, 3))
+                    failures.append({"asset_id": prop.get("asset_id") or f"prop:{name}", "error": str(e), "remediation": "retry prop generation or upload a prop reference"})
                     continue
-            manifest.append({"index": i + 1, "name": name, "file": f"props/{os.path.basename(path)}"})
+            manifest.append({"asset_id": prop.get("asset_id") or f"prop:{name}", "prop_id": prop.get("prop_id", f"prop_{i + 1:03d}"), "index": i + 1, "name": name, "source": "uploaded" if mine is not None else "generated", "file": f"props/{os.path.basename(path)}"})
+
+        if failures:
+            raise RuntimeError("Prop reference generation failed: " + json.dumps(failures, ensure_ascii=False))
 
         def stack(imgs):
             return torch.cat(imgs, dim=0) if imgs else torch.ones(1, size, size, 3)

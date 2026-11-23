@@ -108,12 +108,19 @@ class AFE_SceneAnalyzer:
             location = shot.get("location", "").strip()
             name_en = (shot.get("scene_name_en") or "").strip()
             env_en = (shot.get("scene_environment_en") or "").strip()
+            scene_id = str(shot.get("scene_id") or scene_name or "scene_unknown")
+            scene_occurrence_id = str(shot.get("scene_occurrence_id") or "")
+            section_type = shot.get("section_type") or "location_scene"
             if not scene_name:
                 continue
 
-            if scene_name not in scene_map:
-                seen_order.append(scene_name)
-                scene_map[scene_name] = {
+            key = scene_id
+            if key not in scene_map:
+                seen_order.append(key)
+                scene_map[key] = {
+                    "scene_id": key,
+                    "section_type": section_type,
+                    "scene_occurrences": [],
                     "shots": [],
                     "lighting_style": lighting,
                     "time_of_day": time_of_day,
@@ -122,9 +129,14 @@ class AFE_SceneAnalyzer:
                     "scene_name_en": name_en,
                     "scene_environment_en": env_en,
                 }
-            scene_map[scene_name]["shots"].append(shot_id)
-            info = scene_map[scene_name]
-            # Keep first non-empty value per field
+            scene_map[key]["shots"].append(shot_id)
+            if scene_occurrence_id and scene_occurrence_id not in scene_map[key]["scene_occurrences"]:
+                scene_map[key]["scene_occurrences"].append(scene_occurrence_id)
+            info = scene_map[key]
+            info.setdefault("characters", [])
+            for character in shot.get("character_names") or []:
+                if character and character not in info["characters"]:
+                    info["characters"].append(str(character))
             if not info["lighting_style"] and lighting:
                 info["lighting_style"] = lighting
             if not info["time_of_day"] and time_of_day:
@@ -141,8 +153,9 @@ class AFE_SceneAnalyzer:
         scenes: list[dict] = []
         suffix = style_suffix.strip() or DEFAULT_STYLE
 
-        for idx, name in enumerate(seen_order):
-            info = scene_map[name]
+        for idx, key in enumerate(seen_order):
+            info = scene_map[key]
+            name = next((s.get("scene_name", "") for s in shots if str(s.get("scene_id") or s.get("scene_name")) == key), key)
             lighting = info["lighting_style"]
             time_of_day = info["time_of_day"]
             weather = info["weather"]
@@ -167,9 +180,14 @@ class AFE_SceneAnalyzer:
             # Fallback: keyword translation of name + per-shot location.
             scene_name_en = info["scene_name_en"] or base_en
             environment_prompt_en = info["scene_environment_en"] or environment_description_en
+            # Keep environment assets empty: remove named subjects and explicit human terms
+            # before the prompt reaches the scene image generator.
+            for character in info.get("characters", []):
+                environment_prompt_en = environment_prompt_en.replace(str(character), "")
+            environment_prompt_en = " ".join(x for x in environment_prompt_en.split() if x.lower() not in {"person", "people", "human", "character", "man", "woman"})
 
-            # Build positive_prompt (uses translated base_en)
-            positive_prompt = f"{SCENE_PREFIX}, {base_en}, {suffix}"
+            # Use the validated environment text, never the character/action-bearing shot text.
+            positive_prompt = f"{SCENE_PREFIX}, {environment_prompt_en}, {suffix}"
 
             # Build environment_3view_prompt
             env_desc = environment_description_en
@@ -180,6 +198,10 @@ class AFE_SceneAnalyzer:
             )
 
             scenes.append({
+                "scene_id": info.get("scene_id", f"scene_{idx + 1:03d}"),
+                "section_type": info.get("section_type", "location_scene"),
+                "scene_occurrences": info.get("scene_occurrences", []),
+                "asset_id": f"scene:{info.get('scene_id', f'scene_{idx + 1:03d}')}",
                 "index": idx + 1,
                 "scene_name": name,
                 "name": name,                                # compat alias

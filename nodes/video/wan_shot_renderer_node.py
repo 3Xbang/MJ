@@ -34,6 +34,10 @@ from ai_film_editor_nodes.nodes.video._common import (
 
 logger = logging.getLogger("AFE_WanShotRenderer")
 
+from ai_film_editor_nodes.nodes.video.shot_prompt_contract import (
+    CAMERA_MOTIONS, build_video_prompt as render_contract_video, normalize_shot,
+)
+
 # File names are split so ComfyUI-Manager's static scanner does not flag them as "missing models".
 _UNET_HIGH = "wan2.2_i2v_high_noise_14B_fp8_scaled"          + ".safetensors"
 _UNET_LOW  = "wan2.2_i2v_low_noise_14B_fp8_scaled"           + ".safetensors"
@@ -68,29 +72,8 @@ _CACHE: dict = {}
 
 
 def build_video_prompt(shot: dict, render_style: str, speaking: bool) -> str:
-    """Wan prompt: what happens (subject + action) first, then camera, light, style."""
-    parts: list[str] = []
-    desc = (shot.get("shot_description") or "").strip()
-    if desc:
-        parts.append(desc)
-    for key in ("action", "business", "emotion"):
-        v = (shot.get(key) or "").strip()
-        if not v or v.lower() in desc.lower():
-            continue
-        if key == "emotion" and len(v.split()) <= 3:
-            v = f"{v} expression"          # "tired" -> "tired expression"
-        parts.append(v)
-    if speaking:
-        parts.append("the character is speaking, natural lip, head and facial movement")
-    cam = CAMERA_PHRASES.get(str(shot.get("camera_motion") or "").strip())
-    if cam:
-        parts.append(cam)
-    light = (shot.get("lighting") or shot.get("lighting_style") or "").strip()
-    if light:
-        parts.append(light)
-    parts.append(render_style)
-    parts.append("smooth natural motion")
-    return ". ".join(p.rstrip(". ") for p in parts if p)
+    """Render the canonical shot contract; unsupported camera values are derived, never dropped."""
+    return render_contract_video(normalize_shot(shot), render_style, speaking)
 
 
 def frames_for(duration_seconds: float, fps: int = FPS) -> int:
@@ -322,6 +305,11 @@ class AFE_WanShotRenderer:
                 if bar: bar.update(1)
                 continue
 
+            if shot.get("scene_assignment_error"):
+                lines.append(f"  ❌ {sid}: {shot['scene_assignment_error']}")
+                failed += 1
+                if bar: bar.update(1)
+                continue
             duration = float(shot.get("duration_seconds") or 5.0)
             n_segs = len(plan_segments(duration)[0])
             prompt = build_video_prompt(shot, render_style, speaking)

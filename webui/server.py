@@ -203,8 +203,18 @@ class Api:
         if analysis:
             view["analysis"] = {
                 "shots": [{"id": s.get("shot_id"), "scene": s.get("scene_name"),
+                           "scene_id": s.get("scene_id"), "section_type": s.get("section_type"),
+                           "scene_occurrence_id": s.get("scene_occurrence_id"),
                            "chars": s.get("character_names", []), "dialogue": s.get("dialogue"),
                            "duration": s.get("duration_seconds"), "type": s.get("shot_type"),
+                           "camera_motion": s.get("camera_motion"), "camera_angle": s.get("camera_angle"),
+                           "pace": s.get("pace"), "expression": s.get("facial_expression") or s.get("emotion"),
+                           "micro_expression": s.get("micro_expression"), "action_start": s.get("action_start"),
+                           "action_process": s.get("action_process") or s.get("business"), "action_end": s.get("action_end"),
+                           "props": s.get("props_list", []), "prop_interactions": s.get("prop_interactions", []),
+                           "environment": s.get("environment") or s.get("scene_environment_en"),
+                           "lighting": s.get("lighting"), "time_of_day": s.get("time_of_day"),
+                           "weather": s.get("weather"),
                            "desc": s.get("shot_description") or s.get("action") or ""}
                           for s in analysis.get("shots", [])],
                 "cast": [{"name": c.get("name"), "role": c.get("role_type"), "gender": c.get("gender"),

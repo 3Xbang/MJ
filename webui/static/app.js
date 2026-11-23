@@ -323,16 +323,19 @@ function renderStep1() {
     const tabs = [['shots', '分镜表'], ['cast', '角色'], ['scenes', '场景'], ['props', '道具']];
     let tbl = '';
     if (S.tab === 'shots') {
-      tbl = `<table><tr><th>编号</th><th>场景</th><th>角色</th><th>对白</th><th>画面</th></tr>${shots.map(x =>
-        `<tr><td>${esc(x.id)}</td><td>${esc(x.scene)}</td><td>${esc((x.chars || []).join('、'))}</td>
-        <td>${esc(x.dialogue && x.dialogue !== '（无）' ? x.dialogue : '')}</td><td>${esc(x.desc)}</td></tr>`).join('')}</table>`;
+      tbl = `<table><tr><th>编号</th><th>场景 / 段落</th><th>角色</th><th>表情 / 微表情</th><th>动作起始 / 过程 / 结束</th><th>道具互动</th><th>运镜 / 节奏</th><th>对白</th></tr>${shots.map(x =>
+        `<tr><td>${esc(x.id)}</td><td>${esc(x.scene)}<br><small>${esc(x.scene_id || '')} · ${esc(x.section_type || '')}</small></td><td>${esc((x.chars || []).join('、'))}</td>
+        <td>${esc(x.expression || '')}<br><small>${esc(x.micro_expression || '')}</small></td>
+        <td>${esc(x.action_start || '')}<br>${esc(x.action_process || '')}<br>${esc(x.action_end || '')}</td>
+        <td>${esc((x.props || []).join('、'))}<br><small>${esc((x.prop_interactions || []).join('、'))}</small></td>
+        <td>${esc(x.camera_motion || '')} · ${esc(x.pace || '')}</td><td>${esc(x.dialogue && x.dialogue !== '（无）' ? x.dialogue : '')}</td></tr>`).join('')}</table>`;
     } else if (S.tab === 'cast') {
       tbl = `<table><tr><th>角色</th><th>类型</th><th>外貌（AI 据此画形象）</th></tr>${(a.cast || []).map(c =>
         `<tr><td>${esc(c.name)}</td><td>${esc(c.role)} ${esc(c.gender)}</td><td>${esc(c.look)}</td></tr>`).join('')}</table>`;
     } else if (S.tab === 'scenes') {
-      tbl = `<table><tr><th>场景</th><th>镜头数</th><th>环境描述（AI 据此画场景）</th></tr>${(a.scenes || []).map(c =>
-        `<tr><td>${esc(c.scene_name)}<br><small>${esc(c.scene_name_en)}</small></td><td>${(c.shot_appearances || []).length}</td>
-        <td>${esc(c.environment_prompt_en)}</td></tr>`).join('')}</table>`;
+      tbl = `<table><tr><th>场景 ID / 段落</th><th>镜头数</th><th>时间 / 天气 / 光源</th><th>空场景环境描述（AI 据此画场景）</th></tr>${(a.scenes || []).map(c =>
+        `<tr><td>${esc(c.scene_name)}<br><small>${esc(c.scene_id || '')} · ${esc(c.section_type || '')}</small></td><td>${(c.shot_appearances || []).length}</td>
+        <td>${esc(c.time_of_day || '')} / ${esc(c.weather || '')} / ${esc(c.lighting_style || '')}</td><td>${esc(c.environment_prompt_en)}</td></tr>`).join('')}</table>`;
     } else {
       tbl = `<table><tr><th>道具</th><th>出现分镜</th></tr>${(a.props || []).map(c =>
         `<tr><td>${esc(c.name || c.prop_name)}</td><td>${esc((c.shot_appearances || c.appears_in_shots || []).join(', '))}</td></tr>`).join('')}</table>`;

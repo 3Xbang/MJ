@@ -26,6 +26,8 @@ else
   git clone https://github.com/3Xbang/MJ.git ai_film_editor_nodes
 fi
 pip install loguru json_repair imageio-ffmpeg -q
+# CPU-only graph check: confirms generated props are connected to keyframes.
+python3 tests/test_workflow_graph.py
 
 [ -d comfyui_LLM_party ] || git clone https://github.com/heshengtao/comfyui_LLM_party.git
 (cd comfyui_LLM_party && pip install -r requirements.txt -q)

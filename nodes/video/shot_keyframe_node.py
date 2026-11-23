@@ -40,6 +40,10 @@ from ai_film_editor_nodes.nodes.video._common import (
 
 logger = logging.getLogger("AFE_ShotKeyframeGenerator")
 
+from ai_film_editor_nodes.nodes.video.shot_prompt_contract import (
+    build_keyframe_prompt as render_contract_keyframe, normalize_shot,
+)
+
 KEYFRAME_NEGATIVE = (
     "ugly, deformed, blurry, bad anatomy, extra fingers, extra limbs, duplicate characters, "
     "text, watermark, logo, subtitles, low quality"
@@ -59,9 +63,9 @@ def build_keyframe_prompt(shot: dict, char_names: list[str], render_style: str,
                           prop_names: list[str] | tuple = ()) -> str:
     """Prompt for Qwen Image 2.1. [Image_1] = set, then the characters, then the props the user
     uploaded pictures for (same [Image_n] convention as AFE_CharacterCard9Views)."""
+    shot = normalize_shot(shot)
     lines = [
-        "[Image_1] is the location reference. Keep its architecture, materials, colors and "
-        "lighting exactly as shown."
+        "[Image_1] is the EMPTY location reference only. No people, character faces, or props are supplied by this slot."
     ]
     for k, name in enumerate(char_names):
         lines.append(
@@ -82,13 +86,11 @@ def build_keyframe_prompt(shot: dict, char_names: list[str], render_style: str,
     if framing:
         lines.append(f"Framing: {framing}.")
 
+    facts = render_contract_keyframe(shot, render_style)
+    lines.append(facts)
     desc = (shot.get("shot_description") or "").strip()
-    if desc:
+    if desc and desc not in facts:
         lines.append(desc)
-    for label, key in (("Action", "action"), ("Expression", "emotion"), ("Lighting", "lighting")):
-        v = (shot.get(key) or "").strip()
-        if v:
-            lines.append(f"{label}: {v}.")
     costume = (shot.get("costume_en") or "").strip()
     if costume and char_names:
         lines.append(f"Outfit: {costume}.")
@@ -116,11 +118,21 @@ def pick_scene_image(views: list, shot: dict, scene_order: list[str], view_picks
     """views = [establishing, medium, atmosphere] (None where not connected).
     Returns (image (1,H,W,3), scene_index, view_index_used)."""
     name = (shot.get("scene_name") or "").strip()
-    sidx = scene_order.index(name) if name in scene_order else 0
+    scene_id = str(shot.get("scene_id") or "")
+    ids = [str(s.get("scene_id")) for s in (shot.get("scene_manifest") or []) if isinstance(s, dict)]
+    if scene_id and scene_id in ids:
+        sidx = ids.index(scene_id)
+    elif name in scene_order:
+        sidx = scene_order.index(name)
+    else:
+        raise ValueError(f"No matching scene reference for shot {shot.get('shot_id', '?')}: {name or scene_id}")
     want = view_picks.get(sidx, 0)
-    vidx = want if views[want] is not None else 0
+    available = [i for i, view in enumerate(views) if view is not None and view.shape[0] > sidx]
+    if not available:
+        raise ValueError(f"No scene image batch contains scene {scene_id or name}")
+    vidx = want if want in available else available[0]
     batch = views[vidx]
-    return batch[min(sidx, batch.shape[0] - 1):min(sidx, batch.shape[0] - 1) + 1], sidx, vidx
+    return batch[sidx:sidx + 1], sidx, vidx
 
 
 def _generate_frame(model_cached, clip, vae, images: dict, prompt: str, negative: str,
@@ -173,6 +185,8 @@ class AFE_ShotKeyframeGenerator:
                 "approved": gate_input("生成分镜首帧"),
                 "scene_images_medium": ("IMAGE",),
                 "scene_images_atmosphere": ("IMAGE",),
+                "props_images": ("IMAGE", {
+                    "tooltip": "Generated prop references in stable props_list order; uploads override them."}),
                 "auto_all": auto_all_input(),
             },
         }
@@ -186,7 +200,7 @@ class AFE_ShotKeyframeGenerator:
     def generate(self, shot_sequence, cast_data, scene_images, character_refs, project_name,
                  render_style, max_shots=0, overwrite=False, resolution=1024, seed=42,
                  variants_per_shot=1, picks="", redo_shots="", scene_view_picks="", approved=False,
-                 scene_images_medium=None, scene_images_atmosphere=None, auto_all=False):
+                 scene_images_medium=None, scene_images_atmosphere=None, props_images=None, auto_all=False):
         if not gate_is_open(approved, auto_all):
             return closed_result("分镜首帧（生成前请确认场景图和角色参考图）", "ddrd")
 
@@ -207,15 +221,23 @@ class AFE_ShotKeyframeGenerator:
         proj = project_dir(project_name)
         kf_dir = sub_dir(proj, "keyframes")
 
-        # props the user uploaded a picture for (matched by name against each shot's props_list)
+        # Uploaded references override generated references. Generated batch is in the
+        # stable props_list order emitted by PropsAnalyzer.
+        all_prop_names = []
+        for candidate in all_shots:
+            for prop in candidate.get("props_list") or []:
+                prop = str(prop).strip()
+                if prop and prop not in all_prop_names:
+                    all_prop_names.append(prop)
         prop_refs = {}
-        for shot in all_shots:
-            for p in shot.get("props_list") or []:
-                p = str(p).strip()
-                if p and p not in prop_refs:
-                    img = user_refs.load_user_ref(project_name, "prop", p)
-                    if img is not None:
-                        prop_refs[p] = fit_to_canvas(img, 768, 768, "pad")
+        for p in all_prop_names:
+            img = user_refs.load_user_ref(project_name, "prop", p)
+            if img is not None:
+                prop_refs[p] = fit_to_canvas(img, 768, 768, "pad")
+        if props_images is not None:
+            for pidx, p in enumerate(all_prop_names):
+                if p not in prop_refs and pidx < props_images.shape[0]:
+                    prop_refs[p] = fit_to_canvas(props_images[pidx:pidx + 1], 768, 768, "pad")
 
         model = clip = vae = cached = None
         chosen_frames, preview, lines = [], [], ["🖼 首帧（选用的版本带 * 号）"]
@@ -225,13 +247,15 @@ class AFE_ShotKeyframeGenerator:
 
         for i, shot in enumerate(shots):
             sid = shot_id_of(shot, i)
-            in_shot = [n for n in (shot.get("character_names") or []) if n in ref_by_name][:MAX_CHARS_PER_SHOT]
+            in_shot = [n for n in dict.fromkeys(shot.get("character_names") or []) if n in ref_by_name]
+            if len(in_shot) != len(dict.fromkeys(shot.get("character_names") or [])):
+                lines.append(f"  ❌ {sid}: missing character reference; no substitute scene/person will be used")
             scene_img, sidx, vidx = pick_scene_image(views, shot, scene_order, view_picks)
             images = {"image_1": scene_img}
             for k, n in enumerate(in_shot):
                 images[f"image_{k + 2}"] = ref_by_name[n]
             in_props = [p for p in dict.fromkeys(str(x).strip() for x in (shot.get("props_list") or []))
-                        if p in prop_refs][:MAX_PROPS_PER_SHOT]
+                        if p in prop_refs]
             for k, p in enumerate(in_props):
                 images[f"image_{len(in_shot) + k + 2}"] = prop_refs[p]
             prompt = build_keyframe_prompt(shot, in_shot, render_style, in_props)

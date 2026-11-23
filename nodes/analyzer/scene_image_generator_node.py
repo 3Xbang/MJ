@@ -250,6 +250,7 @@ class AFE_SceneImageGenerator:
         model = clip = vae = None
         establishing, medium, atmosphere = [], [], []
         manifest = []
+        failures = []
         made = reused = 0
         short = {"establishing": "est", "medium": "med", "atmosphere": "atm"}
 
@@ -309,10 +310,13 @@ class AFE_SceneImageGenerator:
                         batch_list.append(img); made += 1
                         logger.info("[AFE_SceneImageGenerator]   ✓ %s %s", scene.get("name","?")[:30], view_key)
                     except Exception as e:
-                        logger.error("[AFE_SceneImageGenerator]   ✗ %s %s: %s", scene.get("name","?"), view_key, e)
-                        batch_list.append(torch.ones(1, height, width, 3))
+                        logger.error("[AFE_SceneImageGenerator]   ✗ %s %s: %s", scene.get("name", "?"), view_key, e)
+                        failures.append({"asset_id": scene.get("asset_id") or scene.get("scene_id") or scene.get("name"), "view": view_key, "error": str(e), "remediation": "retry scene generation or upload a scene reference"})
                         continue
-                manifest.append({"scene": i + 1, "view": short[view_key], "file": f"scenes/{os.path.basename(path)}"})
+                manifest.append({"asset_id": scene.get("asset_id") or scene.get("scene_id") or f"scene:{i + 1}", "scene_id": scene.get("scene_id", f"scene_{i + 1:03d}"), "scene": i + 1, "view": short[view_key], "source": "uploaded" if mine is not None else "generated", "file": f"scenes/{os.path.basename(path)}"})
+
+        if failures:
+            raise RuntimeError("Scene reference generation failed: " + json.dumps(failures, ensure_ascii=False))
 
         def stack(imgs):
             return torch.cat(imgs, dim=0) if imgs else torch.ones(1, height, width, 3)

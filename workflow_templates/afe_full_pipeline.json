@@ -2,7 +2,7 @@
   "id": "2bd41d54-3586-416c-8553-321ad52efaf7",
   "revision": 0,
   "last_node_id": 43,
-  "last_link_id": 58,
+  "last_link_id": 59,
   "nodes": [
     {
       "id": 1,
@@ -308,7 +308,8 @@
           "type": "IMAGE",
           "slot_index": 0,
           "links": [
-            16
+            16,
+            59
           ]
         },
         {
@@ -1727,6 +1728,11 @@
           "name": "auto_all",
           "type": "BOOLEAN",
           "link": 48
+        },
+        {
+          "name": "props_images",
+          "type": "IMAGE",
+          "link": 59
         }
       ],
       "outputs": [
@@ -2625,6 +2631,14 @@
       43,
       0,
       "STRING"
+    ],
+    [
+      59,
+      18,
+      0,
+      33,
+      7,
+      "IMAGE"
     ]
   ],
   "groups": [

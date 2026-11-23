@@ -13,6 +13,7 @@ import json
 import os
 import re
 from ai_film_editor_nodes.lib.utils.logger import get_logger
+from ai_film_editor_nodes.nodes.video.shot_prompt_contract import normalize_shot
 
 logger = get_logger("AFE_ScriptFullParser")
 
@@ -77,43 +78,59 @@ def _normalize_scene_key(header: str) -> str:
     return cleaned or header.strip()
 
 
+def _section_type(header: str) -> str:
+    text = (header or "").lower()
+    if re.search(r"片头|片尾|opening|title|credits", text):
+        return "title_sequence"
+    if re.search(r"序幕|序章|引子|prologue|teaser", text):
+        return "prologue"
+    if re.search(r"尾声|结尾|epilogue|ending", text):
+        return "epilogue"
+    if re.search(r"快速闪切|montage|闪切", text):
+        return "montage"
+    if re.search(r"转场|transition|淡出|fade", text):
+        return "transition"
+    return "location_scene"
+
+
 def _build_scene_map(raw_script: str) -> list[dict]:
-    """
-    Pre-segment the screenplay into scene blocks using regex, independent of
-    LLM memory. Returns an ordered list of unique scenes:
-      [{"scene_index": 1, "sample_header": "...", "preview": "..."}]
-    """
+    """Return stable physical scenes while retaining ordered screenplay blocks."""
     matches = list(_HEADER_RE.finditer(raw_script))
     if not matches:
-        return [{"scene_index": 1, "sample_header": "Unnamed Location",
-                 "preview": raw_script[:200],
-                 "source_text": raw_script[:_SCENE_SOURCE_MAX_CHARS]}]
+        return [{"scene_index": 1, "scene_id": "scene_001", "sample_header": "Unnamed Location",
+                 "section_type": "location_scene", "preview": raw_script[:200],
+                 "source_text": raw_script[:_SCENE_SOURCE_MAX_CHARS],
+                 "source_block_ids": ["block_001"], "occurrences": ["occurrence_001"]}]
 
     grouped: dict[str, dict] = {}
     order: list[str] = []
-    for i, m in enumerate(matches):
-        header = m.group().strip()
+    for i, match in enumerate(matches):
+        header = match.group().strip()
         key = _normalize_scene_key(header)
-        start = m.end()
+        start = match.end()
         end = matches[i + 1].start() if i + 1 < len(matches) else len(raw_script)
         block_text = raw_script[start:end].strip()
-
         if key not in grouped:
             order.append(key)
-            grouped[key] = {"headers": [], "preview": block_text[:200], "blocks": []}
+            grouped[key] = {"headers": [], "preview": block_text[:200], "blocks": [],
+                            "source_block_ids": [], "occurrences": [], "section_type": _section_type(header)}
         grouped[key]["headers"].append(header)
         grouped[key]["blocks"].append(block_text)
+        grouped[key]["source_block_ids"].append(f"block_{i + 1:03d}")
+        grouped[key]["occurrences"].append(f"occurrence_{i + 1:03d}")
 
     scene_map = []
     for idx, key in enumerate(order):
         g = grouped[key]
         scene_map.append({
             "scene_index": idx + 1,
+            "scene_id": f"scene_{idx + 1:03d}",
             "sample_header": g["headers"][0],
+            "section_type": g["section_type"],
             "preview": g["preview"],
-            # Full screenplay text of every block belonging to this scene
-            # (art direction + action). Used later to build the environment prompt.
             "source_text": "\n".join(g["blocks"])[:_SCENE_SOURCE_MAX_CHARS],
+            "source_block_ids": g["source_block_ids"],
+            "occurrences": g["occurrences"],
         })
     return scene_map
 
@@ -163,9 +180,8 @@ scene_index values together — if the map lists 2 scenes, shots alternate betwe
 scene_index 1 and 2 exactly as the screenplay text alternates between them; re-read
 the screenplay text near each shot to determine which scene block it falls in.
 
-raw_description MUST include concrete set/location details copied from the screenplay's
-scene description paragraph (materials, furniture, lighting fixtures, weather) — not just
-the character action — so a cinematographer can recreate the actual place later.
+raw_description MUST preserve the complete relevant screenplay moment and its concrete set/location details. Do not summarize away facial expression, micro-expression, gaze, business motion, prop interaction, dialogue, lighting, or action phases. Do not impose a word limit.
+The shot must also include source_block_id, scene_occurrence_id, section_type, facial_expression, micro_expression, gaze, body_language, action_start, action_process, action_end, prop_interactions, camera_motion and pace.
 
 Format:
 {
@@ -513,19 +529,17 @@ class AFE_ScriptFullParser:
             except Exception as exc:
                 logger.warning("[AFE_ScriptFullParser] Scene env prompt failed for scene %d: %s", idx, exc)
 
-        # Sanity check: verify the LLM actually spread shots across scene_index values
-        used_indices = {shot.get("scene_index") for shot in minimal_shots if isinstance(shot, dict)}
-        if len(scene_map) > 1 and len(used_indices) <= 1:
-            logger.warning(
-                "[AFE_ScriptFullParser] LLM assigned scene_index=%s to ALL shots despite "
-                "%d scenes in the pre-segmented map — falling back to even distribution",
-                used_indices, len(scene_map)
-            )
-            # Fallback: distribute shots across scenes in round-robin proportional to
-            # their relative position (better than collapsing everything into scene 1)
-            n_scenes = len(scene_map)
-            for i, shot in enumerate(minimal_shots):
-                shot["scene_index"] = (i * n_scenes) // max(len(minimal_shots), 1) + 1
+        # Validate the LLM assignment. Never round-robin a shot into another place.
+        valid_indices = {s["scene_index"] for s in scene_map}
+        assignment_errors = []
+        for i, shot in enumerate(minimal_shots):
+            idx = shot.get("scene_index")
+            if idx not in valid_indices:
+                assignment_errors.append(f"{shot.get('shot_id', f'shot_{i + 1:03d}')}: invalid scene_index={idx}")
+                shot["scene_index"] = None
+                shot["scene_assignment_error"] = "Scene source could not be verified; generation is blocked."
+        if assignment_errors:
+            logger.error("[AFE_ScriptFullParser] %s", "; ".join(assignment_errors))
 
         # 3b. Build cast lookup by name
         cast_lookup = {c["name"]: c for c in cast_list if isinstance(c, dict) and "name" in c}
@@ -536,8 +550,13 @@ class AFE_ScriptFullParser:
 
         for i, shot in enumerate(minimal_shots):
             shot_id    = shot.get("shot_id", f"shot_{i + 1:03d}")
-            scene_idx  = shot.get("scene_index", 1)
-            scene_name = scene_index_to_name.get(scene_idx, f"Scene_{scene_idx}")
+            scene_idx  = shot.get("scene_index")
+            scene_info = next((s for s in scene_map if s["scene_index"] == scene_idx), None)
+            scene_name = scene_index_to_name.get(scene_idx, "Unverified scene")
+            scene_id = scene_info.get("scene_id") if scene_info else "scene_unverified"
+            source_blocks = scene_info.get("source_block_ids", []) if scene_info else []
+            source_block_id = shot.get("source_block_id") or (source_blocks[0] if source_blocks else f"block_{i + 1:03d}")
+            occurrence_id = shot.get("scene_occurrence_id") or (scene_info.get("occurrences", [f"occurrence_{i + 1:03d}"])[0] if scene_info else f"occurrence_{i + 1:03d}")
             char_names = shot.get("character_names", [])
             raw_desc   = shot.get("raw_description", "")
             dialogue   = shot.get("dialogue", None)
@@ -559,8 +578,9 @@ class AFE_ScriptFullParser:
                 f"Scene: {scene_name}\n"
                 f"Characters: {', '.join(char_names) if char_names else 'none'}\n"
                 f"Character Appearance:\n{char_context}\n"
-                f"Description: {raw_desc}\n"
-                f"Render Style: {style_full}\nShot duration: {seconds_per_shot}s"
+                f"Description (preserve all facts; not a summary): {raw_desc}\n"
+                f"Requested structured facts: expression={shot.get('facial_expression','')}; micro_expression={shot.get('micro_expression','')}; gaze={shot.get('gaze','')}; body_language={shot.get('body_language','')}; action_start={shot.get('action_start','')}; action_process={shot.get('action_process','')}; action_end={shot.get('action_end','')}; prop_interactions={shot.get('prop_interactions','')}\n"
+                f"Render Style: {style_full}\nShot duration: {shot.get('duration_seconds', seconds_per_shot)}s"
             )
 
             try:
@@ -586,8 +606,14 @@ class AFE_ScriptFullParser:
             # 5. Merge minimal + phase2 into full shot dict
             full_shot = {
                 "shot_id":          shot_id,
+                "schema_version":   "afe-shot-v1",
                 "label":            f"第{i + 1:02d}场-{scene_name}",
-                "duration_seconds": float(seconds_per_shot),
+                "duration_seconds": float(shot.get("duration_seconds") or seconds_per_shot),
+                "section_type":     shot.get("section_type") or (scene_info or {}).get("section_type", "location_scene"),
+                "scene_id":          scene_id,
+                "scene_occurrence_id": occurrence_id,
+                "source_block_id":   source_block_id,
+                "scene_assignment_error": shot.get("scene_assignment_error", ""),
                 "character_names":  char_names,
                 "costume_description": p2_data.get("costume_description", ""),
                 "costume_en":          p2_data.get("costume_en", ""),
@@ -596,7 +622,7 @@ class AFE_ScriptFullParser:
                 "scene_name_en":       scene_env.get(scene_idx, {}).get("scene_name_en", ""),
                 "scene_environment_en": scene_env.get(scene_idx, {}).get("environment_prompt_en", ""),
                 "camera_angle":        p2_data.get("camera_angle", "medium"),
-                "camera_motion":       p2_data.get("camera_motion", "static"),
+                "camera_motion":       p2_data.get("camera_motion") or shot.get("camera_motion", ""),
                 "shot_type":           p2_data.get("shot_type", ""),
                 "lighting_style":      p2_data.get("lighting_style", ""),
                 "director_notes":      p2_data.get("director_notes", ""),
@@ -608,10 +634,21 @@ class AFE_ScriptFullParser:
                 "weather":             p2_data.get("weather", "indoor"),
                 "lighting":            p2_data.get("lighting", ""),
                 "action":              p2_data.get("action", ""),
-                "business":            p2_data.get("business", ""),
-                "emotion":             p2_data.get("emotion", ""),
+                "business":            p2_data.get("business", shot.get("business", "")),
+                "facial_expression":   p2_data.get("facial_expression", shot.get("facial_expression", p2_data.get("emotion", ""))),
+                "micro_expression":    p2_data.get("micro_expression", shot.get("micro_expression", "")),
+                "gaze":                p2_data.get("gaze", shot.get("gaze", "")),
+                "body_language":       p2_data.get("body_language", shot.get("body_language", "")),
+                "action_start":        p2_data.get("action_start", shot.get("action_start", p2_data.get("action", ""))),
+                "action_process":      p2_data.get("action_process", shot.get("action_process", p2_data.get("business", ""))),
+                "action_end":          p2_data.get("action_end", shot.get("action_end", "")),
+                "prop_interactions":   p2_data.get("prop_interactions", shot.get("prop_interactions", [])),
+                "camera_path":         p2_data.get("camera_path", shot.get("camera_path", "")),
+                "pace":                p2_data.get("pace", shot.get("pace", "natural")),
+                "color_temperature":  p2_data.get("color_temperature", shot.get("color_temperature", "")),
+                "camera_motion_source": p2_data.get("camera_motion_source", "script" if shot.get("camera_motion") else "derived"),
             }
-            full_shots.append(full_shot)
+            full_shots.append(normalize_shot(full_shot, i))
 
         # 6. Compute deduplicated ordered scenes and props
         seen_scenes: list[str] = []

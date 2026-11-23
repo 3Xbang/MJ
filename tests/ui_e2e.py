@@ -261,8 +261,8 @@ def main():
                 page.click("#side .stale button")
                 wait_idle(page, 90000)
             counts = stats()["kf_imgs"][kf_before:]
-            check("first frames now receive the prop picture too (scene + characters + prop)",
-                  set(counts) == {3, 4}, str(counts))
+            check("first frames now receive every selected prop picture too (scene + characters + all props)",
+                  set(counts) == {3, 5}, str(counts))
             check("everything fresh after propagating the uploads", page.locator("#side .stale").count() == 0)
             page.click("button[data-act=ref-del][data-kind=prop]")
             page.wait_for_function("() => document.querySelectorAll('.refrow .thumb img').length === 2")

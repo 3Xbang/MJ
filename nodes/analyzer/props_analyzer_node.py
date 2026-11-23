@@ -87,9 +87,13 @@ class AFE_PropsAnalyzer:
                     continue
                 if prop_name not in prop_map:
                     seen_order.append(prop_name)
-                    prop_map[prop_name] = {"shots": []}
+                    prop_map[prop_name] = {"shots": [], "interactions": []}
                 if shot_id not in prop_map[prop_name]["shots"]:
                     prop_map[prop_name]["shots"].append(shot_id)
+                interactions = shot.get("prop_interactions") or []
+                if isinstance(interactions, str):
+                    interactions = [interactions]
+                prop_map[prop_name]["interactions"].extend(str(x) for x in interactions if str(x).strip())
 
         props_list: list[dict] = []
         for idx, name in enumerate(seen_order):
@@ -100,10 +104,13 @@ class AFE_PropsAnalyzer:
             prompt = f"product photography, white background, clean isolated {name_en}, no shadows, no environment, {suffix}"
             description_en = f"a {name_en}, clean isolated object"
             props_list.append({
+                "prop_id": f"prop_{idx + 1:03d}",
+                "asset_id": f"prop:{name.strip().lower()}",
                 "index": idx + 1,
                 "name": name,
                 "name_en": name_en,
                 "description_en": description_en,
+                "prop_interactions": list(dict.fromkeys(info.get("interactions", []))),
                 "which_shots": info["shots"],
                 "appears_in_shots": info["shots"],    # compat alias
                 "prompt": prompt,

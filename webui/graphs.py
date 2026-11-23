@@ -118,6 +118,9 @@ def build_prompt(stage: int, project: str, settings: dict | None, project_path: 
 
     elif stage == 3:
         loader(); analyzers(); scene_images(); cast_refs()
+        if s["make_props"]:
+            g["5"] = _n("AFE_PropsImageGenerator", props_report=["3", 2], props_json=["3", 0],
+                         size=1024, steps=20, seed=int(s["seed"]), approved=True, project_name=project)
         g["11"] = _n("AFE_ShotKeyframeGenerator", shot_sequence=["1", 0], cast_data=["1", 1],
                      scene_images=["4", 0], character_refs=["6", 0], project_name=project,
                      render_style=style, max_shots=_max_shots(s), overwrite=False, resolution=1024,
@@ -125,6 +128,8 @@ def build_prompt(stage: int, project: str, settings: dict | None, project_path: 
                      picks=s["kf_picks"], redo_shots=s["kf_redo"],
                      scene_view_picks=s["scene_view_picks"], approved=True,
                      scene_images_medium=["4", 1], scene_images_atmosphere=["4", 2])
+        if "5" in g:
+            g["11"]["inputs"]["props_images"] = ["5", 0]
         labels["11"] = "绘制每个分镜的首帧"
 
     elif stage == 4:
