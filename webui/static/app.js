@@ -185,6 +185,59 @@ async function cancelRun() {
   if (S.run) { S.run.label = '正在取消…'; renderDock(); }
 }
 
+/* ── what is stale? (choices changed after a step was produced) ─────────── */
+const norm = t => JSON.stringify(Object.entries(parsePairs(t)).filter(([, v]) => v).sort());
+function changedSince(keys, used) {
+  if (!used) return false;                       // projects from before this feature: don't guess
+  return keys.some(k => k === 'kf_variants'
+    ? String(S.settings[k]) !== String(used[k] ?? S.settings[k])
+    : norm(S.settings[k]) !== norm(used[k]));
+}
+function staleList() {
+  const v = S.view; if (!v) return [];
+  const d = v.done || {}, u = v.used || {}, out = [];
+  if (d['3'] && changedSince(['cast_picks', 'cast_redo', 'scene_view_picks', 'kf_picks', 'kf_redo', 'kf_variants'], u['3']))
+    out.push({ stage: 3, text: '你更换了角色、场景或首帧的选择。首帧需要更新（只会重画受影响的分镜）。' });
+  if (d['4'] && (Number(d['3']) > Number(d['4']) || changedSince(['video_redo', 'long_takes'], u['4'])))
+    out.push({ stage: 4, text: '首帧或镜头设置有变化，视频需要更新（只会重新渲染受影响的分镜）。' });
+  if (d['5'] && (Number(d['4']) > Number(d['5']) || changedSince(['skip_shots'], u['5'])))
+    out.push({ stage: 5, text: '视频有变化，成片需要重新合成。' });
+  return out;
+}
+
+function renderSide() {
+  const v = S.view, a = v.analysis, as = v.assets;
+  let h = '<div class="side-card"><h3>📌 已选用的素材</h3><p class="mini">后面的步骤会使用这里显示的图片。在左边点图片即可更换，这里会马上跟着变。</p>';
+  if (a && as) {
+    h += '<h4>场景地点参考</h4>';
+    (a.scenes || []).forEach((sc, i) => {
+      const cur = S.sel.scene[i + 1] || 1, [key, vname] = VIEWS[cur - 1] || VIEWS[0];
+      const url = (as.scene_images[key] || [])[i];
+      if (url) h += `<div class="sel"><img src="${esc(url)}" alt=""><span><b>场景 ${i + 1}</b> ${esc(sc.scene_name)}<br><small>${vname}</small></span></div>`;
+    });
+    h += '<h4>角色形象</h4>';
+    (a.cast || []).forEach((c, j) => {
+      const imgs = (v.cast_images || []).filter(x => x.char === j + 1);
+      const cur = S.sel.cast[j + 1] || (imgs.find(x => x.chosen) || {}).variant || 1;
+      const it = imgs.find(x => x.variant === cur) || imgs[0];
+      if (it) h += `<div class="sel"><img src="${esc(it.url)}" alt="" class="tall"><span><b>${esc(c.name)}</b><br><small>版本 ${it.variant}</small></span></div>`;
+    });
+  } else {
+    h += '<p class="mini">还没有素材。完成第 ② 步后，这里会显示你选用的图。</p>';
+  }
+  const nKf = ((a && a.shots) || []).filter(x => v.keyframes[x.id]).length;
+  if (nKf) h += `<h4>首帧</h4><p class="mini">已有 ${nKf} 个分镜首帧。视频使用每个分镜当前选用的版本。</p>`;
+  const stale = staleList();
+  if (stale.length) {
+    h += `<div class="stale"><b>⚠ 需要更新</b>${stale.map(s => `<p>${esc(s.text)}</p>`).join('')}
+      <button class="primary small" data-act="run" data-stage="${stale[0].stage}" ${S.run ? 'disabled' : ''}>现在更新：${STEPS[stage0(stale)].verb}</button></div>`;
+  } else if (done(3)) {
+    h += '<div class="fresh">✓ 已生成的内容都是按你当前的选择做的</div>';
+  }
+  $('#side').innerHTML = h + '</div>';
+}
+const stage0 = stale => stale[0].stage - 1;
+
 /* ── rendering ──────────────────────────────────────────────────────────── */
 const done = n => !!(S.view && S.view.done && S.view.done[String(n)]);
 function currentStep() { for (let n = 1; n <= 5; n++) if (!done(n)) return n; return 5; }
@@ -192,7 +245,7 @@ const prereqOk = n => n === 1 || (S.view && S.view.has_analysis && (n === 2 || d
 
 function render() {
   if (!S.view) return;
-  renderBanner(); renderStepper();
+  renderBanner(); renderStepper(); renderSide();
   const html = [renderStep1(), renderStep2(), renderStep3(), renderStep4(), renderStep5()].join('');
   const keepScroll = window.scrollY;
   const ta = document.activeElement && document.activeElement.tagName === 'TEXTAREA';
@@ -211,10 +264,12 @@ function renderBanner() {
 
 function renderStepper() {
   const cur = currentStep();
+  const staleSet = new Set(staleList().map(s => s.stage));
   $('#stepper').innerHTML = STEPS.map(st => {
     const busy = S.run && S.run.stage === st.n;
-    const cls = busy ? 'busy' : done(st.n) ? 'done' : st.n === cur ? 'cur' : '';
-    const status = busy ? '进行中…' : done(st.n) ? '已完成' : st.n === cur ? '轮到这一步' : '未开始';
+    const stale = staleSet.has(st.n);
+    const cls = busy ? 'busy' : stale ? 'stale' : done(st.n) ? 'done' : st.n === cur ? 'cur' : '';
+    const status = busy ? '进行中…' : stale ? '⚠ 需要更新' : done(st.n) ? '已完成' : st.n === cur ? '轮到这一步' : '未开始';
     return `<button class="step-chip ${cls}" data-act="goto" data-step="${st.n}"><span class="n">${done(st.n) && !busy ? '✓' : st.n}</span>
       <span><span class="t">${st.title}</span><br><span class="s">${status}</span></span></button>`;
   }).join('');

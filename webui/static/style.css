@@ -16,7 +16,7 @@ header.top { position: sticky; top: 0; z-index: 20; background: rgba(255,255,255
 .top-in .grow { flex: 1; }
 .proj { display: flex; align-items: center; gap: 8px; }
 .proj input { width: 170px; }
-main { max-width: 1180px; margin: 0 auto; padding: 18px 20px 40px; }
+main { max-width: 1380px; margin: 0 auto; padding: 18px 20px 40px; }
 
 .banner { border-radius: var(--radius); padding: 12px 16px; margin: 0 0 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .banner.test { background: var(--warn-soft); border: 1px solid #f5d9a6; color: #7a4a06; }
@@ -118,3 +118,20 @@ th { position: sticky; top: 0; background: #f8f9fc; z-index: 1; }
 .gallery.scenes .pick { flex: 1 1 0; min-width: 0; }
 .gallery.scenes .pick img { width: 100%; height: auto; max-height: none; aspect-ratio: 16/9; object-fit: cover; }
 @media (max-width: 760px) { .gallery.scenes { flex-wrap: wrap; } .gallery.scenes .pick { flex: 1 1 100%; } }
+
+/* two columns: steps on the left, "what is selected" on the right */
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 18px; align-items: start; }
+#side { position: sticky; top: 76px; max-height: calc(100vh - 160px); overflow: auto; }
+.side-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 16px; }
+.side-card h3 { margin: 0 0 4px; font-size: 16px; }
+.side-card h4 { margin: 14px 0 6px; font-size: 13px; color: var(--muted); }
+.mini { color: var(--muted); font-size: 12.5px; margin: 4px 0; }
+.sel { display: flex; gap: 10px; align-items: center; margin: 6px 0; font-size: 13px; line-height: 1.35; }
+.sel img { width: 84px; height: 48px; object-fit: cover; border-radius: 8px; background: #eee; flex: none; }
+.sel img.tall { width: 48px; height: 72px; object-fit: contain; background: #fff; border: 1px solid var(--line); }
+.stale { background: var(--warn-soft); border: 1px solid #f5d9a6; color: #7a4a06; border-radius: 10px; padding: 10px 12px; margin-top: 14px; font-size: 13px; }
+.stale p { margin: 6px 0; }
+.fresh { background: var(--ok-soft); color: #14532d; border-radius: 10px; padding: 8px 12px; margin-top: 14px; font-size: 13px; }
+.step-chip.stale { border-color: #e0a43a; background: var(--warn-soft); }
+.step-chip.stale .n { background: #e0a43a; color: #fff; }
+@media (max-width: 1100px) { .layout { grid-template-columns: 1fr; } #side { position: static; max-height: none; order: -1; } }

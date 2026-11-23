@@ -25,6 +25,9 @@ from ai_film_editor_nodes.webui import graphs
 logger = logging.getLogger("AFE_WebUI")
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 MIME_NO_CACHE = {"Cache-Control": "no-store"}
+# settings that decide what a step produced; the UI compares them with the current choices
+USED_KEYS = ("cast_picks", "cast_redo", "scene_view_picks", "kf_picks", "kf_redo", "kf_variants",
+             "video_redo", "long_takes", "skip_shots")
 
 
 # ── project files ─────────────────────────────────────────────────────────────
@@ -167,6 +170,7 @@ class Api:
         view = {"project": pname, "settings": graphs.merged(st.get("settings")), "done": st.get("done", {}),
                 "has_analysis": bool(analysis), "analysis": None, "assets": assets,
                 "kf_manifest": st.get("kf_manifest", []), "reports": st.get("reports", {}),
+                "used": st.get("used", {}),
                 "keyframes": {}, "clips": {}, "movie": None}
         if analysis:
             view["analysis"] = {
@@ -244,6 +248,7 @@ class Api:
         if stage >= 2 and not os.path.exists(os.path.join(pp, "analysis.json")):
             return web.json_response({"error": "请先完成第 ① 步「分析剧本」。"}, status=400)
         os.makedirs(pp, exist_ok=True)
+        st.setdefault("run_settings", {})[str(stage)] = {k: s.get(k, "") for k in USED_KEYS}
         self.save_state(pp, st)
 
         part = "cast" if body.get("part") == "cast" and stage == 2 else "all"
@@ -299,6 +304,8 @@ class Api:
 
         st = self.state(pp)
         st.setdefault("done", {})[str(stage)] = int(time.time())
+        if part != "cast":
+            st.setdefault("used", {})[str(stage)] = (st.get("run_settings") or {}).get(str(stage), {})
         if stage == 1:
             write_json(os.path.join(pp, "analysis.json"), res["analysis"])
             st["scenes"], st["props"], st["reports"] = res["scenes"], res["props"], res["reports"]

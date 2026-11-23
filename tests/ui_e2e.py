@@ -107,6 +107,23 @@ def main():
             st = page.evaluate("() => ({scene: S.settings.scene_view_picks, cast: S.settings.cast_picks})")
             check("picks stored as settings", st["scene"] == "1:2" and st["cast"] == "2:3", str(st))
 
+            # the right-hand panel mirrors exactly what is selected on the left
+            base = lambda u: (u or "").split("&t=")[0]
+            check("sidebar lists 2 scene + 2 character selections", page.locator("#side .sel").count() == 4,
+                  str(page.locator("#side .sel").count()))
+            med1 = page.get_attribute(".card[data-step='2'] input[data-sel=scene][data-id='1'][data-val='2'] ~ img", "src")
+            side_scene1 = page.locator("#side .sel img").nth(0).get_attribute("src")
+            check("sidebar shows the chosen scene view (scene 1 = medium)", base(med1) == base(side_scene1), f"{base(med1)} vs {base(side_scene1)}")
+            v3 = page.get_attribute(".card[data-step='2'] input[data-sel=cast][data-id='2'][data-val='3'] ~ img", "src")
+            side_char2 = page.locator("#side .sel img").nth(3).get_attribute("src")
+            check("sidebar shows the chosen character version (char 2 = v3)", base(v3) == base(side_char2), f"{base(v3)} vs {base(side_char2)}")
+            page.locator(".card[data-step='2'] label.pick:has(input[data-sel=cast][data-id='2'][data-val='1'])").click()
+            side_char2 = page.locator("#side .sel img").nth(3).get_attribute("src")
+            v1 = page.get_attribute(".card[data-step='2'] input[data-sel=cast][data-id='2'][data-val='1'] ~ img", "src")
+            check("sidebar follows a changed selection immediately", base(v1) == base(side_char2))
+            page.locator(".card[data-step='2'] label.pick:has(input[data-sel=cast][data-id='2'][data-val='3'])").click()
+            page.screenshot(path=f"{SHOTS}/03b_sidebar.png")
+
             # redoing ONE character must not touch scenes or props
             def stats():
                 return __import__("json").loads(urllib.request.urlopen(f"http://127.0.0.1:{PORT}/mock/stats").read())
@@ -145,6 +162,14 @@ def main():
             page.screenshot(path=f"{SHOTS}/04_step3_done.png", full_page=True)
             page.locator(".card[data-step='3'] label.pick:has(input[data-sel=kf][data-id='shot_001'][data-val='2'])").click()
             check("kf pick stored", page.evaluate("() => S.settings.kf_picks") == "shot_001:2")
+            check("changing a pick marks step 3 as needing update",
+                  page.locator("#side .stale").count() == 1 and page.locator("#stepper .step-chip.stale").count() == 1)
+            page.screenshot(path=f"{SHOTS}/04b_stale.png")
+            page.click("#side .stale button")
+            wait_idle(page)
+            page.wait_for_selector("#side .fresh")
+            check("updating from the sidebar clears the warning",
+                  page.locator("#side .stale").count() == 0 and page.locator("#stepper .step-chip.stale").count() == 0)
 
             # step 4
             page.click("button[data-act=run][data-stage='4']")
@@ -179,6 +204,21 @@ def main():
                   page.evaluate("() => S.settings.scene_view_picks") == "1:2" and
                   page.locator("#stepper .step-chip.done").count() == 5)
             check("after reload: script restored", "小红在看电视" in page.input_value("textarea[data-set=script]"))
+
+            # upstream change makes downstream stale: redraw a first frame after video + movie exist
+            page.evaluate("() => { S.open[3] = true; render(); }")
+            page.click("button[data-act=redo-kf][data-shot='shot_002']")
+            page.wait_for_selector("#dock:not(.hidden)"); wait_idle(page)
+            check("redrawing a first frame marks the video step stale",
+                  page.locator("#stepper .step-chip.stale").count() == 1 and "视频" in page.inner_text("#stepper .step-chip.stale"),
+                  page.inner_text("#stepper"))
+            page.click("#side .stale button")                    # updates video (only shot_002 changed)
+            wait_idle(page, 90000)
+            check("after updating video the movie is the stale step",
+                  page.locator("#stepper .step-chip.stale").count() == 1 and "成片" in page.inner_text("#stepper .step-chip.stale"))
+            page.click("#side .stale button")
+            wait_idle(page, 60000)
+            check("everything fresh again", page.locator("#side .stale").count() == 0 and page.locator("#side .fresh").count() == 1)
 
             # cancel
             page.evaluate("() => { S.open[2] = true; render(); }")
