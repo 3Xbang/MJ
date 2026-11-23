@@ -106,6 +106,8 @@ class AFE_SceneAnalyzer:
             time_of_day = shot.get("time_of_day", "").strip()
             weather = shot.get("weather", "").strip()
             location = shot.get("location", "").strip()
+            name_en = (shot.get("scene_name_en") or "").strip()
+            env_en = (shot.get("scene_environment_en") or "").strip()
             if not scene_name:
                 continue
 
@@ -117,6 +119,8 @@ class AFE_SceneAnalyzer:
                     "time_of_day": time_of_day,
                     "weather": weather,
                     "location": location,
+                    "scene_name_en": name_en,
+                    "scene_environment_en": env_en,
                 }
             scene_map[scene_name]["shots"].append(shot_id)
             info = scene_map[scene_name]
@@ -129,6 +133,10 @@ class AFE_SceneAnalyzer:
                 info["weather"] = weather
             if not info["location"] and location:
                 info["location"] = location
+            if not info["scene_name_en"] and name_en:
+                info["scene_name_en"] = name_en
+            if not info["scene_environment_en"] and env_en:
+                info["scene_environment_en"] = env_en
 
         scenes: list[dict] = []
         suffix = style_suffix.strip() or DEFAULT_STYLE
@@ -154,6 +162,12 @@ class AFE_SceneAnalyzer:
                 env_parts.append(lighting)
             environment_description_en = ", ".join(filter(None, env_parts))
 
+            # Single clean English environment prompt (place only).
+            # Preferred: LLM-written from the screenplay's own scene text.
+            # Fallback: keyword translation of name + per-shot location.
+            scene_name_en = info["scene_name_en"] or base_en
+            environment_prompt_en = info["scene_environment_en"] or environment_description_en
+
             # Build positive_prompt (uses translated base_en)
             positive_prompt = f"{SCENE_PREFIX}, {base_en}, {suffix}"
 
@@ -176,6 +190,8 @@ class AFE_SceneAnalyzer:
                 "lighting_style": lighting,                  # compat alias
                 "shot_appearances": info["shots"],
                 "appears_in_shots": info["shots"],           # compat alias
+                "scene_name_en": scene_name_en,
+                "environment_prompt_en": environment_prompt_en,
                 "environment_description_en": environment_description_en,
                 "environment_3view_prompt": environment_3view_prompt,
                 "positive_prompt": positive_prompt,
@@ -198,8 +214,8 @@ class AFE_SceneAnalyzer:
             if s["lighting_mood"]:
                 lines.append(f"  布光：{s['lighting_mood']}")
             lines.append(f"  出现分镜：{shot_ids}")
-            lines.append(f"  环境描述：{s['environment_description_en'][:80]}")
-            lines.append(f"  三视图提示词：{s['environment_3view_prompt'][:100]}...")
+            lines.append(f"  英文名：{s['scene_name_en']}")
+            lines.append(f"  环境提示词：{s['environment_prompt_en']}")
 
         scene_report = "\n".join(lines)
         scenes_json = json.dumps(scenes, ensure_ascii=False)

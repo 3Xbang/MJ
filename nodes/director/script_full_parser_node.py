@@ -36,6 +36,23 @@ _SCENE_HEADER_PATTERNS = [
 ]
 _HEADER_RE = re.compile('|'.join(f'(?:{p})' for p in _SCENE_HEADER_PATTERNS))
 
+_SCENE_SOURCE_MAX_CHARS = 2500
+
+SCENE_ENV_SYSTEM = """You are a film production designer. You receive the screenplay text of ONE scene.
+Write the visual description of the PLACE ONLY, so an image model can paint the empty set.
+
+Rules:
+- Use only what the text says or clearly implies about the place: layout, materials, furniture,
+  fixtures, signage, colors, lighting sources, time of day, weather, atmosphere.
+- Ignore people, dialogue, actions, emotions and story. Never mention any person.
+- Translate everything into English. Keep concrete details (materials, colors, light color/temperature).
+- environment_prompt_en: one paragraph, 40-70 words, comma-separated visual phrases, no sentences about events.
+- scene_name_en: 2-5 words naming the place in English.
+
+Return ONLY JSON, no markdown:
+{"scene_name_en": "<place name>", "environment_prompt_en": "<visual description of the empty set>"}
+"""
+
 
 def _normalize_scene_key(header: str) -> str:
     """Extract a stable grouping key from a scene header, e.g. 'A' from
@@ -65,7 +82,8 @@ def _build_scene_map(raw_script: str) -> list[dict]:
     matches = list(_HEADER_RE.finditer(raw_script))
     if not matches:
         return [{"scene_index": 1, "sample_header": "Unnamed Location",
-                 "preview": raw_script[:200]}]
+                 "preview": raw_script[:200],
+                 "source_text": raw_script[:_SCENE_SOURCE_MAX_CHARS]}]
 
     grouped: dict[str, dict] = {}
     order: list[str] = []
@@ -78,8 +96,9 @@ def _build_scene_map(raw_script: str) -> list[dict]:
 
         if key not in grouped:
             order.append(key)
-            grouped[key] = {"headers": [], "preview": block_text[:200]}
+            grouped[key] = {"headers": [], "preview": block_text[:200], "blocks": []}
         grouped[key]["headers"].append(header)
+        grouped[key]["blocks"].append(block_text)
 
     scene_map = []
     for idx, key in enumerate(order):
@@ -88,6 +107,9 @@ def _build_scene_map(raw_script: str) -> list[dict]:
             "scene_index": idx + 1,
             "sample_header": g["headers"][0],
             "preview": g["preview"],
+            # Full screenplay text of every block belonging to this scene
+            # (art direction + action). Used later to build the environment prompt.
+            "source_text": "\n".join(g["blocks"])[:_SCENE_SOURCE_MAX_CHARS],
         })
     return scene_map
 
@@ -450,6 +472,31 @@ class AFE_ScriptFullParser:
             for s in scene_map
         }
 
+        # 3a-2. One LLM call per scene: screenplay text -> English environment prompt
+        # (place only, no people). Falls back to empty; SceneAnalyzer then uses old logic.
+        scene_env: dict[int, dict] = {}
+        for s in scene_map:
+            idx = s["scene_index"]
+            src = s.get("source_text", "")
+            if not src.strip():
+                continue
+            try:
+                env_raw = self._call_llm(
+                    SCENE_ENV_SYSTEM,
+                    f"Scene header: {s['sample_header']}\n\nScene screenplay text:\n{src}",
+                    model_path, max_new_tokens=400,
+                )
+                env_data = self._parse_llm_json(env_raw)
+                if isinstance(env_data, dict):
+                    scene_env[idx] = {
+                        "scene_name_en": str(env_data.get("scene_name_en", "")).strip(),
+                        "environment_prompt_en": str(env_data.get("environment_prompt_en", "")).strip(),
+                    }
+                    logger.info("[AFE_ScriptFullParser] Scene %d env: %s", idx,
+                                scene_env[idx]["environment_prompt_en"][:100])
+            except Exception as exc:
+                logger.warning("[AFE_ScriptFullParser] Scene env prompt failed for scene %d: %s", idx, exc)
+
         # Sanity check: verify the LLM actually spread shots across scene_index values
         used_indices = {shot.get("scene_index") for shot in minimal_shots if isinstance(shot, dict)}
         if len(scene_map) > 1 and len(used_indices) <= 1:
@@ -519,6 +566,8 @@ class AFE_ScriptFullParser:
                 "costume_en":          p2_data.get("costume_en", ""),
                 "props_list":          props_list,
                 "scene_name":          scene_name,
+                "scene_name_en":       scene_env.get(scene_idx, {}).get("scene_name_en", ""),
+                "scene_environment_en": scene_env.get(scene_idx, {}).get("environment_prompt_en", ""),
                 "camera_angle":        p2_data.get("camera_angle", "medium"),
                 "camera_motion":       p2_data.get("camera_motion", "static"),
                 "shot_type":           p2_data.get("shot_type", ""),

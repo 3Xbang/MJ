@@ -234,22 +234,24 @@ class AFE_SceneImageGenerator:
         establishing, medium, atmosphere = [], [], []
 
         for i, scene in enumerate(scenes):
-            env_desc = scene.get("environment_3view_prompt") \
+            # One clean English place description; the 3 views differ only by camera suffix.
+            env_desc = scene.get("environment_prompt_en") \
                     or scene.get("environment_description_en") \
                     or scene.get("name", f"scene_{i+1}")
-            base = f"{env_desc}, {render_style}, NO people, empty scene, no characters"
+            base = f"{env_desc}, {render_style}, empty scene, no people"
 
             prompts = {
                 "establishing": (
-                    f"Wide establishing shot. {base}. "
-                    f"Full environment visible, cinematic wide angle, shows scale and layout."
+                    f"{base}. Wide establishing shot, full environment and layout visible, "
+                    f"cinematic wide angle, eye level."
                 ),
                 "medium": (
-                    f"Medium shot showing key set pieces and props in detail. {base}."
+                    f"{base}. Medium shot from a different angle, key set pieces and "
+                    f"fixtures in detail, side view."
                 ),
                 "atmosphere": (
-                    f"Atmospheric close-up. {base}. "
-                    f"Focus on lighting, texture, mood. Cinematic atmosphere."
+                    f"{base}. Close-up of surfaces, materials and lighting, "
+                    f"atmospheric detail, shallow depth of field."
                 ),
             }
 
