@@ -111,6 +111,11 @@ from ai_film_editor_nodes.nodes.director.script_full_parser_node import AFE_Scri
 # Part 15 - Scene Image Generator
 from ai_film_editor_nodes.nodes.analyzer.scene_image_generator_node import AFE_SceneImageGenerator
 from ai_film_editor_nodes.nodes.analyzer.props_image_generator_node import AFE_PropsImageGenerator
+# Part 16 - Video production (cast refs -> keyframes -> Wan 2.2 -> final movie)
+from ai_film_editor_nodes.nodes.video.cast_ref_generator_node import AFE_CastRefGenerator
+from ai_film_editor_nodes.nodes.video.shot_keyframe_node import AFE_ShotKeyframeGenerator
+from ai_film_editor_nodes.nodes.video.wan_shot_renderer_node import AFE_WanShotRenderer
+from ai_film_editor_nodes.nodes.video.movie_assembler_node import AFE_MovieAssembler
 
 NODE_CLASS_MAPPINGS = {
     # Part 1
@@ -202,6 +207,11 @@ NODE_CLASS_MAPPINGS = {
     # Part 15 - Scene Image Generator + Props Image Generator
     "AFE_SceneImageGenerator": AFE_SceneImageGenerator,
     "AFE_PropsImageGenerator": AFE_PropsImageGenerator,
+    # Part 16 - Video production
+    "AFE_CastRefGenerator":     AFE_CastRefGenerator,
+    "AFE_ShotKeyframeGenerator": AFE_ShotKeyframeGenerator,
+    "AFE_WanShotRenderer":      AFE_WanShotRenderer,
+    "AFE_MovieAssembler":       AFE_MovieAssembler,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -292,6 +302,11 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AFE_ScriptFullParser":     "🎬 Script Full Parser (全剧本深度解析器)",
     "AFE_SceneImageGenerator": "🌄 Scene Image Generator (场景三视图生成器 Krea2)",
     "AFE_PropsImageGenerator": "🔧 Props Image Generator (道具白底图生成器 Krea2)",
+    # Part 16
+    "AFE_CastRefGenerator":     "🎭 Cast Ref Generator (角色参考图 Krea2)",
+    "AFE_ShotKeyframeGenerator": "🖼 Shot Keyframe Generator (分镜首帧 Qwen2.1)",
+    "AFE_WanShotRenderer":      "🎬 Wan Shot Renderer (分镜视频渲染 Wan2.2)",
+    "AFE_MovieAssembler":       "🎞 Movie Assembler (成片合成)",
 }
 
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]

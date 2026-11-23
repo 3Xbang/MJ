@@ -58,7 +58,8 @@ def _make_white_reference(height: int = 512, width: int = 768) -> torch.Tensor:
 def _generate_scene_image(
     clip, vae, base_model,
     prompt: str, seed: int,
-    width: int, height: int, steps: int, cfg: float
+    width: int, height: int, steps: int, cfg: float,
+    negative: str | None = None,
 ) -> torch.Tensor:
     """Generate one scene image using Krea 2 Turbo (pure text-to-image)."""
 
@@ -74,7 +75,7 @@ def _generate_scene_image(
                                text=prompt, strength=1.0)
 
     # Negative: empty (CFG=1.0 means negative has minimal effect)
-    neg = _call(TextEnc, clip=clip, text=NEGATIVE_PROMPT)[0]
+    neg = _call(TextEnc, clip=clip, text=negative if negative is not None else NEGATIVE_PROMPT)[0]
 
     # Empty latent (pure text-to-image, no reference image)
     latent = _call(EmptyLat, width=width, height=height, batch_size=1)[0]
