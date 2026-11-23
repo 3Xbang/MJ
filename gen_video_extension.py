@@ -128,7 +128,7 @@ def build(src_path: str) -> dict:
         [sock("shot_sequence", "SHOT_SEQUENCE"), sock("project_dir", "STRING"),
          sock("auto_all", "BOOLEAN")],
         [("movie_path", "STRING"), ("report", "STRING")],
-        ["final_movie", "", False],
+        ["final_movie", style, "", "", False],
         title="🎞 成片合成")
 
     prev_refs = preview("🎭 角色参考图（选用的）", (X0, Y0 + 360), (400, 420))

@@ -98,6 +98,22 @@ def test_camera_cues_are_scoped_to_the_shot_and_preserve_direction():
     assert person_still[0] != "static"
 
 
+def test_chinese_camera_direction_is_preserved_from_source_text():
+    import importlib.util
+    path = os.path.join(ROOT, "nodes", "director", "script_full_parser_node.py")
+    spec = importlib.util.spec_from_file_location("full_parser_for_cn_camera", path)
+    parser = importlib.util.module_from_spec(spec); spec.loader.exec_module(parser)
+    assert parser._camera_motion_from_phases(
+        {}, {}, "镜头向左移动，带过人物。", "人物抬头。"
+    ) == ("pan_left", "script", True)
+    assert parser._camera_motion_from_phases(
+        {}, {}, "镜头向右横移，停在门口。", "人物看向门。"
+    ) == ("pan_right", "script", True)
+    assert parser._camera_motion_from_phases(
+        {}, {}, "镜头跟拍人物向左移动。", "人物走向左侧。"
+    ) == ("tracking_shot", "script", True)
+
+
 def test_exact_source_fragment_excludes_sibling_screenplay_moments():
     import importlib.util
     path = os.path.join(ROOT, "nodes", "director", "script_full_parser_node.py")

@@ -105,6 +105,24 @@ def test_phase2_static_for_ordinary_dialogue_is_derived_motion():
     assert shot["camera_motion_source"] == "derived"
 
 
+def test_missing_source_evidence_blocks_ambiguous_shot_without_sibling_fallback():
+    block = "Scene: Workshop\nMina grips the red cup.\n\nBo opens the brass drawer.\n\nCia leaves the room."
+    fragment, error = parser_mod._validated_source_fragment(
+        block, "A person reaches toward an object.", {}
+    )
+    assert fragment == ""
+    assert "missing verified" in error
+    units = parser_mod._source_units_with_offsets(block)
+    fragment, error = parser_mod._validated_source_fragment(
+        block, "ignored", {"source_unit_ids": [units[0]["unit_id"]]}
+    )
+    assert not error and "Mina" in fragment and "Bo" not in fragment
+    fragment, error = parser_mod._validated_source_fragment(
+        block, "ignored", {"source_unit_ids": [units[0]["unit_id"], units[-1]["unit_id"]]}
+    )
+    assert fragment == "" and "not adjacent" in error
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):

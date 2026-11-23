@@ -176,6 +176,23 @@ def test_stale_audio_copy_does_not_mask_a_current_silent_clip():
         assert concat.call_args.args[0][0].endswith(os.path.join("clips", "shot_001.mp4"))
 
 
+def test_audio_manifest_signature_change_rejects_old_audio_copy():
+    shot = {"shot_id": "shot_001", "scene_id": "scene_001", "character_names": [],
+            "props_list": [], "action": "waits", "duration_seconds": 1}
+    with tempfile.TemporaryDirectory() as project, patch.object(movie_assembler_node, "concat_mp4") as concat:
+        shot, metadata = _write_current_clip_metadata(project, shot)
+        os.makedirs(os.path.join(project, "clips_av"), exist_ok=True)
+        open(os.path.join(project, "clips_av", "shot_001.mp4"), "wb").write(b"old audio")
+        with open(os.path.join(project, "clips_av", "shot_001.json"), "w", encoding="utf-8") as handle:
+            json.dump(dict(metadata, source_render_sig="render-v1", audio_sig="old-audio"), handle)
+        audio_path = os.path.join(project, "new_dialogue.wav")
+        open(audio_path, "wb").write(b"new audio")
+        manifest = json.dumps({"shot_001": {"audio_path": audio_path}})
+        movie_assembler_node.AFE_MovieAssembler().assemble(
+            [shot], project, audio_manifest=manifest, approved=True)
+        assert concat.call_args.args[0][0].endswith(os.path.join("clips", "shot_001.mp4"))
+
+
 def test_wan_model_load_failure_invalidates_audio_copy_without_silent_clip():
     with tempfile.TemporaryDirectory() as project:
         os.makedirs(os.path.join(project, "keyframes"), exist_ok=True)

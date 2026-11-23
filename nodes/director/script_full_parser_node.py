@@ -206,6 +206,12 @@ def _scene_map_to_prompt_text(scene_map: list[dict]) -> str:
                 f"scene_occurrence_id={block['scene_occurrence_id']} "
                 f"section_type={block['section_type']}: {block['source_text'][:120]}..."
             )
+            for unit in _source_units_with_offsets(block.get("source_text", "")):
+                lines.append(
+                    f"      source_unit_id={unit['unit_id']} "
+                    f"source_start={unit['start']} source_end={unit['end']}: "
+                    f"{unit['text']}"
+                )
     return "\n".join(lines)
 
 # ── Phase 1 system prompt ─────────────────────────────────────────────────────
@@ -254,6 +260,10 @@ Format:
       "dialogue": "one line of quoted dialogue or null",
       "props_list": ["prop1"],
       "raw_description": "the complete original screenplay moment: set, subject, expression, micro-action, props, dialogue and lighting",
+      "source_shot_text": "verbatim source text for this shot, copied exactly",
+      "source_unit_ids": ["unit_001"],
+      "source_start": 0,
+      "source_end": 120,
       "facial_expression": "explicit facial expression or null",
       "micro_expression": "explicit micro-expression or null",
       "gaze": "gaze direction or null",
@@ -271,6 +281,10 @@ Format:
 }
 
 Rules:
+- source_shot_text MUST be copied verbatim from the listed source block when it is used.
+- Prefer source_unit_ids from the source-unit catalog; otherwise return source_start/source_end offsets relative to that source block. Never paraphrase the only source evidence.
+- A shot may span adjacent source units, but the IDs must be in source order. If the source moment cannot be uniquely mapped, still return the shot with source evidence empty; the parser will block generation and report it.
+- raw_description is descriptive enrichment, not proof of source provenance.
 - role_type: lead | supporting | extra_a | extra_b | extra_other
 - Each shot covers ONLY one specific moment, not an entire scene
 - Split long dialogue into separate shots (one line per shot)
@@ -408,53 +422,112 @@ def _first_present(*values, default=""):
     return default
 
 
-def _source_units(source_text: str) -> list[str]:
-    """Split one source block into small screenplay fragments without rewriting it."""
+def _source_units_with_offsets(source_text: str) -> list[dict]:
+    """Return stable, verifiable units from one source block.
+
+    Offsets are relative to the unmodified block text.  The phase-1 model can
+    identify one or more of these units instead of paraphrasing a moment.  The
+    parser then joins the original span, preserving every screenplay fact and
+    the separators between adjacent units.
+    """
+    source = str(source_text or "")
+    boundary = re.compile(
+        r"\n\s*\n+|(?<=[。！？!?])\s+|(?<=[。！？!?])(?=[\u4e00-\u9fff])|(?<=[.!?])\s+"
+    )
     units = []
-    for paragraph in re.split(r"\n\s*\n+", str(source_text or "").strip()):
-        for unit in re.split(r"(?<=[。！？!?])\s+|(?<=[。！？!?])(?=[\u4e00-\u9fff])|(?<=[.!?])\s+", paragraph):
-            unit = unit.strip()
-            if unit:
-                units.append(unit)
+    start = 0
+    for match in boundary.finditer(source):
+        end = match.start()
+        raw = source[start:end]
+        left = len(raw) - len(raw.lstrip())
+        right = len(raw.rstrip())
+        if left < right:
+            units.append({"unit_id": f"unit_{len(units) + 1:03d}",
+                          "start": start + left, "end": start + right,
+                          "text": source[start + left:start + right]})
+        start = match.end()
+    raw = source[start:]
+    left = len(raw) - len(raw.lstrip())
+    right = len(raw.rstrip())
+    if left < right:
+        units.append({"unit_id": f"unit_{len(units) + 1:03d}",
+                      "start": start + left, "end": start + right,
+                      "text": source[start + left:start + right]})
     return units
+
+
+def _source_units(source_text: str) -> list[str]:
+    return [unit["text"] for unit in _source_units_with_offsets(source_text)]
 
 
 def _compact_source(text: str) -> str:
     return re.sub(r"\s+", " ", str(text or "")).strip()
 
 
-def _source_fragment_for_shot(source_block_text: str, raw_desc: str, shot: dict) -> str:
-    """Return only this shot's screenplay fragment, never the complete scene block.
+def _validated_source_fragment(source_block_text: str, raw_desc: str, shot: dict) -> tuple[str, str]:
+    """Resolve a shot to a verified original span, or return an error.
 
-    Phase 1 is asked to copy a verbatim ``source_shot_text`` when possible.  The
-    matching fallback is deliberately conservative: it selects one source unit
-    by overlap and falls back to the model's shot description rather than
-    passing sibling actions, props, or dialogue to the downstream prompts.
+    A model summary is never used as a substitute for source text.  Accepted
+    evidence is an exact returned fragment, source-unit IDs, or character
+    offsets that point into the source block.  Ambiguous clue matching is
+    intentionally rejected so sibling actions cannot leak into this shot.
     """
-    source = str(source_block_text or "").strip()
-    model_fragment = _first_present(shot.get("source_shot_text"), raw_desc, default="")
-    compact_source = _compact_source(source)
-    compact_model = _compact_source(model_fragment)
-    if compact_model and compact_model in compact_source:
-        return model_fragment.strip()
+    source = str(source_block_text or "")
+    units = _source_units_with_offsets(source)
+    by_id = {unit["unit_id"]: unit for unit in units}
+    requested_ids = shot.get("source_unit_ids")
+    if isinstance(requested_ids, str):
+        requested_ids = [requested_ids]
+    if requested_ids:
+        ids = [str(value).strip() for value in requested_ids if str(value).strip()]
+        selected = [by_id.get(value) for value in ids]
+        if len(selected) != len(ids) or any(unit is None for unit in selected):
+            return "", "source_unit_ids do not identify this source block"
+        selected = sorted(selected, key=lambda unit: unit["start"])
+        if [unit["unit_id"] for unit in selected] != ids:
+            return "", "source_unit_ids are out of source order"
+        positions = [units.index(unit) for unit in selected]
+        if positions != list(range(positions[0], positions[-1] + 1)):
+            return "", "source_unit_ids are not adjacent"
+        if any(left["end"] > right["start"] for left, right in zip(selected, selected[1:])):
+            return "", "source_unit_ids overlap"
+        fragment = source[selected[0]["start"]:selected[-1]["end"]]
+        return fragment, ""
 
-    clues = []
-    for value in (model_fragment, shot.get("dialogue"), shot.get("character_names"),
-                  shot.get("props_list"), shot.get("action"), shot.get("business"),
-                  shot.get("facial_expression"), shot.get("micro_expression")):
-        text = _compact_source(value)
-        clues.extend(re.findall(r"[A-Za-z]{3,}|[\u4e00-\u9fff]{2,}", text))
-    clues = list(dict.fromkeys(clues))
-    best = ""
-    best_score = 0
-    for unit in _source_units(source):
-        compact_unit = _compact_source(unit)
-        score = sum(1 for clue in clues if clue in compact_unit)
-        if score > best_score:
-            best, best_score = unit, score
-    if best:
-        return best
-    return model_fragment.strip()
+    start = shot.get("source_start")
+    end = shot.get("source_end")
+    if isinstance(start, int) and isinstance(end, int) and 0 <= start < end <= len(source):
+        fragment = source[start:end]
+        if fragment.strip():
+            return fragment, ""
+        return "", "source offsets point to empty text"
+
+    model_fragment = _first_present(shot.get("source_shot_text"), raw_desc, default="")
+    if model_fragment:
+        exact_start = source.find(str(model_fragment))
+        if exact_start >= 0:
+            return source[exact_start:exact_start + len(str(model_fragment))], ""
+        compact_model = _compact_source(model_fragment)
+        if compact_model:
+            compact_match = re.search(re.escape(compact_model), _compact_source(source))
+            if compact_match:
+                return "", "source_shot_text is not a verbatim source span"
+    if len(units) == 1:
+        # A source block with one unit has only one possible shot span. This is
+        # deterministic, unlike selecting one unit from a multi-moment block.
+        return units[0]["text"], ""
+    return "", "missing verified source_unit_ids, source offsets, or verbatim source_shot_text"
+
+
+def _source_fragment_for_shot(source_block_text: str, raw_desc: str, shot: dict) -> str:
+    """Return only a verified original screenplay fragment.
+
+    This compatibility helper deliberately returns an empty string when the
+    model did not provide verifiable source evidence.  It never picks a sibling
+    source unit by fuzzy clue overlap.
+    """
+    fragment, _ = _validated_source_fragment(source_block_text, raw_desc, shot)
+    return fragment
 
 
 _CAMERA_STATIC_CUE_RE = re.compile(
@@ -472,17 +545,24 @@ _CAMERA_MOTION_CUE_RE = re.compile(
     r"track(?:s)?|crane|handheld|orbit(?:s)?)\b|"
     r"\b(?:push(?:es)? in|dolly|pull(?:s)? back|zoom|pan(?:s)?|tracking|track(?:s)?|"
     r"crane|handheld|orbit(?:s)?|camera movement|camera moves?)\b|"
-    r"(?:镜头|机位|运镜).{0,12}(?:推近|推进|拉远|拉镜|变焦|摇镜|跟拍|升镜|降镜|手持|环绕)|"
-    r"(?:推近|推进|拉远|拉镜|变焦|摇镜|跟拍|升镜|降镜|手持|环绕).{0,12}(?:镜头|机位|运镜)", re.IGNORECASE,
+    r"(?:镜头|机位|运镜).{0,16}(?:推近|推进|拉远|拉镜|变焦|摇镜|跟拍|升镜|降镜|手持|环绕|"
+    r"向左(?:移动|横移|平移)?|向右(?:移动|横移|平移)?|左移|右移|横移|平移)|"
+    r"(?:推近|推进|拉远|拉镜|变焦|摇镜|跟拍|升镜|降镜|手持|环绕|横移|平移|"
+    r"向左(?:移动|横移|平移)?|向右(?:移动|横移|平移)?|左移|右移).{0,16}(?:镜头|机位|运镜)", re.IGNORECASE,
 )
 
 
 def _camera_motion_from_text(text: str) -> str:
     """Infer the direction from the exact shot text, never from model provenance."""
     low = text.lower()
-    if re.search(r"(?:pan|摇镜).{0,12}(?:left|左)", low) or re.search(r"(?:向左|左摇|左移|向左摇|镜头左).{0,12}", text):
+    if re.search(r"(?:track|tracking).{0,12}(?:left|right)", low) or re.search(
+            r"(?:跟拍|追踪).{0,12}(?:向左|向右|左移|右移)", text):
+        return "tracking_shot"
+    if re.search(r"(?:pan|摇镜).{0,12}(?:left|左)", low) or re.search(
+            r"(?:镜头|机位|运镜)?(?:向左(?:移动|横移|平移)?|左移|左横移|左平移)", text):
         return "pan_left"
-    if re.search(r"(?:pan|摇镜).{0,12}(?:right|右)", low) or re.search(r"(?:向右|右摇|右移|向右摇|镜头右).{0,12}", text):
+    if re.search(r"(?:pan|摇镜).{0,12}(?:right|右)", low) or re.search(
+            r"(?:镜头|机位|运镜)?(?:向右(?:移动|横移|平移)?|右移|右横移|右平移)", text):
         return "pan_right"
     if re.search(r"(?:push(?:es)? in|dolly in|推进|推近)", low if not any(ord(c) > 127 for c in text) else text):
         return "slow_push_in"
@@ -811,7 +891,11 @@ class AFE_ScriptFullParser:
                 source_block_text = scene_info.get("source_text", "") if scene_info else ""
             char_names = _clean_semantic(shot.get("character_names")) or []
             raw_desc   = _first_present(shot.get("raw_description"), default="")
-            source_shot_text = _source_fragment_for_shot(source_block_text, raw_desc, shot)
+            source_shot_text, source_validation_error = _validated_source_fragment(
+                source_block_text, raw_desc, shot
+            )
+            if source_validation_error:
+                assignment_errors.append(f"{shot_id}: {source_validation_error}")
             dialogue   = _first_present(shot.get("dialogue"), default="")
             props_list = _clean_semantic(shot.get("props_list")) or []
 
@@ -905,8 +989,12 @@ class AFE_ScriptFullParser:
                 "source_text":       source_shot_text,
                 "source_shot_text":  source_shot_text,
                 "source_block_text": source_block_text,
+                "source_unit_ids":   _clean_semantic(shot.get("source_unit_ids")) or [],
+                "source_start":      shot.get("source_start"),
+                "source_end":        shot.get("source_end"),
+                "source_validation_error": source_validation_error,
                 "raw_description":   raw_desc,
-                "scene_assignment_error": shot.get("scene_assignment_error", ""),
+                "scene_assignment_error": shot.get("scene_assignment_error") or source_validation_error,
                 "environment": {
                     "description": scene_env.get(scene_idx, {}).get("environment_prompt_en", ""),
                     "location": location,
@@ -977,6 +1065,13 @@ class AFE_ScriptFullParser:
             for c in cast_list
         ) if cast_list else "  （无）"
 
+        blocked_shots = [shot for shot in full_shots if shot.get("scene_assignment_error")]
+        blocked_line = ""
+        if blocked_shots:
+            blocked_line = "\n\n❌ 已阻止生成的分镜：" + ", ".join(
+                shot.get("shot_id", "?") for shot in blocked_shots
+            ) + "（原文片段无法验证或场景来源不明确）"
+
         report = (
             f"✅ 剧本解析完成\n"
             f"📽️ 分镜数量：{shot_count}\n"
@@ -985,6 +1080,7 @@ class AFE_ScriptFullParser:
             f"👥 角色数量：{len(cast_list)}\n\n"
             f"📋 场景列表：\n{scene_lines}\n\n"
             f"🎭 角色列表：\n{cast_lines}"
+            f"{blocked_line}"
         )
 
         logger.info(f"[AFE_ScriptFullParser] Done: {shot_count} shots, {scene_count} scenes, "

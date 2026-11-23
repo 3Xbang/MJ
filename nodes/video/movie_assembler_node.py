@@ -38,7 +38,83 @@ def _keyframe_hash(path: str) -> str:
         return hashlib.md5(f.read()).hexdigest()
 
 
-def _clip_current(project: str, shot: dict, sid: str, path: str, render_style: str = "") -> tuple[bool, str]:
+def _file_hash(path: str) -> str:
+    digest = hashlib.md5()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _load_audio_manifest(project: str, value="") -> tuple[dict, bool]:
+    """Load the current TTS/audio manifest and report whether one was supplied."""
+    candidates = []
+    if isinstance(value, dict):
+        return value, True
+    if isinstance(value, str) and value.strip():
+        text = value.strip()
+        if os.path.isfile(text):
+            if not text.lower().endswith(".json"):
+                return {"__audio_path__": text}, True
+            candidates.append(text)
+        else:
+            try:
+                parsed = json.loads(text)
+                return (parsed if isinstance(parsed, (dict, list)) else {}), True
+            except (TypeError, ValueError):
+                return {}, True
+    else:
+        candidates.extend((
+            os.path.join(project, "audio_manifest.json"),
+            os.path.join(project, "audio", "manifest.json"),
+            os.path.join(project, "audio", "tts_manifest.json"),
+            os.path.join(project, "clips_av", "audio_manifest.json"),
+        ))
+    for path in candidates:
+        try:
+            with open(path, encoding="utf-8") as handle:
+                parsed = json.load(handle)
+            if isinstance(parsed, (dict, list)):
+                return parsed, True
+        except (OSError, ValueError):
+            continue
+    return {}, bool(value and str(value).strip())
+
+
+def _audio_entry(manifest, sid: str):
+    entries = manifest.get("shots", manifest) if isinstance(manifest, dict) else manifest
+    if isinstance(entries, dict):
+        return entries.get(sid)
+    if isinstance(entries, list):
+        return next((item for item in entries if isinstance(item, dict) and
+                     str(item.get("shot_id") or item.get("id")) == sid), None)
+    return None
+
+
+def _expected_audio_signature(project: str, sid: str, manifest) -> str:
+    if isinstance(manifest, dict) and manifest.get("__audio_path__"):
+        path = str(manifest["__audio_path__"])
+        path = path if os.path.isabs(path) else os.path.join(project, path)
+        return _file_hash(path) if os.path.exists(path) else ""
+    entry = _audio_entry(manifest, sid)
+    if isinstance(entry, str):
+        path = entry
+        return _file_hash(path if os.path.isabs(path) else os.path.join(project, path)) \
+            if os.path.exists(path if os.path.isabs(path) else os.path.join(project, path)) else ""
+    if not isinstance(entry, dict):
+        return ""
+    signature = entry.get("audio_sig") or entry.get("signature") or entry.get("sig")
+    if signature:
+        return str(signature)
+    path = entry.get("audio_path") or entry.get("path") or entry.get("file")
+    if not path:
+        return ""
+    path = path if os.path.isabs(str(path)) else os.path.join(project, str(path))
+    return _file_hash(path) if os.path.exists(path) else ""
+
+
+def _clip_current(project: str, shot: dict, sid: str, path: str, render_style: str = "",
+                  audio_manifest="") -> tuple[bool, str]:
     keyframe = os.path.join(project, "keyframes", f"{sid}.png")
     meta_path = os.path.splitext(path)[0] + ".json"
     if not os.path.exists(keyframe):
@@ -65,6 +141,13 @@ def _clip_current(project: str, shot: dict, sid: str, path: str, render_style: s
             return False, f"audio copy source metadata unavailable: {exc}"
         if source_meta.get("sig") != source_sig:
             return False, "audio copy wraps a stale render"
+        manifest, manifest_present = _load_audio_manifest(project, audio_manifest)
+        if manifest_present:
+            expected_audio_sig = _expected_audio_signature(project, sid, manifest)
+            if not expected_audio_sig:
+                return False, "current audio signature is unavailable"
+            if meta.get("audio_sig") != expected_audio_sig:
+                return False, "audio copy uses a stale audio signature"
     if meta.get("keyframe_sig") != _keyframe_hash(keyframe):
         return False, "clip keyframe signature is stale"
     expected_contract = md5(render_shared_facts(shot), has_dialogue(shot))
@@ -90,6 +173,8 @@ class AFE_MovieAssembler:
             "optional": {
                 "render_style": ("STRING", {"default": "",
                                                "tooltip": "与 Wan 渲染相同的风格，用于合成前提示词签名校验"}),
+                "audio_manifest": ("STRING", {"default": "",
+                                                 "tooltip": "当前 TTS 音频 manifest JSON 或路径；用于拒绝旧对白"}),
                 "skip_shots": ("STRING", {"default": "",
                                           "tooltip": "成片里不要的分镜。例：shot_007, 12"}),
                 "approved": gate_input("把所有分镜视频合成成片"),
@@ -104,7 +189,7 @@ class AFE_MovieAssembler:
     OUTPUT_NODE = True
 
     def assemble(self, shot_sequence, project_dir, output_name="final_movie", skip_shots="",
-                 render_style="", approved=False, auto_all=False):
+                 render_style="", audio_manifest="", approved=False, auto_all=False):
         if not gate_is_open(approved, auto_all):
             return closed_result("成片合成（合成前请确认各分镜视频）", "dr")
         skip = {norm_shot_key(t) for t in split_items(skip_shots)}
@@ -121,7 +206,8 @@ class AFE_MovieAssembler:
             reasons = []
             selected = None
             for candidate in candidates:
-                current, reason = _clip_current(project_dir, shot, sid, candidate, render_style)
+                current, reason = _clip_current(project_dir, shot, sid, candidate, render_style,
+                                                audio_manifest)
                 if current:
                     selected = candidate
                     break
