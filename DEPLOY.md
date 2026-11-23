@@ -1,4 +1,18 @@
-# AFE 新 Pod 完整部署命令
+# AFE 部署与更新
+
+## 一键（推荐）
+
+在 RunPod 终端粘贴这一行。新 Pod 和已有 Pod 都能用，可以重复运行，已有模型自动跳过：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/3Xbang/MJ/main/deploy_pod.sh | bash
+```
+
+脚本内容在仓库根目录 `deploy_pod.sh`。下面是它的分步版本，仅供参考。
+
+---
+
+# AFE 新 Pod 完整部署命令（分步版）
 
 复制粘贴到 RunPod 终端，一次性完成所有安装和下载。
 总下载量约 60GB（Qwen 7B 15GB + Qwen Image 2.1 31GB + Krea 2 约 15GB），预计 25-30 分钟。
