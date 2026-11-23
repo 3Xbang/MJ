@@ -42,6 +42,13 @@ _SCENE_HEADER_PATTERNS = [
 _HEADER_RE = re.compile('|'.join(f'(?:{p})' for p in _SCENE_HEADER_PATTERNS))
 
 _SCENE_SOURCE_MAX_CHARS = 2500
+# Bracketed screenplay cues are semantic boundaries even when they are not headings.
+# Interior/exterior and continuity annotations remain attached to their location block.
+_SEMANTIC_CUE_RE = re.compile(
+    r'(?:\[|【)(black\s*screen|quick\s*flash(?:es)?|flash\s*cut|silhouette|half\s*silhouette|'
+    r'fade(?:\s*out)?|transition|montage|黑屏|快速闪切|半剪影|淡出|转场|蒙太奇)[^\]】]*(?:\]|】)',
+    re.IGNORECASE,
+)
 
 SCENE_ENV_SYSTEM = """You are a film production designer. You receive the screenplay text of ONE scene.
 Write the visual description of the PLACE ONLY, so an image model can paint the empty set.
@@ -86,38 +93,72 @@ def _section_type(header: str) -> str:
         return "prologue"
     if re.search(r"尾声|结尾|epilogue|ending", text):
         return "epilogue"
-    if re.search(r"快速闪切|montage|闪切", text):
+    if re.search(r"黑屏|black\s*screen|转场|transition|淡出|fade", text):
+        return "transition"
+    if re.search(r"快速闪切|montage|闪切|quick\s*flash|flash\s*cut", text):
         return "montage"
-    if re.search(r"转场|transition|淡出|fade", text):
+    if re.search(r"半剪影|silhouette", text):
         return "transition"
     return "location_scene"
 
 
 def _build_scene_map(raw_script: str) -> list[dict]:
-    """Return stable physical scenes while retaining ordered screenplay blocks."""
-    matches = list(_HEADER_RE.finditer(raw_script))
-    if not matches:
+    """Build an ordered semantic map without losing repeated-location occurrences.
+
+    Location headers are grouped by their physical key, while each source block keeps its
+    original position. Bracketed montage/transition cues get their own semantic group so a
+    cue in the middle of a location cannot inherit the wrong environment.
+    """
+    headers = list(_HEADER_RE.finditer(raw_script))
+    cues = list(_SEMANTIC_CUE_RE.finditer(raw_script))
+    candidates = []
+    header_ranges = [(m.start(), m.end()) for m in headers]
+    for match in headers:
+        header = match.group().strip()
+        candidates.append((match.start(), match.end(), header, _section_type(header),
+                           _normalize_scene_key(header), True))
+    for match in cues:
+        if any(start <= match.start() < end for start, end in header_ranges):
+            continue
+        cue = match.group().strip()
+        section = _section_type(cue)
+        # [内景 - 日], [外景 - 日] and [连续] are annotations, not boundaries.
+        candidates.append((match.start(), match.end(), cue, section,
+                           f"semantic_{section}_{len(candidates) + 1:03d}", False))
+    candidates.sort(key=lambda item: item[0])
+
+    if not candidates:
         return [{"scene_index": 1, "scene_id": "scene_001", "sample_header": "Unnamed Location",
                  "section_type": "location_scene", "preview": raw_script[:200],
-                 "source_text": raw_script[:_SCENE_SOURCE_MAX_CHARS],
-                 "source_block_ids": ["block_001"], "occurrences": ["occurrence_001"]}]
+                 "source_text": raw_script, "source_block_ids": ["block_001"],
+                 "occurrences": ["occurrence_001"],
+                 "source_blocks": [{"source_block_id": "block_001", "scene_occurrence_id": "occurrence_001",
+                                    "header": "Unnamed Location", "section_type": "location_scene",
+                                    "source_text": raw_script}] }]
 
     grouped: dict[str, dict] = {}
     order: list[str] = []
-    for i, match in enumerate(matches):
-        header = match.group().strip()
-        key = _normalize_scene_key(header)
-        start = match.end()
-        end = matches[i + 1].start() if i + 1 < len(matches) else len(raw_script)
-        block_text = raw_script[start:end].strip()
+    for i, (start, end, header, section, key, is_location_header) in enumerate(candidates):
+        next_start = candidates[i + 1][0] if i + 1 < len(candidates) else len(raw_script)
+        # Include the cue/header in the source block. Phase 2 must see the complete original text.
+        block_text = raw_script[start:next_start].strip()
+        source_block_id = f"block_{i + 1:03d}"
+        occurrence_id = f"occurrence_{i + 1:03d}"
+        if not is_location_header:
+            key = f"{key}_{i + 1:03d}"
         if key not in grouped:
             order.append(key)
-            grouped[key] = {"headers": [], "preview": block_text[:200], "blocks": [],
-                            "source_block_ids": [], "occurrences": [], "section_type": _section_type(header)}
-        grouped[key]["headers"].append(header)
-        grouped[key]["blocks"].append(block_text)
-        grouped[key]["source_block_ids"].append(f"block_{i + 1:03d}")
-        grouped[key]["occurrences"].append(f"occurrence_{i + 1:03d}")
+            grouped[key] = {"headers": [], "preview": block_text[:300], "blocks": [],
+                            "source_block_ids": [], "occurrences": [], "source_blocks": [],
+                            "section_type": section}
+        g = grouped[key]
+        g["headers"].append(header)
+        g["blocks"].append(block_text)
+        g["source_block_ids"].append(source_block_id)
+        g["occurrences"].append(occurrence_id)
+        g["source_blocks"].append({"source_block_id": source_block_id,
+                                    "scene_occurrence_id": occurrence_id, "header": header,
+                                    "section_type": section, "source_text": block_text})
 
     scene_map = []
     for idx, key in enumerate(order):
@@ -128,9 +169,10 @@ def _build_scene_map(raw_script: str) -> list[dict]:
             "sample_header": g["headers"][0],
             "section_type": g["section_type"],
             "preview": g["preview"],
-            "source_text": "\n".join(g["blocks"])[:_SCENE_SOURCE_MAX_CHARS],
+            "source_text": "\n".join(g["blocks"]),
             "source_block_ids": g["source_block_ids"],
             "occurrences": g["occurrences"],
+            "source_blocks": g["source_blocks"],
         })
     return scene_map
 
@@ -158,6 +200,12 @@ def _scene_map_to_prompt_text(scene_map: list[dict]) -> str:
             f"  scene_index={s['scene_index']}: \"{s['sample_header']}\" "
             f"— starts with: {s['preview'][:80]}..."
         )
+        for block in s.get("source_blocks", []):
+            lines.append(
+                f"    source_block_id={block['source_block_id']} "
+                f"scene_occurrence_id={block['scene_occurrence_id']} "
+                f"section_type={block['section_type']}: {block['source_text'][:120]}..."
+            )
     return "\n".join(lines)
 
 # ── Phase 1 system prompt ─────────────────────────────────────────────────────
@@ -199,10 +247,24 @@ Format:
     {
       "shot_id": "shot_001",
       "scene_index": 1,
+      "source_block_id": "block_001",
+      "scene_occurrence_id": "occurrence_001",
+      "section_type": "location_scene",
       "character_names": ["name"],
       "dialogue": "one line of quoted dialogue or null",
       "props_list": ["prop1"],
-      "raw_description": "max 40 words: concrete set details + who does what + emotion, single moment only"
+      "raw_description": "the complete original screenplay moment: set, subject, expression, micro-action, props, dialogue and lighting",
+      "facial_expression": "explicit facial expression or null",
+      "micro_expression": "explicit micro-expression or null",
+      "gaze": "gaze direction or null",
+      "body_language": "body language or null",
+      "action_start": "starting state or null",
+      "action_process": "action process and business motion or null",
+      "action_end": "ending state or null",
+      "prop_interactions": ["exact interaction or null"],
+      "camera_motion": "explicit motion or null",
+      "camera_path": "path or null",
+      "pace": "rhythm or null"
     }
   ]
 }
@@ -229,28 +291,40 @@ Return ONLY a JSON object with these exact fields (field names fixed, VALUES mus
 from the actual Description — the strings below are FORMAT HINTS, not real answers to copy):
 
 {
-  "camera_angle": "<pick one from camera_angle options below>",
-  "camera_motion": "<pick one from camera_motion options below>",
-  "shot_type": "<camera_angle and camera_motion combined in natural language, e.g. 'close-up slow push in' or 'wide shot tracking'>",
-  "lighting_style": "<derived from Description, e.g. 'cold white LED panel lights, overcast London afternoon'>",
-  "location": "<the REAL location from Description, e.g. 'London community supermarket interior, stainless steel takeaway counter' — DO NOT default to a generic living room>",
-  "time_of_day": "<morning|afternoon|evening|night, from Description>",
-  "weather": "<sunny|cloudy|rainy|snowy|foggy|indoor|clear, from Description>",
-  "lighting": "<detailed English lighting description matching Description's actual light sources>",
-  "action": "<main character action in English, from Description>",
-  "business": "<subtle physical detail from Description, e.g. 'fingers the rim of the cup'>",
-  "emotion": "<character emotion/expression in English, from Description>",
-  "shot_description": "<Wan2.1 optimized English description max 80 words, grounded in Description's real setting>",
-  "costume_description": "<Chinese costume description>",
-  "costume_en": "<English costume description>",
+  "camera_angle": "<camera position/angle or null>",
+  "camera_motion": "<explicit screenplay motion or null>",
+  "camera_motion_source": "<script|derived>",
+  "camera_path": "<path or null>",
+  "shot_type": "<shot size/type or null>",
+  "lighting_style": "<derived from the actual Description or null>",
+  "location": "<the real location from the actual Description or null>",
+  "time_of_day": "<only if stated, otherwise null>",
+  "weather": "<only if stated, otherwise null>",
+  "lighting": "<actual light sources or null>",
+  "color_temperature": "<only if stated, otherwise null>",
+  "action": "<main action or null>",
+  "business": "<subtle physical business motion or null>",
+  "emotion": "<emotion or null>",
+  "facial_expression": "<face expression or null>",
+  "micro_expression": "<micro-expression or null>",
+  "gaze": "<gaze direction or null>",
+  "body_language": "<body language or null>",
+  "action_start": "<starting state or null>",
+  "action_process": "<process state or null>",
+  "action_end": "<ending state or null>",
+  "prop_interactions": ["<exact prop interaction or null>"],
+  "pace": "<rhythm or null>",
+  "shot_description": "<complete visual description grounded in Description>",
+  "costume_description": "<Chinese costume description or null>",
+  "costume_en": "<English costume description or null>",
   "negative_prompt": "ugly, blurry, low quality, distorted",
-  "director_notes": "<brief director instruction for this shot, e.g. 'pace is slow, hold on her face'>"
+  "director_notes": "<brief direction or null>"
 }
 
 camera_angle options: close_up | medium_close_up | medium | full_body | wide | extreme_close_up | low_angle | high_angle | dutch
 camera_motion options: static | slow_push_in | slow_pull_back | pan_left | pan_right | tracking_shot | crane_up | crane_down | handheld | orbit
-time_of_day options: morning, afternoon, evening, night
-weather options: sunny, cloudy, rainy, snowy, foggy, indoor, clear
+time_of_day options: morning, afternoon, evening, night, or null when absent
+weather options: sunny, cloudy, rainy, snowy, foggy, indoor, clear, or null when absent
 
 CAMERA SELECTION RULES (must follow these):
 - Opening scene / establishing shot → wide shot (wide_shot), camera: slow_push_in
@@ -531,13 +605,33 @@ class AFE_ScriptFullParser:
 
         # Validate the LLM assignment. Never round-robin a shot into another place.
         valid_indices = {s["scene_index"] for s in scene_map}
+        scene_blocks = {
+            s["scene_index"]: {b["source_block_id"]: b for b in s.get("source_blocks", [])}
+            for s in scene_map
+        }
         assignment_errors = []
         for i, shot in enumerate(minimal_shots):
             idx = shot.get("scene_index")
+            sid = shot.get("shot_id", f"shot_{i + 1:03d}")
             if idx not in valid_indices:
-                assignment_errors.append(f"{shot.get('shot_id', f'shot_{i + 1:03d}')}: invalid scene_index={idx}")
+                assignment_errors.append(f"{sid}: invalid scene_index={idx}")
                 shot["scene_index"] = None
                 shot["scene_assignment_error"] = "Scene source could not be verified; generation is blocked."
+                continue
+            requested_block = str(shot.get("source_block_id") or "").strip()
+            blocks = scene_blocks[idx]
+            if requested_block and requested_block in blocks:
+                continue
+            if requested_block and requested_block not in blocks:
+                assignment_errors.append(f"{sid}: source_block_id={requested_block} is not in scene_index={idx}")
+                shot["scene_assignment_error"] = "Shot source block does not belong to its scene; generation is blocked."
+            elif len(blocks) == 1:
+                # A single source block is deterministic; repeated locations remain ambiguous.
+                shot["source_block_id"] = next(iter(blocks))
+                shot["scene_occurrence_id"] = blocks[shot["source_block_id"]]["scene_occurrence_id"]
+            else:
+                assignment_errors.append(f"{sid}: missing source_block_id for repeated scene_index={idx}")
+                shot["scene_assignment_error"] = "Repeated scene needs an explicit source_block_id; generation is blocked."
         if assignment_errors:
             logger.error("[AFE_ScriptFullParser] %s", "; ".join(assignment_errors))
 
@@ -554,11 +648,21 @@ class AFE_ScriptFullParser:
             scene_info = next((s for s in scene_map if s["scene_index"] == scene_idx), None)
             scene_name = scene_index_to_name.get(scene_idx, "Unverified scene")
             scene_id = scene_info.get("scene_id") if scene_info else "scene_unverified"
-            source_blocks = scene_info.get("source_block_ids", []) if scene_info else []
-            source_block_id = shot.get("source_block_id") or (source_blocks[0] if source_blocks else f"block_{i + 1:03d}")
-            occurrence_id = shot.get("scene_occurrence_id") or (scene_info.get("occurrences", [f"occurrence_{i + 1:03d}"])[0] if scene_info else f"occurrence_{i + 1:03d}")
+            source_blocks = scene_info.get("source_blocks", []) if scene_info else []
+            source_by_id = {b.get("source_block_id"): b for b in source_blocks}
+            source_block_id = str(shot.get("source_block_id") or "").strip()
+            source_block = source_by_id.get(source_block_id)
+            if source_block is None and len(source_blocks) == 1:
+                source_block = source_blocks[0]
+                source_block_id = source_block.get("source_block_id", "")
+            occurrence_id = str(shot.get("scene_occurrence_id") or "").strip()
+            if source_block is not None:
+                occurrence_id = source_block.get("scene_occurrence_id", occurrence_id)
+            source_text = source_block.get("source_text", "") if source_block else ""
+            if not source_text:
+                source_text = scene_info.get("source_text", "") if scene_info else ""
             char_names = shot.get("character_names", [])
-            raw_desc   = shot.get("raw_description", "")
+            raw_desc   = shot.get("raw_description", "") or source_text
             dialogue   = shot.get("dialogue", None)
             props_list = shot.get("props_list", [])
 
@@ -578,7 +682,10 @@ class AFE_ScriptFullParser:
                 f"Scene: {scene_name}\n"
                 f"Characters: {', '.join(char_names) if char_names else 'none'}\n"
                 f"Character Appearance:\n{char_context}\n"
-                f"Description (preserve all facts; not a summary): {raw_desc}\n"
+                f"Source block ID: {source_block_id or 'unverified'}; occurrence: {occurrence_id or 'unverified'}\n"
+                f"Complete source screenplay block (do not omit facts):\n{source_text}\n"
+                f"Shot moment from Phase 1 (preserve all facts; not a summary): {raw_desc}\n"
+                f"Dialogue fact: {dialogue or 'null'}; Props fact: {json.dumps(props_list, ensure_ascii=False)}\n"
                 f"Requested structured facts: expression={shot.get('facial_expression','')}; micro_expression={shot.get('micro_expression','')}; gaze={shot.get('gaze','')}; body_language={shot.get('body_language','')}; action_start={shot.get('action_start','')}; action_process={shot.get('action_process','')}; action_end={shot.get('action_end','')}; prop_interactions={shot.get('prop_interactions','')}\n"
                 f"Render Style: {style_full}\nShot duration: {shot.get('duration_seconds', seconds_per_shot)}s"
             )
@@ -612,8 +719,16 @@ class AFE_ScriptFullParser:
                 "section_type":     shot.get("section_type") or (scene_info or {}).get("section_type", "location_scene"),
                 "scene_id":          scene_id,
                 "scene_occurrence_id": occurrence_id,
-                "source_block_id":   source_block_id,
+                "source_block_id":   source_block_id or None,
                 "scene_assignment_error": shot.get("scene_assignment_error", ""),
+                "environment": {
+                    "description": scene_env.get(scene_idx, {}).get("environment_prompt_en", ""),
+                    "location": p2_data.get("location", ""),
+                    "time_of_day": p2_data.get("time_of_day") or shot.get("time_of_day", ""),
+                    "weather": p2_data.get("weather") or shot.get("weather", ""),
+                    "lighting": p2_data.get("lighting") or shot.get("lighting", ""),
+                    "color_temperature": p2_data.get("color_temperature") or shot.get("color_temperature", ""),
+                },
                 "character_names":  char_names,
                 "costume_description": p2_data.get("costume_description", ""),
                 "costume_en":          p2_data.get("costume_en", ""),
@@ -621,8 +736,9 @@ class AFE_ScriptFullParser:
                 "scene_name":          scene_name,
                 "scene_name_en":       scene_env.get(scene_idx, {}).get("scene_name_en", ""),
                 "scene_environment_en": scene_env.get(scene_idx, {}).get("environment_prompt_en", ""),
-                "camera_angle":        p2_data.get("camera_angle", "medium"),
+                "camera_angle":        p2_data.get("camera_angle") or shot.get("camera_angle", ""),
                 "camera_motion":       p2_data.get("camera_motion") or shot.get("camera_motion", ""),
+                "camera_motion_source": p2_data.get("camera_motion_source") or ("script" if p2_data.get("camera_motion") or shot.get("camera_motion") else "derived"),
                 "shot_type":           p2_data.get("shot_type", ""),
                 "lighting_style":      p2_data.get("lighting_style", ""),
                 "director_notes":      p2_data.get("director_notes", ""),
@@ -630,8 +746,8 @@ class AFE_ScriptFullParser:
                 "negative_prompt":     p2_data.get("negative_prompt", "ugly, blurry, low quality, distorted"),
                 "dialogue":            dialogue if dialogue else "（无）",
                 "location":            p2_data.get("location", scene_name),
-                "time_of_day":         p2_data.get("time_of_day", "afternoon"),
-                "weather":             p2_data.get("weather", "indoor"),
+                "time_of_day":         p2_data.get("time_of_day") or shot.get("time_of_day", ""),
+                "weather":             p2_data.get("weather") or shot.get("weather", ""),
                 "lighting":            p2_data.get("lighting", ""),
                 "action":              p2_data.get("action", ""),
                 "business":            p2_data.get("business", shot.get("business", "")),
@@ -644,9 +760,8 @@ class AFE_ScriptFullParser:
                 "action_end":          p2_data.get("action_end", shot.get("action_end", "")),
                 "prop_interactions":   p2_data.get("prop_interactions", shot.get("prop_interactions", [])),
                 "camera_path":         p2_data.get("camera_path", shot.get("camera_path", "")),
-                "pace":                p2_data.get("pace", shot.get("pace", "natural")),
-                "color_temperature":  p2_data.get("color_temperature", shot.get("color_temperature", "")),
-                "camera_motion_source": p2_data.get("camera_motion_source", "script" if shot.get("camera_motion") else "derived"),
+                "pace":                p2_data.get("pace") or shot.get("pace", ""),
+                "color_temperature":  p2_data.get("color_temperature") or shot.get("color_temperature", ""),
             }
             full_shots.append(normalize_shot(full_shot, i))
 

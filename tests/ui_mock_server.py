@@ -50,7 +50,7 @@ def fake_img(h, w, seed):
     return (img * stripe).clamp(0, 1)
 
 
-CALLS = {"scene": 0, "prop": 0, "cast": 0, "kf": 0, "qwen": 0, "kf_imgs": []}
+CALLS = {"scene": 0, "prop": 0, "cast": 0, "kf": 0, "qwen": 0, "kf_imgs": [], "keyframe_prompts": [], "video_prompts": []}
 
 
 def _count(kind, img):
@@ -66,7 +66,7 @@ sg._load_models = lambda: (None, None, None)
 pg._generate_prop_image = lambda clip, vae, base_model, prop_prompt, seed, size, steps: _count("prop", fake_img(size, size, seed))
 pg._load_models = lambda: (None, None, None)
 kf._generate_frame = lambda cached, clip, vae, images, prompt, negative, seed, resolution: (
-    CALLS["kf_imgs"].append(len(images)), _count("kf", fake_img(288, 512, seed)))[1]
+    CALLS["kf_imgs"].append(len(images)), CALLS["keyframe_prompts"].append(prompt), _count("kf", fake_img(288, 512, seed)))[2]
 from ai_film_editor_nodes.nodes.video import user_refs as _user_refs  # noqa: E402
 _user_refs.qwen_variant = lambda reference, prompt, seed: _count("qwen", fake_img(reference.shape[1], reference.shape[2], seed))
 kf._load_models = lambda: (None, None, None)
@@ -76,6 +76,7 @@ wn._load_wan = lambda fast: ("m",)
 
 
 def _fake_render_shot(models, key, prompt, w, h, dur, seed, fast, anchor):
+    CALLS["video_prompts"].append(prompt)
     n = min(int(dur * 16) + 1, 33)
     base = key[0] if key.shape[0] else fake_img(h, w, seed)[0]
     frames = []
@@ -104,8 +105,8 @@ def fake_parser(raw_script, **kw):
             "scene_environment_en": "bright interior, steel counter" if i < 4 else "warm living room, sofa",
             "character_names": ["阿明"] if i % 2 == 0 else ["阿明", "小红"],
             "dialogue": "你好" if i == 1 else "（无）", "props_list": ["佛珠", "茶杯"][: 1 + i % 2],
-            "shot_type": "medium close-up", "camera_angle": "medium", "camera_motion": "static",
-            "shot_description": f"Shot {i + 1}: a person works at the counter", "action": "stacks boxes", "emotion": "calm",
+            "shot_type": "medium close-up", "camera_angle": "medium", "camera_motion": "tracking_shot" if i % 2 == 0 else "slow_push_in", "camera_motion_source": "script",
+            "shot_description": f"Shot {i + 1}: a person works at the counter", "action": "stacks boxes", "action_start": "reaches for a box", "action_process": "stacks boxes while rubbing the label", "action_end": "sets the box down", "business": "rubs the label", "emotion": "calm", "facial_expression": "calm focused face", "micro_expression": "lower eyelid tightens", "gaze": "toward the counter", "body_language": "shoulders forward", "prop_interactions": ["grips the prop"], "pace": "steady",
             "lighting": "cold white LED", "lighting_style": "cold white LED", "location": scene,
             "time_of_day": "afternoon", "weather": "indoor", "duration_seconds": 5.0, "costume_en": "red apron",
         })
@@ -120,8 +121,10 @@ def fake_scene_gen(**kw):
 
 
 def fake_props_gen(**kw):
-    n = len(json.loads(kw["props_json"]))
-    return (torch.cat([fake_img(256, 256, 100 + i) for i in range(n)]), "ok")
+    props = json.loads(kw["props_json"])
+    n = len(props)
+    manifest = [{"asset_id": p.get("asset_id", f"prop:{i}"), "prop_id": p.get("prop_id", f"prop_{i + 1:03d}"), "index": i + 1, "name": p.get("name", f"prop_{i + 1}")} for i, p in enumerate(props)]
+    return (torch.cat([fake_img(256, 256, 100 + i) for i in range(n)]), "ok", json.dumps(manifest, ensure_ascii=False))
 
 
 FAKES = {"AFE_ScriptFullParser": fake_parser}

@@ -130,6 +130,7 @@ def build_prompt(stage: int, project: str, settings: dict | None, project_path: 
                      scene_images_medium=["4", 1], scene_images_atmosphere=["4", 2])
         if "5" in g:
             g["11"]["inputs"]["props_images"] = ["5", 0]
+            g["11"]["inputs"]["props_manifest"] = ["5", 2]
         labels["11"] = "绘制每个分镜的首帧"
 
     elif stage == 4:

@@ -22,11 +22,11 @@ def test_title_sequence_before_first_scene_is_its_own_scene():
               "【场景 B：泰国海边别墅 - 白天】\n[外景]\n胖叔喝茶。\n"
               "【场景 A：伦敦社区超市 - 连续】\n小舟走来。")
     sm = m._build_scene_map(script)
-    assert len(sm) == 3, [s["sample_header"] for s in sm]
+    assert len(sm) == 4, [s["sample_header"] for s in sm]
     assert "片头" in sm[0]["sample_header"]
-    assert "佛珠" in sm[0]["source_text"] and "超市" not in sm[0]["source_text"]
-    assert "小宇" in sm[1]["source_text"] and "小舟" in sm[1]["source_text"]     # A + A-continued merged
-    assert "胖叔喝茶" in sm[2]["source_text"]
+    assert "佛珠" in sm[1]["source_text"] and "超市" not in sm[1]["source_text"]
+    assert "小宇" in sm[2]["source_text"] and "小舟" in sm[2]["source_text"]     # A + A-continued merged
+    assert "胖叔喝茶" in sm[3]["source_text"]
 
 
 def test_prologue_and_epilogue_words():
@@ -49,6 +49,26 @@ def test_cjk_detection_for_english_rewrite():
     assert m._mostly_cjk("在昏暗的超市内部，一束强烈的顶光")
     assert not m._mostly_cjk("A man stands in a dim supermarket")
     assert not m._mostly_cjk("")
+
+
+def test_semantic_cues_are_independent_blocks_and_keep_source_order():
+    script = "【片头：定调】\\n[黑屏]\\nA hand turns a bead.\\n[快速闪切]\\nthree rapid inserts.\\n【场景 A：Workshop - Day】\\nA worker looks up.\\n【场景 B：Garden - Day】\\nA bird calls.\\n【场景 A：Workshop - Continuous】\\nThe worker moves.\\n[淡出]\\n"
+    sm = m._build_scene_map(script)
+    kinds = [s["section_type"] for s in sm]
+    assert "transition" in kinds and "montage" in kinds, kinds
+    block_ids = [b["source_block_id"] for s in sm for b in s["source_blocks"]]
+    assert sorted(block_ids) == [
+        f"block_{i:03d}" for i in range(1, len(block_ids) + 1)
+    ]
+    locations = [s for s in sm if s["section_type"] == "location_scene"]
+    assert len(locations) == 2
+    assert len(locations[0]["source_blocks"]) == 2
+
+
+def test_source_block_text_is_not_truncated():
+    body = "detail " * 700
+    sm = m._build_scene_map("【场景 A：Room】\\n" + body)
+    assert len(sm[0]["source_text"]) > 2500
 
 
 if __name__ == "__main__":

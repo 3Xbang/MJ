@@ -15,7 +15,7 @@ CAMERA_MOTIONS = {
     "slow_pull_back": "the camera slowly pulls back",
     "pan_left": "the camera pans left",
     "pan_right": "the camera pans right",
-    "tracking_shot": "the camera tracks the subject",
+    "tracking_shot": "the camera tracks the subject in a tracking shot",
     "crane_up": "the camera cranes upward",
     "crane_down": "the camera cranes downward",
     "handheld": "subtle handheld camera movement",
@@ -106,7 +106,7 @@ def normalize_shot(shot: dict, index: int = 0) -> dict:
         "camera_motion": motion,
         "camera_motion_source": motion_source,
         "camera_path": src.get("camera_path", ""),
-        "pace": src.get("pace") or src.get("rhythm") or "natural",
+        "pace": src.get("pace") or src.get("rhythm") or "",
         "business": src.get("business", ""),
         "emotion": src.get("emotion") or src.get("facial_expression", ""),
     })
@@ -117,17 +117,25 @@ def required_facts(shot: dict) -> dict[str, str]:
     s = normalize_shot(shot)
     return {
         "environment": _text(s["environment"].get("description") or s.get("scene_environment_en") or s.get("location")),
+        "time_of_day": _text(s.get("time_of_day") or s["environment"].get("time_of_day")),
+        "weather": _text(s.get("weather") or s["environment"].get("weather")),
         "characters": _text(s.get("character_names")),
         "action_start": _text(s.get("action_start")),
         "action_process": _text(s.get("action_process")),
         "action_end": _text(s.get("action_end")),
         "expression": _text(s.get("facial_expression")),
         "micro_expression": _text(s.get("micro_expression")),
+        "gaze": _text(s.get("gaze")),
+        "body_language": _text(s.get("body_language")),
         "props": _text(s.get("props_list")),
         "prop_interactions": _text(s.get("prop_interactions")),
         "dialogue": _text(s.get("dialogue")),
         "lighting": _text(s.get("lighting") or s.get("lighting_style")),
+        "color_temperature": _text(s.get("color_temperature") or s["environment"].get("color_temperature")),
+        "shot_type": _text(s.get("shot_type")),
+        "camera_angle": _text(s.get("camera_angle")),
         "camera": CAMERA_MOTIONS[s["camera_motion"]],
+        "camera_path": _text(s.get("camera_path")),
         "pace": _text(s.get("pace")),
     }
 
@@ -135,13 +143,16 @@ def required_facts(shot: dict) -> dict[str, str]:
 def render_shared_facts(shot: dict, include_dialogue: bool = True) -> str:
     f = required_facts(shot)
     parts = []
-    labels = (("Environment", "environment"), ("Characters", "characters"),
+    labels = (("Environment", "environment"), ("Time of day", "time_of_day"),
+              ("Weather", "weather"), ("Characters", "characters"),
               ("Action start", "action_start"), ("Action process / business", "action_process"),
               ("Action end", "action_end"), ("Facial expression", "expression"),
               ("Micro-expression", "micro_expression"), ("Gaze", "gaze"),
               ("Body language", "body_language"), ("Props", "props"),
               ("Prop interaction", "prop_interactions"), ("Lighting", "lighting"),
-              ("Camera", "camera"), ("Camera path", "camera_path"), ("Pace", "pace"))
+              ("Color temperature", "color_temperature"), ("Shot type", "shot_type"),
+              ("Camera angle", "camera_angle"), ("Camera motion", "camera"),
+              ("Camera path", "camera_path"), ("Pace", "pace"))
     s = normalize_shot(shot)
     for label, key in labels:
         value = f.get(key, "") if key in f else _text(s.get(key))

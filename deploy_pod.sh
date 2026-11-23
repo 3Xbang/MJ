@@ -26,7 +26,10 @@ else
   git clone https://github.com/3Xbang/MJ.git ai_film_editor_nodes
 fi
 pip install loguru json_repair imageio-ffmpeg -q
-# CPU-only graph check: confirms generated props are connected to keyframes.
+# CPU-only regression and graph check: confirms structured prompts and generated props are connected.
+python3 tests/test_scene_map.py
+python3 tests/test_prompt_fidelity.py
+python3 tests/test_reference_dependencies.py
 python3 tests/test_workflow_graph.py
 
 [ -d comfyui_LLM_party ] || git clone https://github.com/heshengtao/comfyui_LLM_party.git

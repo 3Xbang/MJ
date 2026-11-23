@@ -141,8 +141,8 @@ class AFE_PropsImageGenerator:
             },
         }
 
-    RETURN_TYPES  = ("IMAGE", "STRING")
-    RETURN_NAMES  = ("props_images_batch", "generation_report")
+    RETURN_TYPES  = ("IMAGE", "STRING", "STRING")
+    RETURN_NAMES  = ("props_images_batch", "generation_report", "props_manifest")
     FUNCTION      = "generate"
     CATEGORY      = "AI Film Editor/Props"
     OUTPUT_NODE   = True
@@ -236,4 +236,4 @@ class AFE_PropsImageGenerator:
         report += "\n".join(f"  ✅ {p.get('name','?')}" for p in props)
 
         return {"ui": {"text": [report], "afe_manifest": [json.dumps(manifest, ensure_ascii=False)]},
-                "result": (stack(images), report)}
+                "result": (stack(images), report, json.dumps(manifest, ensure_ascii=False))}

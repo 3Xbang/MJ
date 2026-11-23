@@ -162,8 +162,10 @@ echo "✅ 部署完成！等30秒后访问 ComfyUI"
 
 每次更新后可在 RunPod 执行 CPU 图校验：
 ```bash
-cd /workspace/runpod-slim/ComfyUI/custom_nodes/ai_film_editor_nodes && python3 tests/test_workflow_graph.py
+cd /workspace/runpod-slim/ComfyUI/custom_nodes/ai_film_editor_nodes && python3 -m py_compile nodes/director/script_full_parser_node.py nodes/video/shot_prompt_contract.py nodes/video/shot_keyframe_node.py nodes/video/wan_shot_renderer_node.py && python3 tests/test_scene_map.py && python3 tests/test_prompt_fidelity.py && python3 tests/test_reference_dependencies.py && python3 tests/test_workflow_graph.py && python3 tests/check_graphs.py
 ```
+
+这些 CPU 检查不能证明真实模型的视觉效果。部署后必须确认 ComfyUI 日志没有 `IMPORT FAILED`，在 `/afe/` 先用试跑模式生成两个镜头，再检查实际首帧和 Wan 片段是否保留表情、微表情、动作三阶段、场景切换和非静止运镜。确认无误后再关闭试跑模式生成完整影片。取消、重启后重新排队和素材重做也应检查已完成文件被复用、失败镜头被明确阻止，而不是生成白图或拼接缺片。
 
 注意：这个页面没有密码，知道网址的人都能使用。不要把网址公开发布。
 

@@ -130,7 +130,9 @@ def pick_scene_image(views: list, shot: dict, scene_order: list[str], view_picks
     available = [i for i, view in enumerate(views) if view is not None and view.shape[0] > sidx]
     if not available:
         raise ValueError(f"No scene image batch contains scene {scene_id or name}")
-    vidx = want if want in available else available[0]
+    if want not in available:
+        raise ValueError(f"Requested scene view {want + 1} is unavailable for scene {scene_id or name}")
+    vidx = want
     batch = views[vidx]
     return batch[sidx:sidx + 1], sidx, vidx
 
@@ -187,6 +189,9 @@ class AFE_ShotKeyframeGenerator:
                 "scene_images_atmosphere": ("IMAGE",),
                 "props_images": ("IMAGE", {
                     "tooltip": "Generated prop references in stable props_list order; uploads override them."}),
+                "props_manifest": ("STRING", {
+                    "multiline": True,
+                    "tooltip": "Stable prop asset manifest from AFE_PropsImageGenerator."}),
                 "auto_all": auto_all_input(),
             },
         }
@@ -200,7 +205,8 @@ class AFE_ShotKeyframeGenerator:
     def generate(self, shot_sequence, cast_data, scene_images, character_refs, project_name,
                  render_style, max_shots=0, overwrite=False, resolution=1024, seed=42,
                  variants_per_shot=1, picks="", redo_shots="", scene_view_picks="", approved=False,
-                 scene_images_medium=None, scene_images_atmosphere=None, props_images=None, auto_all=False):
+                 scene_images_medium=None, scene_images_atmosphere=None, props_images=None,
+                 props_manifest="", auto_all=False):
         if not gate_is_open(approved, auto_all):
             return closed_result("分镜首帧（生成前请确认场景图和角色参考图）", "ddrd")
 
@@ -224,6 +230,17 @@ class AFE_ShotKeyframeGenerator:
         # Uploaded references override generated references. Generated batch is in the
         # stable props_list order emitted by PropsAnalyzer.
         all_prop_names = []
+        prop_manifest_by_name = {}
+        if props_manifest:
+            try:
+                manifest_data = json.loads(props_manifest)
+                if isinstance(manifest_data, dict):
+                    manifest_data = manifest_data.get("assets", manifest_data.get("props", []))
+                for item in manifest_data or []:
+                    if isinstance(item, dict) and item.get("name"):
+                        prop_manifest_by_name[str(item["name"])] = item
+            except (TypeError, json.JSONDecodeError) as exc:
+                lines = [f"❌ invalid props_manifest: {exc}"]
         for candidate in all_shots:
             for prop in candidate.get("props_list") or []:
                 prop = str(prop).strip()
@@ -236,8 +253,12 @@ class AFE_ShotKeyframeGenerator:
                 prop_refs[p] = fit_to_canvas(img, 768, 768, "pad")
         if props_images is not None:
             for pidx, p in enumerate(all_prop_names):
-                if p not in prop_refs and pidx < props_images.shape[0]:
-                    prop_refs[p] = fit_to_canvas(props_images[pidx:pidx + 1], 768, 768, "pad")
+                if p in prop_refs:
+                    continue
+                item = prop_manifest_by_name.get(p, {})
+                index = int(item.get("index", pidx + 1)) - 1
+                if 0 <= index < props_images.shape[0]:
+                    prop_refs[p] = fit_to_canvas(props_images[index:index + 1], 768, 768, "pad")
 
         model = clip = vae = cached = None
         chosen_frames, preview, lines = [], [], ["🖼 首帧（选用的版本带 * 号）"]
@@ -247,10 +268,23 @@ class AFE_ShotKeyframeGenerator:
 
         for i, shot in enumerate(shots):
             sid = shot_id_of(shot, i)
-            in_shot = [n for n in dict.fromkeys(shot.get("character_names") or []) if n in ref_by_name]
-            if len(in_shot) != len(dict.fromkeys(shot.get("character_names") or [])):
-                lines.append(f"  ❌ {sid}: missing character reference; no substitute scene/person will be used")
-            scene_img, sidx, vidx = pick_scene_image(views, shot, scene_order, view_picks)
+            requested_chars = list(dict.fromkeys(shot.get("character_names") or []))
+            if shot.get("scene_assignment_error"):
+                lines.append(f"  ❌ {sid}: {shot['scene_assignment_error']}")
+                failed += 1
+                continue
+            in_shot = [n for n in requested_chars if n in ref_by_name]
+            if len(in_shot) != len(requested_chars):
+                missing_names = [n for n in requested_chars if n not in ref_by_name]
+                lines.append(f"  ❌ {sid}: missing character reference(s) {', '.join(missing_names)}; upload or regenerate them")
+                failed += 1
+                continue
+            try:
+                scene_img, sidx, vidx = pick_scene_image(views, shot, scene_order, view_picks)
+            except Exception as exc:
+                lines.append(f"  ❌ {sid}: scene reference unavailable: {exc}")
+                failed += 1
+                continue
             images = {"image_1": scene_img}
             for k, n in enumerate(in_shot):
                 images[f"image_{k + 2}"] = ref_by_name[n]

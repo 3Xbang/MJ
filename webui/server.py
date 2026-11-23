@@ -223,6 +223,7 @@ class Api:
             }
         view["refs"] = self.refs_view(pname, pp, analysis, st.get("scenes", []), st.get("props", []))
         view["ref_sig"] = self.ref_sig(pp)
+        view["ref_entities"] = self.ref_entity_sigs(pp, analysis, st.get("scenes", []), st.get("props", []))
         kd = os.path.join(pp, "keyframes")
         if os.path.isdir(kd):
             for f in os.listdir(kd):
@@ -249,6 +250,27 @@ class Api:
             return ""
         items = sorted((f, int(os.path.getmtime(os.path.join(d, f)))) for f in os.listdir(d) if f.endswith(".png"))
         return hashlib.md5(json.dumps(items).encode()).hexdigest()[:10] if items else ""
+
+    def ref_entity_sigs(self, pp: str, analysis: dict | None, scenes: list, props: list) -> dict:
+        """Return stable per-asset signatures so callers can invalidate only dependent shots."""
+        names = {
+            "cast": [c.get("name") for c in (analysis or {}).get("cast", [])],
+            "scene": [s.get("scene_name") for s in scenes or []],
+            "prop": [p.get("name") for p in props or []],
+        }
+        result = {}
+        for kind, entities in names.items():
+            for name in entities:
+                if not name:
+                    continue
+                path = os.path.join(pp, "refs", ref_filename(kind, name))
+                key = f"{kind}:{name}"
+                if os.path.isfile(path):
+                    with open(path, "rb") as fh:
+                        result[key] = hashlib.md5(fh.read()).hexdigest()[:12]
+                else:
+                    result[key] = ""
+        return result
 
     def refs_view(self, pname: str, pp: str, analysis: dict | None, scenes: list, props: list) -> dict:
         out = {"cast": {}, "scene": {}, "prop": {}}
@@ -337,7 +359,9 @@ class Api:
             return web.json_response({"error": "请先完成第 ① 步「分析剧本」。"}, status=400)
         os.makedirs(pp, exist_ok=True)
         st.setdefault("run_settings", {})[str(stage)] = {**{k: s.get(k, "") for k in USED_KEYS},
-                                                         "refs": self.ref_sig(pp)}
+                                                         "refs": self.ref_sig(pp),
+                                                         "ref_entities": self.ref_entity_sigs(pp, read_json(os.path.join(pp, "analysis.json"), {}),
+                                                                                               st.get("scenes", []), st.get("props", []))}
         self.save_state(pp, st)
 
         part = "cast" if body.get("part") == "cast" and stage == 2 else "all"

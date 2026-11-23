@@ -28,6 +28,10 @@ TEST_LONG_TAKE = "shot_001:10"   # first run also tests a 10 s continuous take (
 def build(src_path: str) -> dict:
     wf = json.load(open(src_path, encoding="utf-8"))
     nodes = {n["id"]: n for n in wf["nodes"]}
+    props_node = nodes.get(18)
+    if props_node and props_node.get("type") == "AFE_PropsImageGenerator" and len(props_node.get("outputs", [])) < 3:
+        props_node.setdefault("outputs", []).append({"name": "props_manifest", "type": "STRING",
+                                                       "links": None, "slot_index": 2})
     next_node = max(nodes) + 1
     next_link = max(l[0] for l in wf["links"]) + 1
     order = max(n.get("order", 0) for n in wf["nodes"]) + 1
@@ -105,10 +109,11 @@ def build(src_path: str) -> dict:
         [sock("shot_sequence", "SHOT_SEQUENCE"), sock("cast_data", "CAST_DATA"),
          sock("scene_images", "IMAGE"), sock("character_refs", "IMAGE"),
          sock("scene_images_medium", "IMAGE"), sock("scene_images_atmosphere", "IMAGE"),
+         sock("props_images", "IMAGE"), sock("props_manifest", "STRING"),
          sock("auto_all", "BOOLEAN")],
         [("keyframes", "IMAGE"), ("project_dir", "STRING"), ("report", "STRING"),
          ("candidates_preview", "IMAGE")],
-        ["afe_project", style, TEST_SHOTS, False, 1024, 42, "fixed", 1, "", "", "", False],
+        ["afe_project", style, TEST_SHOTS, False, 1024, 42, "fixed", 1, "", "", "", "", False],
         title="🖼 分镜首帧 (Qwen Image 2.1)")
     wan = add_node(
         "AFE_WanShotRenderer", (X0 + 980, Y0), (420, 420),
@@ -147,9 +152,12 @@ def build(src_path: str) -> dict:
     link(wan, 0, assembler, 1, "STRING")           # project_dir (after rendering finished)
     link(14, 1, keyframe, 4, "IMAGE")              # medium_shots_batch  (scene view 2)
     link(14, 2, keyframe, 5, "IMAGE")              # atmosphere_shots_batch (scene view 3)
+    if 18 in nodes and len(nodes[18].get("outputs", [])) >= 3:
+        link(18, 0, keyframe, 6, "IMAGE")          # generated props, stable manifest order
+        link(18, 2, keyframe, 7, "STRING")
     # master switch -> every confirm gate
     for target, slot in ((14, ensure_auto_all(14)), (18, ensure_auto_all(18)),
-                         (cast_ref, 1), (keyframe, 6), (wan, 2), (assembler, 2)):
+                         (cast_ref, 1), (keyframe, 8), (wan, 2), (assembler, 2)):
         link(master, 0, target, slot, "BOOLEAN")
     # previews + reports
     link(cast_ref, 0, prev_refs, 0, "IMAGE")

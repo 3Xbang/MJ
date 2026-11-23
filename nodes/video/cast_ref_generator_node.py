@@ -114,6 +114,7 @@ class AFE_CastRefGenerator:
         bar = make_progress(len(cast) * K)
         selected, preview, lines = [], [], ["🎭 角色参考图（选用的版本带 * 号）"]
         manifest = []
+        failures = []
         made = reused = 0
 
         for ci, member in enumerate(cast):
@@ -155,21 +156,28 @@ class AFE_CastRefGenerator:
                         save_png(img, path); made += 1
                     except Exception as e:
                         logger.error("[AFE_CastRefGenerator] %s v%d failed: %s", member["name"], k, e)
+                        detail = {"asset_id": f"character:{member['name']}", "character": member["name"],
+                                  "variant": k, "stage": "cast_reference", "error": str(e),
+                                  "remediation": "retry character generation or upload a character reference"}
+                        failures.append(detail)
                         lines.append(f"  ❌ C{ci + 1} {member['name']} v{k}: {e}")
-                        img = torch.ones(1, height, width, 3)
+                        img = None
                 versions.append(img)
                 if os.path.exists(path):
                     manifest.append({"char": ci + 1, "name": member["name"], "variant": k,
                                      "file": f"cast_refs/{os.path.basename(path)}", "chosen": k == chosen,
                                      "source": "upload" if is_original else "ai"})
-                preview.append(label_image(img, f"C{ci + 1} v{k}" + (" mine" if is_original else "")
-                                           + (" *" if k == chosen else ""), 512))
+                if img is not None:
+                    preview.append(label_image(img, f"C{ci + 1} v{k}" + (" mine" if is_original else "")
+                                               + (" *" if k == chosen else ""), 512))
                 if bar:
                     bar.update(1)
             selected.append(versions[chosen - 1])
             lines.append(f"  C{ci + 1} = {member['name']}：共 {K} 个版本，选用 v{chosen}"
                          + (f"（第 {salt} 次重画）" if salt else ""))
 
+        if failures:
+            raise RuntimeError("Character reference generation failed: " + json.dumps(failures, ensure_ascii=False))
         lines.insert(1, f"新画 {made} / 复用 {reused}")
         lines.append("挑选方法：在 picks 里写「角色序号:版本号」，如 1:2, 2:3，然后再点 Queue。")
         report = "\n".join(lines)
