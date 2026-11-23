@@ -21,6 +21,7 @@ def _shot():
         "prop_interactions": ["grips and pulls the brass lever"], "dialogue": "Wait for me.",
         "lighting": "single cool overhead lamp", "camera_angle": "low_angle", "shot_type": "medium",
         "camera_motion": "tracking_shot", "camera_path": "from lever to face", "pace": "slow then sharp",
+        "source_text": "The brass lever is beside the red wool coat; the overhead lamp flickers.",
     })
 
 
@@ -31,7 +32,7 @@ def test_every_required_fact_is_in_both_prompts():
     for fact in ("observatory", "night", "clear", "4200K", "Rin", "red wool coat catches",
                  "red wool coat with brass buttons", "fear held behind a tight smile",
                  "left eyelid trembles", "brass lever", "grips and pulls", "low_angle", "medium",
-                 "tracking", "slow then sharp", "reaches for", "pulls it down"):
+                 "tracking", "slow then sharp", "reaches for", "pulls it down", "flickers"):
         assert fact in key, fact + " missing from keyframe"
         assert fact in video, fact + " missing from video"
     assert "Wait for me." in key and "Wait for me." in video
@@ -64,13 +65,37 @@ def test_camera_provenance_covers_explicit_static_script_motion_and_dialogue_rul
     assert ordinary_dialogue["camera_motion_source"] == "derived"
 
 
-def test_static_model_provenance_without_screenplay_camera_cue_is_derived():
-    shot = normalize_shot({"shot_id": "model_static", "camera_motion": "static",
-                           "camera_motion_source": "script",
-                           "source_text": "Mina waits, then holds the brass cup.",
-                           "action_process": "holds the brass cup"})
-    assert shot["camera_motion"] != "static"
-    assert shot["camera_motion_source"] == "derived"
+def test_nonempty_phase_two_summary_keeps_canonical_screenplay_text():
+    shot = normalize_shot({
+        "shot_description": "A person reaches toward a lever.",
+        "raw_description": "The red coat catches a flickering lamp; she grips the brass lever.",
+        "source_text": "The red coat catches a flickering lamp; she grips the brass lever.",
+    })
+    key = build_keyframe_prompt(shot)
+    video = build_video_prompt(shot)
+    for prompt in (key, video):
+        assert "red coat catches a flickering lamp" in prompt
+        assert "brass lever" in prompt
+        assert "A person reaches toward a lever" in prompt
+
+
+def test_camera_cues_are_scoped_to_the_shot_and_preserve_direction():
+    import importlib.util
+    path = os.path.join(ROOT, "nodes", "director", "script_full_parser_node.py")
+    spec = importlib.util.spec_from_file_location("full_parser_for_camera", path)
+    parser = importlib.util.module_from_spec(spec); spec.loader.exec_module(parser)
+    sibling = parser._camera_motion_from_phases(
+        {"camera_motion": "static", "camera_motion_source": "script"}, {},
+        "The camera pans left, then Mina waits.", "Mina waits.")
+    assert sibling[0] != "static"
+    exact = parser._camera_motion_from_phases(
+        {}, {"camera_motion": "static", "camera_motion_source": "model"},
+        "The camera pans left.", "The camera pans left.")
+    assert exact == ("pan_left", "script", True)
+    person_still = parser._camera_motion_from_phases(
+        {"camera_motion": "static", "camera_motion_source": "script"}, {},
+        "Mina keeps still while holding a cup.", "Mina keeps still while holding a cup.")
+    assert person_still[0] != "static"
 
 
 if __name__ == "__main__":

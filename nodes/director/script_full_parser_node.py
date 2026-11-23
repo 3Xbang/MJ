@@ -414,7 +414,9 @@ _CAMERA_STATIC_CUE_RE = re.compile(
     r"\b(?:locked(?:[- ]off)?|fixed|still)\s+(?:camera|shot|frame|view)\b|"
     r"\b(?:camera|shot|frame|view)\s+(?:is\s+)?(?:static|fixed|still|locked(?:[- ]off)?)\b|"
     r"\bhold\s+(?:on\s+)?(?:the\s+)?(?:camera|shot|frame|view)\b|"
-    r"(?:静止|固定机位|固定镜头|定机位|保持不动|镜头停留|画面停留)", re.IGNORECASE,
+    r"(?:静止|固定机位|固定镜头|定机位|镜头停留|画面停留|"
+    r"(?:镜头|机位|画面)(?:保持不动|静止|固定)|"
+    r"(?:保持不动|静止|固定)(?:镜头|机位|画面))", re.IGNORECASE,
 )
 _CAMERA_MOTION_CUE_RE = re.compile(
     r"\b(?:camera|shot|frame)\s+(?:slowly\s+)?(?:push(?:es)? in|dolly|pull(?:s)? back|zoom|pan(?:s)?|"
@@ -426,28 +428,47 @@ _CAMERA_MOTION_CUE_RE = re.compile(
 )
 
 
-def _camera_motion_from_phases(phase1: dict, phase2: dict, source_text: str, raw_desc: str) -> tuple[str, str, bool]:
-    """Select camera data without allowing a phase-2 model default to erase provenance."""
-    source = source_text
-    static_cue = bool(_CAMERA_STATIC_CUE_RE.search(source))
-    motion_cue = bool(_CAMERA_MOTION_CUE_RE.search(source))
-    p1_motion = str(phase1.get("camera_motion") or "").strip()
-    p1_source = str(phase1.get("camera_motion_source") or "").strip().lower()
-    p2_motion = str(phase2.get("camera_motion") or "").strip()
-    p2_source = str(phase2.get("camera_motion_source") or "").strip().lower()
+def _camera_motion_from_text(text: str) -> str:
+    """Infer the direction from the exact shot text, never from model provenance."""
+    low = text.lower()
+    if re.search(r"(?:pan|摇镜).{0,12}(?:left|左)", low) or re.search(r"(?:向左|左摇).{0,12}(?:镜头|运镜)?", text):
+        return "pan_left"
+    if re.search(r"(?:pan|摇镜).{0,12}(?:right|右)", low) or re.search(r"(?:向右|右摇).{0,12}(?:镜头|运镜)?", text):
+        return "pan_right"
+    if re.search(r"(?:push(?:es)? in|dolly in|推进|推近)", low if not any(ord(c) > 127 for c in text) else text):
+        return "slow_push_in"
+    if re.search(r"(?:pull(?:s)? back|dolly out|拉远|拉镜)", low if not any(ord(c) > 127 for c in text) else text):
+        return "slow_pull_back"
+    if re.search(r"(?:track(?:s)?|tracking|跟拍)", low if not any(ord(c) > 127 for c in text) else text):
+        return "tracking_shot"
+    if re.search(r"(?:crane).{0,8}(?:up|升)|升镜", low if not any(ord(c) > 127 for c in text) else text):
+        return "crane_up"
+    if re.search(r"(?:crane).{0,8}(?:down|降)|降镜", low if not any(ord(c) > 127 for c in text) else text):
+        return "crane_down"
+    if re.search(r"handheld|手持", low if not any(ord(c) > 127 for c in text) else text):
+        return "handheld"
+    if re.search(r"orbit|环绕", low if not any(ord(c) > 127 for c in text) else text):
+        return "orbit"
+    return ""
 
-    # A model's ``camera_motion_source`` is not proof that the screenplay said
-    # it. Preserve only motion wording found in the original source block, and
-    # authorize static only for a camera/shot-specific lock cue.
-    if p1_motion and p1_motion.lower() != "static" and (p1_source == "script" and motion_cue):
-        return p1_motion, "script", True
-    if p1_motion.lower() == "static" and static_cue:
-        return p1_motion, "script", True
-    if p2_motion and p2_motion.lower() != "static" and p2_source == "script" and motion_cue:
-        return p2_motion, "script", True
-    if p2_motion.lower() == "static" and static_cue:
-        return p2_motion, "script", True
-    # Let normalize_shot derive a non-static motion from the shot semantics.
+
+def _camera_motion_from_phases(phase1: dict, phase2: dict, source_text: str, raw_desc: str) -> tuple[str, str, bool]:
+    """Validate camera cues against this shot's source text, not its whole scene block."""
+    cue_text = str(raw_desc or "").strip()
+    static_cue = bool(_CAMERA_STATIC_CUE_RE.search(cue_text))
+    motion_cue = bool(_CAMERA_MOTION_CUE_RE.search(cue_text))
+    p1_motion = str(phase1.get("camera_motion") or "").strip()
+    p2_motion = str(phase2.get("camera_motion") or "").strip()
+    text_motion = _camera_motion_from_text(cue_text) if motion_cue else ""
+
+    # Direction in the screenplay wins even when the model omitted or falsified
+    # camera_motion_source. A source-block cue must not leak into sibling shots.
+    if text_motion:
+        return text_motion, "script", True
+    if static_cue:
+        return "static", "script", True
+    # A model motion without an exact screenplay cue is not a script fact.
+    # Returning empty lets normalize_shot derive a deterministic non-static rule.
     return "", "derived", False
 
 
@@ -744,7 +765,7 @@ class AFE_ScriptFullParser:
             if not source_text:
                 source_text = scene_info.get("source_text", "") if scene_info else ""
             char_names = _clean_semantic(shot.get("character_names")) or []
-            raw_desc   = _first_present(shot.get("raw_description"), source_text, default="")
+            raw_desc   = _first_present(shot.get("raw_description"), default="")
             dialogue   = _first_present(shot.get("dialogue"), default="")
             props_list = _clean_semantic(shot.get("props_list")) or []
 
@@ -835,6 +856,8 @@ class AFE_ScriptFullParser:
                 "scene_occurrence_id": occurrence_id,
                 "source_block_id":   source_block_id or None,
                 "source_text":       source_text,
+                "source_shot_text":  raw_desc,
+                "raw_description":   raw_desc,
                 "scene_assignment_error": shot.get("scene_assignment_error", ""),
                 "environment": {
                     "description": scene_env.get(scene_idx, {}).get("environment_prompt_en", ""),

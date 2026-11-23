@@ -36,6 +36,7 @@ logger = logging.getLogger("AFE_WanShotRenderer")
 
 from ai_film_editor_nodes.nodes.video.shot_prompt_contract import (
     CAMERA_MOTIONS, build_video_prompt as render_contract_video, normalize_shot,
+    render_shared_facts,
 )
 
 # File names are split so ComfyUI-Manager's static scanner does not flag them as "missing models".
@@ -67,6 +68,19 @@ CAMERA_PHRASES = {
     "handheld": "subtle handheld camera movement",
     "orbit": "the camera slowly orbits around the subject",
 }
+
+def _invalidate_clip(project_dir: str, shot_id: str, out_path: str, meta_path: str) -> None:
+    """Invalidate every generated representation so assembly cannot use stale output."""
+    paths = [out_path, meta_path,
+             os.path.join(project_dir, "clips_av", f"{shot_id}.mp4"),
+             os.path.join(project_dir, "clips_av", f"{shot_id}.json")]
+    for path in paths:
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+                logger.warning("[AFE_WanShotRenderer] invalidated stale artifact %s", path)
+        except OSError as exc:
+            logger.error("[AFE_WanShotRenderer] could not invalidate %s: %s", path, exc)
 
 _CACHE: dict = {}
 
@@ -300,12 +314,14 @@ class AFE_WanShotRenderer:
             kf_path = os.path.join(kf_dir, f"{sid}.png")
 
             if not os.path.exists(kf_path):
+                _invalidate_clip(project_dir, sid, out_path, meta_path)
                 lines.append(f"  ⚠️ {sid}: 缺少首帧 {kf_path}")
                 failed += 1
                 if bar: bar.update(1)
                 continue
 
             if shot.get("scene_assignment_error"):
+                _invalidate_clip(project_dir, sid, out_path, meta_path)
                 lines.append(f"  ❌ {sid}: {shot['scene_assignment_error']}")
                 failed += 1
                 if bar: bar.update(1)
@@ -318,6 +334,7 @@ class AFE_WanShotRenderer:
             with open(kf_path, "rb") as f:
                 kf_hash = hashlib.md5(f.read()).hexdigest()
             sig = md5(kf_hash, prompt, width, height, duration, fast_4step, anchor_identity, seed_eff)
+            contract_sig = md5(render_shared_facts(shot), speaking)
 
             existing = os.path.exists(out_path)
             if existing and not overwrite:
@@ -331,8 +348,11 @@ class AFE_WanShotRenderer:
                     skipped += 1
                     if bar: bar.update(1)
                     continue
+                _invalidate_clip(project_dir, sid, out_path, meta_path)
                 redone += 1
                 lines.append(f"  ♻️ {sid}: 输入有变化（首帧/时长/提示词/重做），重新渲染")
+            elif existing and overwrite:
+                _invalidate_clip(project_dir, sid, out_path, meta_path)
 
             if models is None:
                 models = _load_wan(fast_4step)
@@ -345,7 +365,10 @@ class AFE_WanShotRenderer:
                                      seed_eff, fast_4step, anchor_identity)
                 write_mp4(frames, out_path, FPS)
                 with open(meta_path, "w", encoding="utf-8") as f:
-                    json.dump({"sig": sig, "duration": duration, "seed": seed_eff}, f)
+                    json.dump({"sig": sig, "contract_sig": contract_sig, "keyframe_sig": kf_hash,
+                               "prompt_sig": md5(prompt), "prompt": prompt, "render_style": render_style,
+                               "shot_id": sid, "duration": duration, "seed": seed_eff}, f,
+                              ensure_ascii=False)
                 done += 1
                 dt = time.time() - t0
                 t_total += dt
@@ -353,6 +376,7 @@ class AFE_WanShotRenderer:
                     lines.append(f"  🔗 {sid}: 长镜头 {duration:.0f}s = {n_segs} 段接续，用时 {dt:.0f}s")
                 logger.info("[AFE_WanShotRenderer]   %s done in %.0fs", sid, dt)
             except Exception as e:
+                _invalidate_clip(project_dir, sid, out_path, meta_path)
                 logger.error("[AFE_WanShotRenderer] %s failed: %s", sid, e)
                 lines.append(f"  ❌ {sid}: {e}")
                 failed += 1
@@ -368,4 +392,9 @@ class AFE_WanShotRenderer:
         lines.append(f"目录：{clip_dir}")
         lines.append("不满意某个分镜：在 redo_shots 写分镜号（如 shot_005），或回到首帧节点换版本，再点 Queue。")
         report = "\n".join(lines)
+        if failed:
+            raise RuntimeError(
+                "Wan render blocked because one or more shots failed. "
+                "Stale clips were invalidated; resolve the reported shots and retry.\n" + report
+            )
         return {"ui": {"text": [report]}, "result": (project_dir, report)}

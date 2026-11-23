@@ -146,7 +146,7 @@ def build_prompt(stage: int, project: str, settings: dict | None, project_path: 
     elif stage == 5:
         loader()
         g["13"] = _n("AFE_MovieAssembler", shot_sequence=["1", 0], project_dir=project_path,
-                     output_name=s["output_name"], skip_shots=s["skip_shots"], approved=True)
+                     output_name=s["output_name"], render_style=style, skip_shots=s["skip_shots"], approved=True)
         labels["13"] = "合成成片"
 
     else:

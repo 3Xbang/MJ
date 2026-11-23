@@ -173,7 +173,10 @@ class AFE_PropsImageGenerator:
             props = _parse_props_report(props_report)
 
         if not props:
-            raise ValueError("No props found. Connect props_report from AFE_PropsAnalyzer.")
+            report = "🔧 没有检测到道具：跳过道具参考图，首帧将使用无道具路径。"
+            empty = torch.empty(0, size, size, 3)
+            return {"ui": {"text": [report], "afe_manifest": ["[]"]},
+                    "result": (empty, report, "[]")}
 
         props_dir = sub_dir(project_dir(project_name), "props")
         model = clip = vae = None

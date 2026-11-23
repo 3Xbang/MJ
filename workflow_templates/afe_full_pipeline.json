@@ -1897,6 +1897,13 @@
           "link": 42
         },
         {
+          "name": "render_style",
+          "type": "STRING",
+          "widget": {
+            "name": "render_style"
+          }
+        },
+        {
           "name": "auto_all",
           "type": "BOOLEAN",
           "link": 50
@@ -1923,6 +1930,7 @@
       },
       "widgets_values": [
         "final_movie",
+        "3D cartoon Pixar animation style, vibrant colors, 8k",
         "",
         false
       ],

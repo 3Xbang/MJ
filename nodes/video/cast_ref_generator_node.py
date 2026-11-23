@@ -103,7 +103,10 @@ class AFE_CastRefGenerator:
 
         cast = [c for c in (cast_data or []) if isinstance(c, dict) and c.get("name")]
         if not cast:
-            raise ValueError("cast_data is empty. Connect cast_data from AFE_ScriptFullParser.")
+            report = "🎭 没有检测到角色：跳过角色参考图，首帧将使用无人物路径。"
+            empty = torch.empty(0, 1, 1, 3)
+            return {"ui": {"text": [report], "afe_manifest": ["[]"]},
+                    "result": (empty, report, empty)}
         names = [c["name"] for c in cast]
         K = clamp(int(candidates_per_character), 1, 6)
         pick_map = parse_index_numbers(picks, names, default_value=1)

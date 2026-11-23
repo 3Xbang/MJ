@@ -7,13 +7,17 @@ by the same ffmpeg settings, so they are joined with the concat demuxer without 
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import os
 
 from ai_film_editor_nodes.nodes.video._common import (
-    auto_all_input, closed_result, concat_mp4, gate_input, gate_is_open, get_shots, shot_id_of,
+    auto_all_input, closed_result, concat_mp4, gate_input, gate_is_open, get_shots, has_dialogue,
+    md5, shot_id_of,
     split_items, norm_shot_key,
 )
+from ai_film_editor_nodes.nodes.video.shot_prompt_contract import build_video_prompt, render_shared_facts
 
 logger = logging.getLogger("AFE_MovieAssembler")
 
@@ -24,6 +28,32 @@ def find_clip(project: str, sid: str) -> str | None:
         if os.path.exists(p):
             return p
     return None
+
+
+def _keyframe_hash(path: str) -> str:
+    with open(path, "rb") as f:
+        return hashlib.md5(f.read()).hexdigest()
+
+
+def _clip_current(project: str, shot: dict, sid: str, path: str, render_style: str = "") -> tuple[bool, str]:
+    keyframe = os.path.join(project, "keyframes", f"{sid}.png")
+    meta_path = os.path.splitext(path)[0] + ".json"
+    if not os.path.exists(keyframe):
+        return False, f"missing current keyframe {keyframe}"
+    if not os.path.exists(meta_path):
+        return False, f"missing render metadata {meta_path}"
+    try:
+        meta = json.load(open(meta_path, encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return False, f"invalid render metadata: {exc}"
+    if meta.get("keyframe_sig") != _keyframe_hash(keyframe):
+        return False, "clip keyframe signature is stale"
+    expected_contract = md5(render_shared_facts(shot), has_dialogue(shot))
+    if meta.get("contract_sig") != expected_contract:
+        return False, "clip screenplay contract signature is stale"
+    if render_style and meta.get("prompt_sig") != md5(build_video_prompt(shot, render_style, has_dialogue(shot))):
+        return False, "clip prompt signature is stale"
+    return True, ""
 
 
 class AFE_MovieAssembler:
@@ -39,6 +69,8 @@ class AFE_MovieAssembler:
                 "output_name": ("STRING", {"default": "final_movie"}),
             },
             "optional": {
+                "render_style": ("STRING", {"default": "",
+                                               "tooltip": "与 Wan 渲染相同的风格，用于合成前提示词签名校验"}),
                 "skip_shots": ("STRING", {"default": "",
                                           "tooltip": "成片里不要的分镜。例：shot_007, 12"}),
                 "approved": gate_input("把所有分镜视频合成成片"),
@@ -53,27 +85,34 @@ class AFE_MovieAssembler:
     OUTPUT_NODE = True
 
     def assemble(self, shot_sequence, project_dir, output_name="final_movie", skip_shots="",
-                 approved=False, auto_all=False):
+                 render_style="", approved=False, auto_all=False):
         if not gate_is_open(approved, auto_all):
             return closed_result("成片合成（合成前请确认各分镜视频）", "dr")
         skip = {norm_shot_key(t) for t in split_items(skip_shots)}
         shots = get_shots(shot_sequence)
-        found, missing, total_s = [], [], 0.0
+        found, missing, invalid, total_s = [], [], [], 0.0
         for i, shot in enumerate(shots):
             sid = shot_id_of(shot, i)
             if sid in skip:
                 continue
             path = find_clip(project_dir, sid)
-            if path:
-                found.append(path)
-                total_s += float(shot.get("duration_seconds") or 5.0)
-            else:
+            if not path:
                 missing.append(sid)
+            else:
+                current, reason = _clip_current(project_dir, shot, sid, path, render_style)
+                if current:
+                    found.append(path)
+                    total_s += float(shot.get("duration_seconds") or 5.0)
+                else:
+                    invalid.append(f"{sid} ({reason})")
+                    missing.append(sid)
 
         if missing:
+            details = ", ".join(invalid) if invalid else "none"
             raise RuntimeError(
-                "Cannot assemble film because clips are missing for unskipped shots: " + ", ".join(missing) +
-                ". Render those shots or add their shot IDs to skip_shots."
+                "Cannot assemble film because clips are missing or stale for unskipped shots: "
+                + ", ".join(missing) + f". Invalid details: {details}. "
+                "Render those shots or add their shot IDs to skip_shots."
             )
         if not found:
             raise ValueError(f"No clips found in {project_dir}/clips. Run AFE_WanShotRenderer first.")

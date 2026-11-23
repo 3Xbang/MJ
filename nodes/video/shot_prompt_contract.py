@@ -29,7 +29,9 @@ _STATIC_CAMERA_CUES = re.compile(
     r"\b(?:locked(?:[- ]off)?|fixed|still)\s+(?:camera|shot|frame|view)\b|"
     r"\b(?:camera|shot|frame|view)\s+(?:is\s+)?(?:static|fixed|still|locked(?:[- ]off)?)\b|"
     r"\bhold\s+(?:on\s+)?(?:the\s+)?(?:camera|shot|frame|view)\b|"
-    r"(?:静止|固定机位|固定镜头|定机位|保持不动|镜头停留|画面停留)", re.IGNORECASE,
+    r"(?:静止|固定机位|固定镜头|定机位|镜头停留|画面停留|"
+    r"(?:镜头|机位|画面)(?:保持不动|静止|固定)|"
+    r"(?:保持不动|静止|固定)(?:镜头|机位|画面))", re.IGNORECASE,
 )
 
 
@@ -84,7 +86,8 @@ def camera_motion_for(shot: dict) -> tuple[str, str]:
     raw = aliases.get(raw, raw)
     source = _text(shot.get("camera_motion_source")).lower()
     source_text = " ".join(_text(shot.get(k)) for k in (
-        "source_text", "screenplay_source_text", "raw_description", "shot_description", "director_notes"
+        "source_shot_text", "raw_description", "source_text", "screenplay_source_text",
+        "shot_description", "director_notes"
     ))
     # Only a validated contract flag or camera/shot wording in the preserved
     # screenplay text can authorize a locked camera. Model provenance alone is
@@ -134,9 +137,11 @@ def normalize_shot(shot: dict, index: int = 0) -> dict:
         "scene_occurrence_id": src.get("scene_occurrence_id") or f"occurrence_{index + 1:03d}",
         "source_block_id": src.get("source_block_id") or f"block_{index + 1:03d}",
         "environment": environment,
-        "source_description": _first_text(src.get("shot_description"), src.get("raw_description")),
+        "source_description": _first_text(src.get("source_description"), src.get("source_shot_text"),
+                                          src.get("raw_description"), src.get("shot_description"), src.get("source_text")),
         "shot_description": _first_text(src.get("shot_description"), src.get("raw_description")),
-        "raw_description": _first_text(src.get("raw_description"), src.get("shot_description")),
+        "raw_description": _first_text(src.get("raw_description"), src.get("source_shot_text"),
+                                       src.get("shot_description"), src.get("source_text")),
         "costume_en": _text(src.get("costume_en")),
         "costume_description": _text(src.get("costume_description")),
         "time_of_day": _first_text(src.get("time_of_day"), environment.get("time_of_day", "")),
@@ -172,6 +177,8 @@ def required_facts(shot: dict) -> dict[str, str]:
     return {
         "environment": _text(s["environment"].get("description") or s.get("scene_environment_en") or s.get("location")),
         "source_description": _text(s.get("source_description") or s.get("shot_description") or s.get("raw_description")),
+        "shot_enhancement": _text(s.get("shot_description")),
+        "source_text": _text(s.get("source_text")),
         "costume": _text(s.get("costume_en") or s.get("costume_description")),
         "time_of_day": _text(s.get("time_of_day") or s["environment"].get("time_of_day")),
         "weather": _text(s.get("weather") or s["environment"].get("weather")),
@@ -200,6 +207,7 @@ def render_shared_facts(shot: dict, include_dialogue: bool = True) -> str:
     f = required_facts(shot)
     parts = []
     labels = (("Environment", "environment"), ("Source visual description", "source_description"),
+              ("Phase 2 visual enhancement", "shot_enhancement"), ("Canonical screenplay source", "source_text"),
               ("Costume", "costume"), ("Time of day", "time_of_day"),
               ("Weather", "weather"), ("Characters", "characters"),
               ("Action start", "action_start"), ("Action process / business", "action_process"),

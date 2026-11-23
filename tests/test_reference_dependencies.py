@@ -11,7 +11,8 @@ sys.path.insert(0, os.path.dirname(ROOT))
 from ai_film_editor_nodes.nodes.video.shot_prompt_contract import dependencies_for_shot
 from ai_film_editor_nodes.nodes.video.shot_keyframe_node import pick_scene_image
 from ai_film_editor_nodes.nodes.video import shot_keyframe_node, wan_shot_renderer_node
-from ai_film_editor_nodes.nodes.analyzer import scene_image_generator_node
+from ai_film_editor_nodes.nodes.analyzer import scene_image_generator_node, props_image_generator_node
+from ai_film_editor_nodes.nodes.video import cast_ref_generator_node
 from ai_film_editor_nodes.nodes.video._common import save_png
 
 
@@ -101,20 +102,40 @@ def test_uploaded_scene_reference_is_processed_as_an_empty_scene_for_every_view(
     assert len(manifest) == 3 and all(item["source"] == "uploaded" for item in manifest)
 
 
-def test_wan_failure_is_reported_without_creating_a_clip():
+def test_wan_failure_invalidates_existing_clip_and_blocks_completion():
     with tempfile.TemporaryDirectory() as project:
         os.makedirs(os.path.join(project, "keyframes"), exist_ok=True)
         os.makedirs(os.path.join(project, "clips"), exist_ok=True)
+        os.makedirs(os.path.join(project, "clips_av"), exist_ok=True)
         save_png(torch.zeros(1, 8, 8, 3), os.path.join(project, "keyframes", "shot_001.png"))
+        for path in (os.path.join(project, "clips", "shot_001.mp4"),
+                     os.path.join(project, "clips", "shot_001.json"),
+                     os.path.join(project, "clips_av", "shot_001.mp4")):
+            open(path, "wb").write(b"stale")
         shot = {"shot_id": "shot_001", "scene_id": "scene_001", "character_names": [],
                 "props_list": [], "action": "waits", "duration_seconds": 1}
         with patch.object(wan_shot_renderer_node, "_load_wan", return_value=object()), \
              patch.object(wan_shot_renderer_node, "render_shot", side_effect=RuntimeError("mock wan failure")):
-            result = wan_shot_renderer_node.AFE_WanShotRenderer().render(
-                [shot], project, "style", max_shots=1, approved=True, auto_all=False)
-        report = result["result"][1]
-        assert "失败 1" in report and "shot_001" in report
+            try:
+                wan_shot_renderer_node.AFE_WanShotRenderer().render(
+                    [shot], project, "style", max_shots=1, approved=True, auto_all=False)
+            except RuntimeError as exc:
+                assert "blocked" in str(exc) and "shot_001" in str(exc)
+            else:
+                raise AssertionError("Wan failure was reported as a completed render")
         assert not os.path.exists(os.path.join(project, "clips", "shot_001.mp4"))
+        assert not os.path.exists(os.path.join(project, "clips", "shot_001.json"))
+        assert not os.path.exists(os.path.join(project, "clips_av", "shot_001.mp4"))
+
+
+def test_empty_cast_and_props_are_valid_no_reference_paths():
+    cast_result = cast_ref_generator_node.AFE_CastRefGenerator().generate(
+        [], "style", approved=True, project_name="empty_cast")
+    assert cast_result["result"][0].shape[0] == 0
+    props_result = props_image_generator_node.AFE_PropsImageGenerator().generate(
+        "", props_json="[]", approved=True, project_name="empty_props")
+    assert props_result["result"][0].shape[0] == 0
+    assert json.loads(props_result["result"][2]) == []
 
 
 if __name__ == "__main__":
