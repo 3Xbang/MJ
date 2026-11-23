@@ -38,8 +38,14 @@ _SCENE_HEADER_PATTERNS = [
     r'第[一二三四五六七八九十\d]+场[：:]?[^\n]{0,40}', # 第一场：XXX
     r'(?:INT|EXT)[./]\s*[^\n]{0,60}',           # INT. XXX - DAY
     r'Scene\s*[A-Za-z0-9]+[：:.][^\n]{0,40}',    # Scene 1: XXX
+    # Common screenplay headings/cues are often unbracketed and line-anchored.
+    # Treat them as semantic blocks before a following location heading.
+    r'^[ \t]*(?:TITLE\s+SEQUENCE|TITLE\s+CARD|OPENING\s+TITLES?|END\s+CREDITS?|CREDITS|'
+    r'MONTAGE|QUICK\s+FLASH(?:ES)?|FLASH\s+CUT|BLACK\s+SCREEN|HALF\s+SILHOUETTE|'
+    r'SILHOUETTE|FADE\s+(?:IN|OUT)|CUT\s+TO|TRANSITION)\b[^\n]*',
 ]
-_HEADER_RE = re.compile('|'.join(f'(?:{p})' for p in _SCENE_HEADER_PATTERNS))
+_HEADER_RE = re.compile('|'.join(f'(?:{p})' for p in _SCENE_HEADER_PATTERNS),
+                         re.IGNORECASE | re.MULTILINE)
 
 _SCENE_SOURCE_MAX_CHARS = 2500
 # Bracketed screenplay cues are semantic boundaries even when they are not headings.
@@ -93,9 +99,9 @@ def _section_type(header: str) -> str:
         return "prologue"
     if re.search(r"尾声|结尾|epilogue|ending", text):
         return "epilogue"
-    if re.search(r"黑屏|black\s*screen|转场|transition|淡出|fade", text):
+    if re.search(r"黑屏|black\s*screen|转场|transition|淡出|fade|cut\s+to", text):
         return "transition"
-    if re.search(r"快速闪切|montage|闪切|quick\s*flash|flash\s*cut", text):
+    if re.search(r"快速闪切|montage|闪切|quick\s+flash|flash\s*cut", text):
         return "montage"
     if re.search(r"半剪影|silhouette", text):
         return "transition"
@@ -116,7 +122,7 @@ def _build_scene_map(raw_script: str) -> list[dict]:
     for match in headers:
         header = match.group().strip()
         candidates.append((match.start(), match.end(), header, _section_type(header),
-                           _normalize_scene_key(header), True))
+                           _normalize_scene_key(header), _section_type(header) == "location_scene"))
     for match in cues:
         if any(start <= match.start() < end for start, end in header_ranges):
             continue
@@ -504,9 +510,13 @@ def _validated_source_fragment(source_block_text: str, raw_desc: str, shot: dict
 
     model_fragment = _first_present(shot.get("source_shot_text"), raw_desc, default="")
     if model_fragment:
-        exact_start = source.find(str(model_fragment))
-        if exact_start >= 0:
-            return source[exact_start:exact_start + len(str(model_fragment))], ""
+        model_fragment = str(model_fragment)
+        exact_matches = [match.start() for match in re.finditer(re.escape(model_fragment), source)]
+        if len(exact_matches) == 1:
+            exact_start = exact_matches[0]
+            return source[exact_start:exact_start + len(model_fragment)], ""
+        if len(exact_matches) > 1:
+            return "", "source_shot_text matches multiple source spans; provide unique source_unit_ids or offsets"
         compact_model = _compact_source(model_fragment)
         if compact_model:
             compact_match = re.search(re.escape(compact_model), _compact_source(source))
@@ -564,6 +574,8 @@ def _camera_motion_from_text(text: str) -> str:
     if re.search(r"(?:pan|摇镜).{0,12}(?:right|右)", low) or re.search(
             r"(?:镜头|机位|运镜)?(?:向右(?:移动|横移|平移)?|右移|右横移|右平移)", text):
         return "pan_right"
+    if re.search(r"(?:横移|平移|horizontal\s+pan)", text, re.IGNORECASE):
+        return "pan_horizontal"
     if re.search(r"(?:push(?:es)? in|dolly in|推进|推近)", low if not any(ord(c) > 127 for c in text) else text):
         return "slow_push_in"
     if re.search(r"(?:pull(?:s)? back|dolly out|拉远|拉镜)", low if not any(ord(c) > 127 for c in text) else text):

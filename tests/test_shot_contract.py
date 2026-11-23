@@ -36,6 +36,13 @@ def test_explicit_locked_hold_stays_static_and_dependencies_are_entity_scoped():
     assert deps == {"scene": ["scene_a"], "characters": ["A"], "props": ["key"], "shot": ["shot_7"]}
 
 
+def test_neutral_horizontal_motion_is_preserved_without_inventing_direction():
+    shot = normalize_shot({"shot_id": "shot_horizontal", "source_shot_text": "横移镜头。",
+                           "camera_motion": "pan_horizontal", "camera_motion_source": "script"})
+    assert shot["camera_motion"] == "pan_horizontal"
+    assert "pans horizontally" in build_video_prompt(shot)
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):

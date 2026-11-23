@@ -62,6 +62,7 @@ CAMERA_PHRASES = {
     "slow_pull_back": "the camera slowly pulls back",
     "pan_left": "the camera pans left",
     "pan_right": "the camera pans right",
+    "pan_horizontal": "the camera pans horizontally without a prescribed direction",
     "tracking_shot": "the camera tracks the subject",
     "crane_up": "the camera cranes upward",
     "crane_down": "the camera cranes downward",

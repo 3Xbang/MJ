@@ -158,9 +158,22 @@ def test_assembler_accepts_a_current_audio_copy_with_source_and_audio_signatures
         with open(os.path.join(project, "clips_av", "shot_001.json"), "w", encoding="utf-8") as handle:
             json.dump(dict(metadata, source_render_sig="render-v1", audio_sig="audio-v1"), handle)
         result = movie_assembler_node.AFE_MovieAssembler().assemble(
-            [shot], project, approved=True)
+            [shot], project, audio_manifest=json.dumps({"shot_001": {"audio_sig": "audio-v1"}}), approved=True)
         assert result["result"][0].endswith("final_movie.mp4")
         assert concat.call_args.args[0][0].endswith(os.path.join("clips_av", "shot_001.mp4"))
+
+
+def test_audio_copy_without_current_manifest_falls_back_to_silent_clip():
+    shot = {"shot_id": "shot_001", "scene_id": "scene_001", "character_names": [],
+            "props_list": [], "action": "waits", "duration_seconds": 1}
+    with tempfile.TemporaryDirectory() as project, patch.object(movie_assembler_node, "concat_mp4") as concat:
+        shot, metadata = _write_current_clip_metadata(project, shot)
+        os.makedirs(os.path.join(project, "clips_av"), exist_ok=True)
+        open(os.path.join(project, "clips_av", "shot_001.mp4"), "wb").write(b"audio")
+        with open(os.path.join(project, "clips_av", "shot_001.json"), "w", encoding="utf-8") as handle:
+            json.dump(dict(metadata, source_render_sig="render-v1", audio_sig="audio-v1"), handle)
+        movie_assembler_node.AFE_MovieAssembler().assemble([shot], project, approved=True)
+        assert concat.call_args.args[0][0].endswith(os.path.join("clips", "shot_001.mp4"))
 
 
 def test_stale_audio_copy_does_not_mask_a_current_silent_clip():

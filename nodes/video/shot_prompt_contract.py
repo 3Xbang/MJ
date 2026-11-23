@@ -15,6 +15,7 @@ CAMERA_MOTIONS = {
     "slow_pull_back": "the camera slowly pulls back",
     "pan_left": "the camera pans left",
     "pan_right": "the camera pans right",
+    "pan_horizontal": "the camera pans horizontally without a prescribed direction",
     "tracking_shot": "the camera tracks the subject in a tracking shot",
     "crane_up": "the camera cranes upward",
     "crane_down": "the camera cranes downward",
@@ -82,7 +83,8 @@ def camera_motion_for(shot: dict) -> tuple[str, str]:
     """
     raw = _text(shot.get("camera_motion")).lower().replace(" ", "_")
     aliases = {"push_in": "slow_push_in", "pull_back": "slow_pull_back", "track": "tracking_shot",
-               "pan": "pan_right", "locked": "static", "hold": "static", "locked_off": "static"}
+               "pan": "pan_right", "horizontal_pan": "pan_horizontal", "pan_horizontal": "pan_horizontal",
+               "locked": "static", "hold": "static", "locked_off": "static"}
     raw = aliases.get(raw, raw)
     source = _text(shot.get("camera_motion_source")).lower()
     source_text = " ".join(_text(shot.get(k)) for k in (

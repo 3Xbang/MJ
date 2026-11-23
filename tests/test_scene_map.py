@@ -71,6 +71,27 @@ def test_source_block_text_is_not_truncated():
     assert len(sm[0]["source_text"]) > 2500
 
 
+def test_generic_screenplay_cues_are_semantic_blocks():
+    script = ("TITLE SEQUENCE\nA title card appears.\n"
+              "MONTAGE\nThree rapid inserts.\n"
+              "INT. KITCHEN - DAY\nA cook turns.\n"
+              "CUT TO:\nEXT. GARDEN - DAY\nA bird calls.\n"
+              "FADE OUT\n")
+    sm = m._build_scene_map(script)
+    kinds = [scene["section_type"] for scene in sm]
+    assert kinds[:2] == ["title_sequence", "montage"], kinds
+    assert kinds.count("location_scene") == 2, kinds
+    assert "transition" in kinds, kinds
+
+
+def test_duplicate_verbatim_source_text_is_blocked():
+    source = "She turns.\nShe turns."
+    fragment, error = m._validated_source_fragment(
+        source, "She turns.", {"source_shot_text": "She turns."})
+    assert fragment == ""
+    assert "multiple source spans" in error
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for f in fns:

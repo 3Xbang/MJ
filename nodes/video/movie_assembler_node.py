@@ -142,12 +142,13 @@ def _clip_current(project: str, shot: dict, sid: str, path: str, render_style: s
         if source_meta.get("sig") != source_sig:
             return False, "audio copy wraps a stale render"
         manifest, manifest_present = _load_audio_manifest(project, audio_manifest)
-        if manifest_present:
-            expected_audio_sig = _expected_audio_signature(project, sid, manifest)
-            if not expected_audio_sig:
-                return False, "current audio signature is unavailable"
-            if meta.get("audio_sig") != expected_audio_sig:
-                return False, "audio copy uses a stale audio signature"
+        if not manifest_present:
+            return False, "current audio manifest is unavailable; use the current silent clip"
+        expected_audio_sig = _expected_audio_signature(project, sid, manifest)
+        if not expected_audio_sig:
+            return False, "current audio signature is unavailable"
+        if meta.get("audio_sig") != expected_audio_sig:
+            return False, "audio copy uses a stale audio signature"
     if meta.get("keyframe_sig") != _keyframe_hash(keyframe):
         return False, "clip keyframe signature is stale"
     expected_contract = md5(render_shared_facts(shot), has_dialogue(shot))
