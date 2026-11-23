@@ -28,6 +28,10 @@ logger = get_logger("AFE_ScriptFullParser")
 # from memory (an unreliable generation task).
 
 _SCENE_HEADER_PATTERNS = [
+    # non-location sections: title sequence / prologue / epilogue ... get their own scene,
+    # otherwise their text is swallowed by the next real scene and the shots get the wrong set
+    r'【(?:片头|序幕|序章|序言|引子|开场|开篇|尾声|片尾|结尾|彩蛋|预告|Prologue|Opening|Teaser|Epilogue|Ending|Credits)[^】\n]{0,40}】',
+    r'(?<![^\n])(?:片头|序幕|序章|序言|引子|开场|开篇|尾声|片尾|结尾|彩蛋|预告|Prologue|Opening|Teaser|Epilogue|Ending|Credits)[：:][^\n]{0,40}',
     r'【场景\s*[A-Za-z0-9]+[：:].*?】',          # 【场景 A：XXX - YYY】
     r'场景[一二三四五六七八九十\d]+[：:][^\n]{0,40}',  # 场景一：XXX
     r'第[一二三四五六七八九十\d]+场[：:]?[^\n]{0,40}', # 第一场：XXX
@@ -268,6 +272,18 @@ def _normalize_durations(shots: list, target_seconds: int, default_secs: int) ->
             max(default_secs, (weights[i] / total_weight) * target_seconds), 1
         )
     return shots
+
+
+def _mostly_cjk(text: str, threshold: float = 0.2) -> bool:
+    t = text or ""
+    return bool(t) and sum(1 for c in t if "\u4e00" <= c <= "\u9fff") / len(t) > threshold
+
+
+TO_ENGLISH_SYSTEM = (
+    "You write prompts for an image / video model. Rewrite the shot description as ONE English "
+    "paragraph of at most 60 words, purely visual: subject, action, setting, lighting, mood. "
+    "No quotes of dialogue, no JSON, no explanation. Output only the paragraph."
+)
 
 
 class AFE_ScriptFullParser:
@@ -555,6 +571,17 @@ class AFE_ScriptFullParser:
             except Exception as exc:
                 logger.warning(f"[AFE_ScriptFullParser] Phase 2 failed for {shot_id}: {exc}")
                 p2_data = {}
+
+            # 4b. the shot description feeds image/video models: make sure it is English
+            sd = str(p2_data.get("shot_description") or "").strip()
+            if not sd or _mostly_cjk(sd):
+                try:
+                    eng = self._call_llm(TO_ENGLISH_SYSTEM, raw_desc or sd, model_path, max_new_tokens=160).strip()
+                    if eng and not _mostly_cjk(eng):
+                        sd = eng
+                except Exception as exc:
+                    logger.warning("[AFE_ScriptFullParser] English rewrite failed for %s: %s", shot_id, exc)
+                p2_data["shot_description"] = sd or raw_desc
 
             # 5. Merge minimal + phase2 into full shot dict
             full_shot = {
