@@ -116,6 +116,7 @@ from ai_film_editor_nodes.nodes.video.cast_ref_generator_node import AFE_CastRef
 from ai_film_editor_nodes.nodes.video.shot_keyframe_node import AFE_ShotKeyframeGenerator
 from ai_film_editor_nodes.nodes.video.wan_shot_renderer_node import AFE_WanShotRenderer
 from ai_film_editor_nodes.nodes.video.movie_assembler_node import AFE_MovieAssembler
+from ai_film_editor_nodes.nodes.video.analysis_loader_node import AFE_AnalysisLoader
 
 NODE_CLASS_MAPPINGS = {
     # Part 1
@@ -212,6 +213,7 @@ NODE_CLASS_MAPPINGS = {
     "AFE_ShotKeyframeGenerator": AFE_ShotKeyframeGenerator,
     "AFE_WanShotRenderer":      AFE_WanShotRenderer,
     "AFE_MovieAssembler":       AFE_MovieAssembler,
+    "AFE_AnalysisLoader":       AFE_AnalysisLoader,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -307,7 +309,15 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AFE_ShotKeyframeGenerator": "🖼 Shot Keyframe Generator (分镜首帧 Qwen2.1)",
     "AFE_WanShotRenderer":      "🎬 Wan Shot Renderer (分镜视频渲染 Wan2.2)",
     "AFE_MovieAssembler":       "🎞 Movie Assembler (成片合成)",
+    "AFE_AnalysisLoader":       "📂 Analysis Loader (载入剧本分析)",
 }
+
+# Web UI for non-technical users: http://<comfyui address>/afe/
+try:
+    from ai_film_editor_nodes.webui import server as _afe_webui
+    _afe_webui.register()
+except Exception as _afe_err:  # the UI must never stop the nodes from loading
+    print(f"[AFE] web UI not started: {_afe_err}")
 
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]
 

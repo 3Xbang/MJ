@@ -211,9 +211,13 @@ def make_progress(total: int):
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 
+def safe_project_name(name: str) -> str:
+    return "".join(c for c in (name or "").strip() if c.isalnum() or c in "-_ ").strip() or "afe_project"
+
+
 def project_dir(project_name: str) -> str:
     """<ComfyUI output>/afe_projects/<project_name>  (created if missing)."""
-    safe = "".join(c for c in project_name.strip() if c.isalnum() or c in "-_ ").strip() or "afe_project"
+    safe = safe_project_name(project_name)
     try:
         import folder_paths
         base = folder_paths.get_output_directory()

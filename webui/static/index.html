@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI 影视工坊</title>
+<link rel="stylesheet" href="/afe/static/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <div class="logo">🎬 AI 影视工坊<small>从剧本到成片</small></div>
+    <div class="grow"></div>
+    <div class="proj">
+      <label for="projName" style="font-weight:600">项目</label>
+      <input id="projName" type="text" list="projList" placeholder="项目名称">
+      <datalist id="projList"></datalist>
+      <button id="projOpen">打开 / 新建</button>
+    </div>
+  </div>
+</header>
+<main>
+  <div id="banner"></div>
+  <div class="stepper" id="stepper"></div>
+  <div id="steps"></div>
+</main>
+<div class="dock hidden" id="dock">
+  <div class="dock-in">
+    <div class="msg">
+      <div id="dockMsg"></div>
+      <div class="bar" id="dockBar"><i></i></div>
+    </div>
+    <div id="dockTime"></div>
+    <button id="dockCancel" data-act="cancel">取消</button>
+    <button id="dockClose" data-act="close-dock" class="hidden">知道了</button>
+    <div class="detail hidden" id="dockDetail"></div>
+  </div>
+</div>
+<script src="/afe/static/app.js"></script>
+</body>
+</html>

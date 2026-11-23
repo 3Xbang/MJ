@@ -127,4 +127,5 @@ class AFE_PropsAnalyzer:
         props_json = json.dumps(props_list, ensure_ascii=False)
 
         logger.info(f"PropsAnalyzer: found {len(props_list)} unique props in {len(shots)} shots")
-        return {"ui": {"text": [props_report]}, "result": (props_json, len(props_list), props_report)}
+        return {"ui": {"text": [props_report], "afe_props": [props_json]},
+                "result": (props_json, len(props_list), props_report)}

@@ -87,4 +87,5 @@ class AFE_MovieAssembler:
                          + (" ..." if len(missing) > 12 else ""))
         report = "\n".join(lines)
         logger.info(report)
-        return {"ui": {"text": [report]}, "result": (out_path, report)}
+        return {"ui": {"text": [report], "afe_movie": [os.path.basename(out_path)]},
+                "result": (out_path, report)}

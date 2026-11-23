@@ -20,6 +20,7 @@ exactly the shots it affects and nothing else.
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import shutil
@@ -200,6 +201,7 @@ class AFE_ShotKeyframeGenerator:
 
         model = clip = vae = cached = None
         chosen_frames, preview, lines = [], [], ["🖼 首帧（选用的版本带 * 号）"]
+        manifest = []
         bar = make_progress(len(shots) * K)
         made = reused = failed = 0
 
@@ -258,6 +260,9 @@ class AFE_ShotKeyframeGenerator:
             chosen_frames.append(label_image(versions[use], f"{sid} v{use + 1}", 768))
             for j, v in enumerate(versions):
                 if v is not None:
+                    manifest.append({"shot": sid, "variant": j + 1,
+                                     "file": f"keyframes/{os.path.basename(version_paths[j])}",
+                                     "chosen": j == use})
                     preview.append(label_image(v, f"{sid} v{j + 1}" + (" *" if j == use else ""), 512))
             if K > 1 or salt or vidx:
                 note = f"  {sid}：选用 v{use + 1}/{K}，地点图={VIEW_LABEL[vidx]}" + (f"，第{salt}次重画" if salt else "")
@@ -269,4 +274,5 @@ class AFE_ShotKeyframeGenerator:
         report = "\n".join(lines)
         kf_batch = align_batch(chosen_frames)
         prev_batch = align_batch(preview) if preview else kf_batch
-        return {"ui": {"text": [report]}, "result": (kf_batch, proj, report, prev_batch)}
+        return {"ui": {"text": [report], "afe_manifest": [json.dumps(manifest, ensure_ascii=False)]},
+                "result": (kf_batch, proj, report, prev_batch)}

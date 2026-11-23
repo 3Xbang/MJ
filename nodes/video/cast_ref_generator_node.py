@@ -16,6 +16,7 @@ signature of everything it depends on, so changed inputs are redrawn and unchang
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 
@@ -109,6 +110,7 @@ class AFE_CastRefGenerator:
         model = clip = vae = None
         bar = make_progress(len(cast) * K)
         selected, preview, lines = [], [], ["🎭 角色参考图（选用的版本带 * 号）"]
+        manifest = []
         made = reused = 0
 
         for ci, member in enumerate(cast):
@@ -137,6 +139,9 @@ class AFE_CastRefGenerator:
                         lines.append(f"  ❌ C{ci + 1} {member['name']} v{k}: {e}")
                         img = torch.ones(1, height, width, 3)
                 versions.append(img)
+                if os.path.exists(path):
+                    manifest.append({"char": ci + 1, "name": member["name"], "variant": k,
+                                     "file": f"cast_refs/{os.path.basename(path)}", "chosen": k == chosen})
                 preview.append(label_image(img, f"C{ci + 1} v{k}" + (" *" if k == chosen else ""), 512))
                 if bar:
                     bar.update(1)
@@ -147,5 +152,5 @@ class AFE_CastRefGenerator:
         lines.insert(1, f"新画 {made} / 复用 {reused}")
         lines.append("挑选方法：在 picks 里写「角色序号:版本号」，如 1:2, 2:3，然后再点 Queue。")
         report = "\n".join(lines)
-        return {"ui": {"text": [report]},
+        return {"ui": {"text": [report], "afe_manifest": [json.dumps(manifest, ensure_ascii=False)]},
                 "result": (align_batch(selected), report, align_batch(preview))}

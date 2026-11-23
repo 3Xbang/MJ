@@ -629,7 +629,8 @@ class AFE_ScriptFullParser:
         cast_json  = json.dumps(cast_list,  ensure_ascii=False, indent=2)
 
         return {
-            "ui": {"text": [report]},
+            "ui": {"text": [report],
+                   "afe_analysis": [json.dumps({"shots": full_shots, "cast": cast_list}, ensure_ascii=False)]},
             "result": (
                 full_shots, cast_list,
                 shots_json, cast_json,

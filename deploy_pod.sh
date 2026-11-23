@@ -113,5 +113,7 @@ if grep -E "ai_film_editor_nodes" /tmp/comfyui.log | grep -q "IMPORT FAILED"; th
   echo "❌ AFE 节点加载失败。请把下面这段发给我："
   grep -n -i -B2 -A12 "ai_film_editor" /tmp/comfyui.log | tail -40
 else
-  echo "✅ 部署完成。在浏览器按 F5 刷新 ComfyUI，再加载工作流 now-03.json"
+  echo "✅ 部署完成。"
+  echo "   给客户用的网页界面：在 ComfyUI 网址后面加 /afe/ （例如 https://xxxx-8188.proxy.runpod.net/afe/ ）"
+  echo "   专业画布：在浏览器按 F5 刷新 ComfyUI，再加载工作流 now-03.json"
 fi

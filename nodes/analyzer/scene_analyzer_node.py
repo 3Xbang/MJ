@@ -221,4 +221,5 @@ class AFE_SceneAnalyzer:
         scenes_json = json.dumps(scenes, ensure_ascii=False)
 
         logger.info(f"SceneAnalyzer: found {len(scenes)} unique scenes in {len(shots)} shots")
-        return {"ui": {"text": [scene_report]}, "result": (scenes_json, len(scenes), scene_report)}
+        return {"ui": {"text": [scene_report], "afe_scenes": [scenes_json]},
+                "result": (scenes_json, len(scenes), scene_report)}

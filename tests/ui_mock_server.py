@@ -1,0 +1,276 @@
+"""
+Local stand-in for ComfyUI, used to test the web UI end to end without a GPU.
+
+* Serves the real /afe/* routes (webui/server.py) and the ComfyUI endpoints the UI relies on
+  (/prompt, /history, /view, /interrupt, /ws).
+* Executes the submitted API prompt node by node with the REAL node classes. Only the pieces that
+  need a GPU are replaced: the LLM script parser, the image generators and the Wan renderer.
+  File writing, signatures, picks/redo, manifests, ffmpeg joining are all the real code.
+
+Run:  python tests/ui_mock_server.py [port]
+"""
+from __future__ import annotations
+
+import asyncio
+import json
+import os
+import sys
+import tempfile
+import time
+import types
+import uuid
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.dirname(os.path.dirname(HERE)))            # .../MJ  (package parent)
+if os.environ.get("IOF_PATH"):
+    sys.path.insert(0, os.environ["IOF_PATH"])                         # imageio-ffmpeg location
+
+import torch
+from aiohttp import web, WSMsgType
+
+OUT = os.environ.get("AFE_MOCK_OUT") or tempfile.mkdtemp(prefix="afe_out_")
+sys.modules["folder_paths"] = types.SimpleNamespace(get_output_directory=lambda: OUT)
+
+import ai_film_editor_nodes as pkg  # noqa: E402
+from ai_film_editor_nodes.nodes.video import (  # noqa: E402
+    _common as cc, cast_ref_generator_node as cr, shot_keyframe_node as kf, wan_shot_renderer_node as wn,
+)
+from ai_film_editor_nodes.webui import server as ui  # noqa: E402
+
+STEP_DELAY = float(os.environ.get("AFE_MOCK_DELAY", "0.4"))
+
+
+# ── fakes for the GPU parts ──────────────────────────────────────────────────
+
+def fake_img(h, w, seed):
+    r, g, b = ((seed * 37) % 200 + 40) / 255, ((seed * 91) % 200 + 40) / 255, ((seed * 53) % 200 + 40) / 255
+    img = torch.zeros(1, h, w, 3)
+    img[..., 0], img[..., 1], img[..., 2] = r, g, b
+    stripe = torch.linspace(0.2, 1.0, w).view(1, 1, w, 1)
+    return (img * stripe).clamp(0, 1)
+
+
+cr._generate_scene_image = lambda **kw: fake_img(kw["height"], kw["width"], kw["seed"])
+cr._load_models = lambda: (None, None, None)
+kf._generate_frame = lambda cached, clip, vae, images, prompt, negative, seed, resolution: fake_img(288, 512, seed)
+kf._load_models = lambda: (None, None, None)
+kf.call = lambda cls, **k: (None,)
+kf.get_node = lambda n: None
+wn._load_wan = lambda fast: ("m",)
+
+
+def _fake_render_shot(models, key, prompt, w, h, dur, seed, fast, anchor):
+    n = min(int(dur * 16) + 1, 33)
+    base = key[0] if key.shape[0] else fake_img(h, w, seed)[0]
+    frames = []
+    for i in range(n):
+        f = torch.roll(base, shifts=i * 3, dims=1)
+        f = torch.nn.functional.interpolate(f.permute(2, 0, 1)[None], size=(72, 128))[0].permute(1, 2, 0)
+        frames.append(f)
+    return torch.stack(frames)
+
+
+wn.render_shot = _fake_render_shot
+
+
+def fake_parser(raw_script, **kw):
+    if "FAIL" in raw_script:
+        raise RuntimeError("CUDA out of memory (mock)")
+    cast = [
+        {"name": "阿明", "role_type": "lead", "gender": "male", "age_range": "25", "appearance_en": "short black hair, round glasses", "default_costume_en": "red apron"},
+        {"name": "小红", "role_type": "supporting", "gender": "female", "age_range": "23", "appearance_en": "long brown hair", "default_costume_en": "blue dress"},
+    ]
+    shots = []
+    for i in range(6):
+        scene = "超市外卖厨房" if i < 4 else "公寓客厅"
+        shots.append({
+            "shot_id": f"shot_{i + 1:03d}", "scene_name": scene, "scene_name_en": "Supermarket" if i < 4 else "Apartment",
+            "scene_environment_en": "bright interior, steel counter" if i < 4 else "warm living room, sofa",
+            "character_names": ["阿明"] if i % 2 == 0 else ["阿明", "小红"],
+            "dialogue": "你好" if i == 1 else "（无）", "props_list": ["佛珠", "茶杯"][: 1 + i % 2],
+            "shot_type": "medium close-up", "camera_angle": "medium", "camera_motion": "static",
+            "shot_description": f"Shot {i + 1}: a person works at the counter", "action": "stacks boxes", "emotion": "calm",
+            "lighting": "cold white LED", "lighting_style": "cold white LED", "location": scene,
+            "time_of_day": "afternoon", "weather": "indoor", "duration_seconds": 5.0, "costume_en": "red apron",
+        })
+    report = f"✅ 剧本解析完成（模拟）\n分镜 {len(shots)}"
+    return {"ui": {"text": [report], "afe_analysis": [json.dumps({"shots": shots, "cast": cast}, ensure_ascii=False)]},
+            "result": (shots, cast, "", "", len(shots), 2, 3, report)}
+
+
+def fake_scene_gen(**kw):
+    n = len(json.loads(kw["scenes_json"]))
+    return tuple(torch.cat([fake_img(576, 1024, 10 * i + v) for i in range(n)]) for v in range(3)) + ("ok",)
+
+
+def fake_props_gen(**kw):
+    n = len(json.loads(kw["props_json"]))
+    return (torch.cat([fake_img(256, 256, 100 + i) for i in range(n)]), "ok")
+
+
+FAKES = {"AFE_ScriptFullParser": fake_parser, "AFE_SceneImageGenerator": fake_scene_gen,
+         "AFE_PropsImageGenerator": fake_props_gen}
+
+
+class SaveImage:                      # stand-in for ComfyUI's core node
+    RETURN_TYPES = ()
+    FUNCTION = "save"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {"images": ("IMAGE",), "filename_prefix": ("STRING", {"default": "ComfyUI"})}}
+
+
+CLASSES = dict(pkg.NODE_CLASS_MAPPINGS, SaveImage=SaveImage)
+
+
+# ── mini ComfyUI ─────────────────────────────────────────────────────────────
+
+class Mock:
+    def __init__(self):
+        self.history, self.clients, self.interrupt, self.counter = {}, {}, False, 0
+        self.queue = asyncio.Queue()
+
+    async def send(self, client, type_, data):
+        ws = self.clients.get(client)
+        if ws is not None and not ws.closed:
+            await ws.send_json({"type": type_, "data": data})
+
+    async def worker(self):
+        while True:
+            pid, prompt, client = await self.queue.get()
+            try:
+                await self.execute(pid, prompt, client)
+            except Exception as e:           # never kill the worker
+                print("mock worker error", e)
+
+    def order(self, prompt):
+        seen, out = set(), []
+
+        def visit(n):
+            if n in seen:
+                return
+            seen.add(n)
+            for v in prompt[n]["inputs"].values():
+                if isinstance(v, list) and len(v) == 2 and isinstance(v[0], str) and v[0] in prompt:
+                    visit(v[0])
+            out.append(n)
+        for n in prompt:
+            visit(n)
+        return out
+
+    async def execute(self, pid, prompt, client):
+        outs, uis, messages = {}, {}, []
+        status = "success"
+        self.interrupt = False
+        try:
+            for nid in self.order(prompt):
+                if self.interrupt:
+                    raise KeyboardInterrupt
+                node = prompt[nid]
+                ct = node["class_type"]
+                await self.send(client, "executing", {"node": nid, "prompt_id": pid})
+                kwargs = {k: (outs[v[0]][v[1]] if isinstance(v, list) and len(v) == 2 and isinstance(v[0], str) else v)
+                          for k, v in node["inputs"].items()}
+                for tick in range(4):
+                    await self.send(client, "progress", {"value": tick + 1, "max": 4, "node": nid, "prompt_id": pid})
+                    await asyncio.sleep(STEP_DELAY / 4)
+                    if self.interrupt:
+                        raise KeyboardInterrupt
+                if ct == "SaveImage":
+                    res = await asyncio.to_thread(self.save_image, **kwargs)
+                elif ct in FAKES:
+                    res = await asyncio.to_thread(FAKES[ct], **kwargs)
+                else:
+                    cls = CLASSES[ct]
+                    res = await asyncio.to_thread(lambda: getattr(cls(), cls.FUNCTION)(**kwargs))
+                if isinstance(res, dict):
+                    outs[nid] = res["result"]
+                    if res.get("ui"):
+                        uis[nid] = res["ui"]
+                else:
+                    outs[nid] = res
+        except KeyboardInterrupt:
+            status = "error"
+            messages = [["execution_interrupted", {"prompt_id": pid}]]
+        except Exception as e:
+            status = "error"
+            messages = [["execution_error", {"prompt_id": pid, "node_type": ct, "exception_message": str(e)}]]
+        uis.update(getattr(self, "_img_uis", {})); self._img_uis = {}
+        self.history[pid] = {"outputs": uis, "status": {"status_str": status, "messages": messages}}
+        await self.send(client, "executing", {"node": None, "prompt_id": pid})
+
+    def save_image(self, images, filename_prefix):
+        sub, base = os.path.split(filename_prefix)
+        folder = os.path.join(OUT, sub)
+        os.makedirs(folder, exist_ok=True)
+        existing = [f for f in os.listdir(folder) if f.startswith(base + "_")]
+        n0 = len(existing)
+        files = []
+        for i in range(images.shape[0]):
+            name = f"{base}_{n0 + i + 1:05d}_.png"
+            cc.save_png(images[i:i + 1], os.path.join(folder, name))
+            files.append({"filename": name, "subfolder": sub.replace("\\", "/"), "type": "output"})
+        return {"ui": {"images": files}, "result": ()}
+
+
+def make_app(port: int):
+    mock = Mock()
+    routes = web.RouteTableDef()
+    api = ui.Api(out_dir=lambda: OUT, comfy_base=f"http://127.0.0.1:{port}", node_classes=CLASSES,
+                 options=lambda: {"styles": pkg.NODE_CLASS_MAPPINGS["AFE_ScriptFullParser"].RENDER_STYLES,
+                                  "episodes": pkg.NODE_CLASS_MAPPINGS["AFE_ScriptFullParser"].EPISODE_FORMATS})
+    api.attach(routes)
+
+    @routes.post("/prompt")
+    async def prompt(request):
+        body = await request.json()
+        p = body["prompt"]
+        missing = [n["class_type"] for n in p.values() if n["class_type"] not in CLASSES]
+        if missing:
+            return web.json_response({"error": {"type": "invalid_prompt"}, "node_errors": {m: "missing" for m in missing}}, status=400)
+        pid = str(uuid.uuid4())
+        mock.queue.put_nowait((pid, p, body.get("client_id")))
+        return web.json_response({"prompt_id": pid, "number": 1})
+
+    @routes.get("/history/{pid}")
+    async def history(request):
+        pid = request.match_info["pid"]
+        return web.json_response({pid: mock.history[pid]} if pid in mock.history else {})
+
+    @routes.get("/view")
+    async def view(request):
+        q = request.query
+        path = os.path.join(OUT, q.get("subfolder", ""), q["filename"])
+        if not os.path.isfile(path):
+            raise web.HTTPNotFound()
+        return web.FileResponse(path)
+
+    @routes.post("/interrupt")
+    async def interrupt(request):
+        mock.interrupt = True
+        return web.json_response({})
+
+    @routes.get("/ws")
+    async def ws(request):
+        sock = web.WebSocketResponse()
+        await sock.prepare(request)
+        mock.clients[request.query.get("clientId")] = sock
+        async for msg in sock:
+            if msg.type == WSMsgType.ERROR:
+                break
+        return sock
+
+    app = web.Application()
+    app.add_routes(routes)
+
+    async def start(app):
+        app["worker"] = asyncio.create_task(mock.worker())
+    app.on_startup.append(start)
+    return app
+
+
+if __name__ == "__main__":
+    port = int(sys.argv[1]) if len(sys.argv) > 1 else 8199
+    print(f"mock ComfyUI + AFE UI on http://127.0.0.1:{port}/afe/   (files in {OUT})", flush=True)
+    web.run_app(make_app(port), host="127.0.0.1", port=port, print=None)
