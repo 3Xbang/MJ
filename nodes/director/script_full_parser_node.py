@@ -370,36 +370,65 @@ def _mostly_cjk(text: str, threshold: float = 0.2) -> bool:
     return bool(t) and sum(1 for c in t if "\u4e00" <= c <= "\u9fff") / len(t) > threshold
 
 
+_NULL_WORDS = {"", "null", "none", "n/a", "nil"}
+
+
+def _clean_semantic(value):
+    """Remove JSON null markers recursively without turning them into prompt facts."""
+    if value is None:
+        return None
+    if isinstance(value, list):
+        cleaned = [_clean_semantic(item) for item in value]
+        return [item for item in cleaned if item is not None]
+    if isinstance(value, tuple):
+        cleaned = [_clean_semantic(item) for item in value]
+        return [item for item in cleaned if item is not None]
+    if isinstance(value, dict):
+        return {key: cleaned for key, item in value.items()
+                if (cleaned := _clean_semantic(item)) is not None}
+    if isinstance(value, str):
+        return None if value.strip().lower() in _NULL_WORDS else value.strip()
+    return value
+
+
 def _present(value) -> bool:
-    """Treat JSON null/empty values as absent during phase merging."""
+    value = _clean_semantic(value)
     if value is None:
         return False
     if isinstance(value, (list, tuple, dict)):
         return bool(value)
-    return str(value).strip().lower() not in {"", "null", "none", "n/a"}
+    return True
 
 
 def _first_present(*values, default=""):
     for value in values:
-        if _present(value):
-            return value
+        cleaned = _clean_semantic(value)
+        if _present(cleaned):
+            return cleaned
     return default
 
 
 _CAMERA_STATIC_CUE_RE = re.compile(
-    r"\b(?:static|locked(?:[- ]off)?|hold|fixed camera|still camera)\b|"
-    r"(?:静止|固定机位|固定镜头|定机位|保持不动|停留)", re.IGNORECASE,
+    # Do not treat an ordinary action such as "hold the cup" as a locked shot.
+    r"\b(?:static|fixed|still)\s+(?:camera|shot|frame|view)\b|"
+    r"\b(?:locked(?:[- ]off)?|fixed|still)\s+(?:camera|shot|frame|view)\b|"
+    r"\b(?:camera|shot|frame|view)\s+(?:is\s+)?(?:static|fixed|still|locked(?:[- ]off)?)\b|"
+    r"\bhold\s+(?:on\s+)?(?:the\s+)?(?:camera|shot|frame|view)\b|"
+    r"(?:静止|固定机位|固定镜头|定机位|保持不动|镜头停留|画面停留)", re.IGNORECASE,
 )
 _CAMERA_MOTION_CUE_RE = re.compile(
+    r"\b(?:camera|shot|frame)\s+(?:slowly\s+)?(?:push(?:es)? in|dolly|pull(?:s)? back|zoom|pan(?:s)?|"
+    r"track(?:s)?|crane|handheld|orbit(?:s)?)\b|"
     r"\b(?:push(?:es)? in|dolly|pull(?:s)? back|zoom|pan(?:s)?|tracking|track(?:s)?|"
     r"crane|handheld|orbit(?:s)?|camera movement|camera moves?)\b|"
-    r"(?:推近|推进|拉远|拉镜|变焦|摇镜|跟拍|升镜|降镜|手持|环绕|运镜)", re.IGNORECASE,
+    r"(?:镜头|机位|运镜).{0,12}(?:推近|推进|拉远|拉镜|变焦|摇镜|跟拍|升镜|降镜|手持|环绕)|"
+    r"(?:推近|推进|拉远|拉镜|变焦|摇镜|跟拍|升镜|降镜|手持|环绕).{0,12}(?:镜头|机位|运镜)", re.IGNORECASE,
 )
 
 
 def _camera_motion_from_phases(phase1: dict, phase2: dict, source_text: str, raw_desc: str) -> tuple[str, str, bool]:
     """Select camera data without allowing a phase-2 model default to erase provenance."""
-    source = f"{source_text} {raw_desc}"
+    source = source_text
     static_cue = bool(_CAMERA_STATIC_CUE_RE.search(source))
     motion_cue = bool(_CAMERA_MOTION_CUE_RE.search(source))
     p1_motion = str(phase1.get("camera_motion") or "").strip()
@@ -407,15 +436,17 @@ def _camera_motion_from_phases(phase1: dict, phase2: dict, source_text: str, raw
     p2_motion = str(phase2.get("camera_motion") or "").strip()
     p2_source = str(phase2.get("camera_motion_source") or "").strip().lower()
 
-    # Phase 1 is the screenplay pass.  Preserve an explicitly scripted motion,
-    # but only accept static when its provenance is explicit or the source has a hold cue.
-    if p1_motion and (p1_source == "script" or motion_cue or (p1_motion.lower() == "static" and static_cue)):
-        if p1_motion.lower() != "static" or static_cue or p1_source == "script":
-            return p1_motion, "script", True
-    if p2_motion and p2_source == "script" and (p2_motion.lower() != "static" or static_cue or motion_cue):
+    # A model's ``camera_motion_source`` is not proof that the screenplay said
+    # it. Preserve only motion wording found in the original source block, and
+    # authorize static only for a camera/shot-specific lock cue.
+    if p1_motion and p1_motion.lower() != "static" and (p1_source == "script" and motion_cue):
+        return p1_motion, "script", True
+    if p1_motion.lower() == "static" and static_cue:
+        return p1_motion, "script", True
+    if p2_motion and p2_motion.lower() != "static" and p2_source == "script" and motion_cue:
         return p2_motion, "script", True
-    if p2_motion and p2_motion.lower() != "static" and p2_source not in {"script", "llm"}:
-        return p2_motion, "derived", False
+    if p2_motion.lower() == "static" and static_cue:
+        return p2_motion, "script", True
     # Let normalize_shot derive a non-static motion from the shot semantics.
     return "", "derived", False
 
@@ -712,10 +743,10 @@ class AFE_ScriptFullParser:
             source_text = source_block.get("source_text", "") if source_block else ""
             if not source_text:
                 source_text = scene_info.get("source_text", "") if scene_info else ""
-            char_names = shot.get("character_names", [])
-            raw_desc   = shot.get("raw_description", "") or source_text
-            dialogue   = shot.get("dialogue", None)
-            props_list = shot.get("props_list", [])
+            char_names = _clean_semantic(shot.get("character_names")) or []
+            raw_desc   = _first_present(shot.get("raw_description"), source_text, default="")
+            dialogue   = _first_present(shot.get("dialogue"), default="")
+            props_list = _clean_semantic(shot.get("props_list")) or []
 
             logger.info(f"[AFE_ScriptFullParser] Phase 2: shot {i + 1}/{total} ({shot_id})")
 
@@ -750,16 +781,18 @@ class AFE_ScriptFullParser:
                 logger.warning(f"[AFE_ScriptFullParser] Phase 2 failed for {shot_id}: {exc}")
                 p2_data = {}
 
-            # 4b. the shot description feeds image/video models: make sure it is English
-            sd = str(p2_data.get("shot_description") or "").strip()
-            if not sd or _mostly_cjk(sd):
+            # A phase-2 literal "null" is semantically absent. Keep the full
+            # phase-1/source description so no prop, action, or costume detail
+            # disappears before the shared prompt contract is built.
+            sd = _first_present(p2_data.get("shot_description"), raw_desc, default="")
+            if _mostly_cjk(sd):
                 try:
-                    eng = self._call_llm(TO_ENGLISH_SYSTEM, raw_desc or sd, model_path, max_new_tokens=160).strip()
+                    eng = self._call_llm(TO_ENGLISH_SYSTEM, sd, model_path, max_new_tokens=160).strip()
                     if eng and not _mostly_cjk(eng):
                         sd = eng
                 except Exception as exc:
                     logger.warning("[AFE_ScriptFullParser] English rewrite failed for %s: %s", shot_id, exc)
-                p2_data["shot_description"] = sd or raw_desc
+            p2_data["shot_description"] = sd
 
             camera_motion, camera_motion_source, camera_motion_explicit = _camera_motion_from_phases(
                 shot, p2_data, source_text, raw_desc
@@ -801,6 +834,7 @@ class AFE_ScriptFullParser:
                 "scene_id":          scene_id,
                 "scene_occurrence_id": occurrence_id,
                 "source_block_id":   source_block_id or None,
+                "source_text":       source_text,
                 "scene_assignment_error": shot.get("scene_assignment_error", ""),
                 "environment": {
                     "description": scene_env.get(scene_idx, {}).get("environment_prompt_en", ""),

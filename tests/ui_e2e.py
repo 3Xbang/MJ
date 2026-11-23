@@ -248,8 +248,8 @@ def main():
             page.click("#side .stale button")                      # first stale step = 2 (materials)
             wait_idle(page, 90000)
             after = stats()
-            check("only the pictures that depend on uploads were redrawn (4 Qwen edits, no new text-to-image)",
-                  after["qwen"] == before["qwen"] + 4 and after["scene"] == before["scene"]
+            check("only the pictures that depend on uploads were redrawn (5 Qwen edits, no new text-to-image)",
+                  after["qwen"] == before["qwen"] + 5 and after["scene"] == before["scene"]
                   and after["prop"] == before["prop"] and after["cast"] == before["cast"], f"{before} -> {after}")
             page.wait_for_selector(".card[data-step='2'] .group")
             ming = page.inner_text(".card[data-step='2'] .group:has(h3:has-text('阿明'))")

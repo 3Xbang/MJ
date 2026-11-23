@@ -23,25 +23,51 @@ CAMERA_MOTIONS = {
 }
 
 _STATIC_CAMERA_CUES = re.compile(
-    r"\b(?:static|locked(?:[- ]off)?|hold|fixed camera|still camera)\b|"
-    r"(?:静止|固定机位|固定镜头|定机位|保持不动|停留)", re.IGNORECASE,
+    # "hold" is a camera cue only when it names the shot/frame/camera. A
+    # screenplay action such as "hold the cup" must not lock the camera.
+    r"\b(?:static|fixed|still)\s+(?:camera|shot|frame|view)\b|"
+    r"\b(?:locked(?:[- ]off)?|fixed|still)\s+(?:camera|shot|frame|view)\b|"
+    r"\b(?:camera|shot|frame|view)\s+(?:is\s+)?(?:static|fixed|still|locked(?:[- ]off)?)\b|"
+    r"\bhold\s+(?:on\s+)?(?:the\s+)?(?:camera|shot|frame|view)\b|"
+    r"(?:静止|固定机位|固定镜头|定机位|保持不动|镜头停留|画面停留)", re.IGNORECASE,
 )
 
 
-def _text(value: Any) -> str:
+def _clean(value: Any):
     if value is None:
         return ""
     if isinstance(value, (list, tuple)):
+        cleaned = []
+        for item in value:
+            item = _clean(item)
+            if item not in ("", None):
+                cleaned.append(item)
+        return cleaned
+    if isinstance(value, str) and value.strip().lower() in {"", "null", "none", "n/a", "nil"}:
+        return ""
+    return value.strip() if isinstance(value, str) else value
+
+
+def _text(value: Any) -> str:
+    value = _clean(value)
+    if isinstance(value, (list, tuple)):
         return ", ".join(str(v).strip() for v in value if str(v).strip())
-    return str(value).strip()
+    return str(value).strip() if value not in (None, "") else ""
+
+
+def _first_text(*values) -> str:
+    for value in values:
+        text = _text(value)
+        if text:
+            return text
+    return ""
 
 
 def _list(value: Any) -> list:
-    if value is None:
-        return []
+    value = _clean(value)
     if isinstance(value, (list, tuple)):
-        return [v for v in value if v not in (None, "")]
-    return [value] if str(value).strip() else []
+        return [item for item in value if item not in (None, "")]
+    return [value] if value not in (None, "") and str(value).strip() else []
 
 
 def camera_motion_for(shot: dict) -> tuple[str, str]:
@@ -60,11 +86,15 @@ def camera_motion_for(shot: dict) -> tuple[str, str]:
     source_text = " ".join(_text(shot.get(k)) for k in (
         "source_text", "screenplay_source_text", "raw_description", "shot_description", "director_notes"
     ))
-    explicit_static = bool(shot.get("locked_camera") or shot.get("camera_motion_explicit"))
+    # Only a validated contract flag or camera/shot wording in the preserved
+    # screenplay text can authorize a locked camera. Model provenance alone is
+    # deliberately insufficient, because the model may label ordinary dialogue
+    # or an object action as ``static``.
+    explicit_static = bool(shot.get("locked_camera"))
     explicit_static = explicit_static or bool(_STATIC_CAMERA_CUES.search(source_text))
     if raw in CAMERA_MOTIONS and raw != "static":
         return raw, source or "script"
-    if raw == "static" and (explicit_static or source == "script"):
+    if raw == "static" and explicit_static:
         return "static", "script"
     text = " ".join(_text(shot.get(k)) for k in ("shot_type", "action", "business", "section_type", "director_notes")).lower()
     section = _text(shot.get("section_type")).lower()
@@ -88,6 +118,8 @@ def normalize_shot(shot: dict, index: int = 0) -> dict:
     motion, motion_source = camera_motion_for(src)
     environment = src.get("environment") if isinstance(src.get("environment"), dict) else {}
     environment = dict(environment)
+    for env_key, env_value in list(environment.items()):
+        environment[env_key] = _text(env_value)
     for key, old in (("description", "scene_environment_en"), ("location", "location"),
                      ("time_of_day", "time_of_day"), ("weather", "weather"),
                      ("lighting", "lighting"), ("color_temperature", "color_temperature")):
@@ -102,23 +134,28 @@ def normalize_shot(shot: dict, index: int = 0) -> dict:
         "scene_occurrence_id": src.get("scene_occurrence_id") or f"occurrence_{index + 1:03d}",
         "source_block_id": src.get("source_block_id") or f"block_{index + 1:03d}",
         "environment": environment,
-        "time_of_day": src.get("time_of_day") or environment.get("time_of_day", ""),
-        "weather": src.get("weather") or environment.get("weather", ""),
-        "lighting": src.get("lighting") or environment.get("lighting", ""),
-        "color_temperature": src.get("color_temperature") or environment.get("color_temperature", ""),
+        "source_description": _first_text(src.get("shot_description"), src.get("raw_description")),
+        "shot_description": _first_text(src.get("shot_description"), src.get("raw_description")),
+        "raw_description": _first_text(src.get("raw_description"), src.get("shot_description")),
+        "costume_en": _text(src.get("costume_en")),
+        "costume_description": _text(src.get("costume_description")),
+        "time_of_day": _first_text(src.get("time_of_day"), environment.get("time_of_day", "")),
+        "weather": _first_text(src.get("weather"), environment.get("weather", "")),
+        "lighting": _first_text(src.get("lighting"), environment.get("lighting", "")),
+        "color_temperature": _first_text(src.get("color_temperature"), environment.get("color_temperature", "")),
         "character_names": [str(x) for x in chars],
         "character_facts": src.get("character_facts") or {},
-        "props_list": [str(x) for x in props],
-        "props": [str(x) for x in props],
-        "prop_interactions": [str(x) for x in interactions],
-        "dialogue": src.get("dialogue") or "（无）",
-        "facial_expression": src.get("facial_expression") or src.get("emotion", ""),
-        "micro_expression": src.get("micro_expression") or src.get("micro_emotion", ""),
-        "gaze": src.get("gaze", ""),
-        "body_language": src.get("body_language", ""),
-        "action_start": src.get("action_start") or src.get("action", ""),
-        "action_process": src.get("action_process") or src.get("business", ""),
-        "action_end": src.get("action_end", ""),
+        "props_list": [str(x) for x in (_list(src.get("props_list")) or _list(src.get("props")))],
+        "props": [str(x) for x in (_list(src.get("props")) or _list(src.get("props_list")))],
+        "prop_interactions": [str(x) for x in (_list(src.get("prop_interactions")) or _list(src.get("props_interactions")))],
+        "dialogue": _first_text(src.get("dialogue")) or "（无）",
+        "facial_expression": _first_text(src.get("facial_expression"), src.get("emotion")),
+        "micro_expression": _first_text(src.get("micro_expression"), src.get("micro_emotion")),
+        "gaze": _text(src.get("gaze")),
+        "body_language": _text(src.get("body_language")),
+        "action_start": _first_text(src.get("action_start"), src.get("action")),
+        "action_process": _first_text(src.get("action_process"), src.get("business")),
+        "action_end": _text(src.get("action_end")),
         "camera_angle": src.get("camera_angle", ""),
         "camera_motion": motion,
         "camera_motion_source": motion_source,
@@ -134,6 +171,8 @@ def required_facts(shot: dict) -> dict[str, str]:
     s = normalize_shot(shot)
     return {
         "environment": _text(s["environment"].get("description") or s.get("scene_environment_en") or s.get("location")),
+        "source_description": _text(s.get("source_description") or s.get("shot_description") or s.get("raw_description")),
+        "costume": _text(s.get("costume_en") or s.get("costume_description")),
         "time_of_day": _text(s.get("time_of_day") or s["environment"].get("time_of_day")),
         "weather": _text(s.get("weather") or s["environment"].get("weather")),
         "characters": _text(s.get("character_names")),
@@ -160,7 +199,8 @@ def required_facts(shot: dict) -> dict[str, str]:
 def render_shared_facts(shot: dict, include_dialogue: bool = True) -> str:
     f = required_facts(shot)
     parts = []
-    labels = (("Environment", "environment"), ("Time of day", "time_of_day"),
+    labels = (("Environment", "environment"), ("Source visual description", "source_description"),
+              ("Costume", "costume"), ("Time of day", "time_of_day"),
               ("Weather", "weather"), ("Characters", "characters"),
               ("Action start", "action_start"), ("Action process / business", "action_process"),
               ("Action end", "action_end"), ("Facial expression", "expression"),

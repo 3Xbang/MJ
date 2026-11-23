@@ -12,7 +12,8 @@ def _shot():
         "source_block_id": "block_007", "section_type": "location_scene",
         "environment": {"description": "empty observatory with steel railing", "time_of_day": "night",
                         "weather": "clear", "color_temperature": "4200K"},
-        "character_names": ["Rin"], "action_start": "Rin reaches for the brass lever",
+        "character_names": ["Rin"], "shot_description": "Rin's red wool coat catches the observatory light",
+        "costume_en": "red wool coat with brass buttons", "action_start": "Rin reaches for the brass lever",
         "action_process": "her thumb rubs the lever while her shoulders tense",
         "action_end": "she pulls it down and looks toward the window",
         "facial_expression": "fear held behind a tight smile", "micro_expression": "left eyelid trembles",
@@ -27,7 +28,8 @@ def test_every_required_fact_is_in_both_prompts():
     shot = _shot()
     key = build_keyframe_prompt(shot, "cinematic")
     video = build_video_prompt(shot, "cinematic", True)
-    for fact in ("observatory", "night", "clear", "4200K", "Rin", "fear held behind a tight smile",
+    for fact in ("observatory", "night", "clear", "4200K", "Rin", "red wool coat catches",
+                 "red wool coat with brass buttons", "fear held behind a tight smile",
                  "left eyelid trembles", "brass lever", "grips and pulls", "low_angle", "medium",
                  "tracking", "slow then sharp", "reaches for", "pulls it down"):
         assert fact in key, fact + " missing from keyframe"
@@ -56,9 +58,19 @@ def test_camera_provenance_covers_explicit_static_script_motion_and_dialogue_rul
                                "dialogue": "Follow me."})
     assert scripted["camera_motion"] == "tracking_shot"
     ordinary_dialogue = normalize_shot({"shot_id": "dialogue", "camera_motion": "static",
-                                        "camera_motion_source": "derived", "dialogue": "Hello."})
+                                        "camera_motion_source": "script", "source_text": "Mina holds the cup and speaks.",
+                                        "dialogue": "Hello."})
     assert ordinary_dialogue["camera_motion"] != "static"
     assert ordinary_dialogue["camera_motion_source"] == "derived"
+
+
+def test_static_model_provenance_without_screenplay_camera_cue_is_derived():
+    shot = normalize_shot({"shot_id": "model_static", "camera_motion": "static",
+                           "camera_motion_source": "script",
+                           "source_text": "Mina waits, then holds the brass cup.",
+                           "action_process": "holds the brass cup"})
+    assert shot["camera_motion"] != "static"
+    assert shot["camera_motion_source"] == "derived"
 
 
 if __name__ == "__main__":

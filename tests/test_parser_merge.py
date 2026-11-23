@@ -36,7 +36,7 @@ def _phase1(camera_motion=None, camera_source=None):
         "shot_id": "shot_001", "scene_index": 1, "source_block_id": "block_001",
         "scene_occurrence_id": "occurrence_001", "section_type": "location_scene",
         "character_names": ["Mina"], "dialogue": "Wait for me.", "props_list": ["brass lever"],
-        "raw_description": "Mina reaches for the brass lever, her anxious smile tight and her eyelid trembling.",
+        "costume_en": "red wool coat", "raw_description": "The camera tracks Mina as she reaches for the brass lever, her anxious smile tight and her eyelid trembling.",
         "facial_expression": "anxious smile", "micro_expression": "left eyelid trembles",
         "gaze": "toward the window", "body_language": "shoulders tense",
         "action_start": "hand approaches the lever", "action_process": "thumb rubs the label",
@@ -49,7 +49,9 @@ def _phase1(camera_motion=None, camera_source=None):
 
 def _null_phase2(camera_motion=None):
     return {key: (camera_motion if key == "camera_motion" else
-                  "script" if key == "camera_motion_source" and camera_motion else None)
+                  "script" if key == "camera_motion_source" and camera_motion else
+                  ["null"] if key == "prop_interactions" else
+                  "null" if key in {"shot_description", "costume_en"} else None)
             for key in (
                 "camera_angle", "camera_motion", "camera_motion_source", "camera_path", "shot_type",
                 "lighting_style", "location", "time_of_day", "weather", "lighting", "color_temperature",
@@ -58,14 +60,15 @@ def _null_phase2(camera_motion=None):
                 "pace", "shot_description", "costume_description", "costume_en", "director_notes")}
 
 
-def _parse(phase1, phase2):
+def _parse(phase1, phase2, screenplay=None):
     return StubParser(phase1, phase2).parse_script(
-        "【场景一：Workshop】\nMina reaches for the brass lever and waits.",
+        screenplay or "【场景一：Workshop】\nMina reaches for the brass lever and waits.",
         target_duration_seconds=5, seconds_per_shot=5, model_path="stub") ["result"][0][0]
 
 
 def test_phase2_nulls_preserve_phase1_facts_in_both_prompts():
-    shot = _parse(_phase1("tracking_shot", "script"), _null_phase2())
+    shot = _parse(_phase1("tracking_shot", "script"), _null_phase2(),
+                  "【场景一：Workshop】\nThe camera tracks Mina as she reaches for the brass lever.")
     assert shot["action"] == "reaches for the lever"
     assert shot["business"] == "thumb rubs the brass label"
     # The parser's phase-1 fields remain available to the canonical renderer.
@@ -75,11 +78,25 @@ def test_phase2_nulls_preserve_phase1_facts_in_both_prompts():
     assert shot["action_process"] == "thumb rubs the label"
     assert shot["action_end"] == "she pulls the lever"
     assert shot["prop_interactions"] == ["grips the brass lever"]
+    assert shot["shot_description"] == shot["raw_description"]
+    assert shot["costume_en"] == "red wool coat"
     assert shot["camera_motion"] == "tracking_shot"
     key = build_keyframe_prompt(shot)
     video = build_video_prompt(shot, speaking=True)
-    for value in ("anxious smile", "left eyelid trembles", "thumb rubs", "pulls the lever", "tracking"):
+    for value in ("anxious smile", "left eyelid trembles", "thumb rubs", "pulls the lever", "tracking", "brass lever", "red wool coat"):
         assert value in key and value in video, value
+
+
+def test_phase1_static_without_source_camera_cue_is_derived():
+    shot = _parse(_phase1("static", "script"), _null_phase2())
+    assert shot["camera_motion"] != "static"
+    assert shot["camera_motion_source"] == "derived"
+
+
+def test_parser_preserves_explicit_locked_camera_cue():
+    shot = _parse(_phase1("static", "script"), _null_phase2(),
+                  "【场景一：Workshop】\nHold the camera locked off while Mina holds the brass lever.")
+    assert shot["camera_motion"] == "static"
 
 
 def test_phase2_static_for_ordinary_dialogue_is_derived_motion():

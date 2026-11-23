@@ -88,12 +88,6 @@ def build_keyframe_prompt(shot: dict, char_names: list[str], render_style: str,
 
     facts = render_contract_keyframe(shot, render_style)
     lines.append(facts)
-    desc = (shot.get("shot_description") or "").strip()
-    if desc and desc not in facts:
-        lines.append(desc)
-    costume = (shot.get("costume_en") or "").strip()
-    if costume and char_names:
-        lines.append(f"Outfit: {costume}.")
     if char_names:
         lines.append(f"Characters in frame: {', '.join(char_names)}. No other people.")
     else:

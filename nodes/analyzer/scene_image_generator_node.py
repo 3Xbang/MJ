@@ -281,20 +281,25 @@ class AFE_SceneImageGenerator:
                                           ("medium",        medium),
                                           ("atmosphere",    atmosphere)]:
                 seed_i = seed + i * 100
-                how = ("orig" if view_key == "establishing" else "qwen") if mine is not None else "krea"
+                # An uploaded scene image is never used directly as the empty
+                # location slot. Run every view through an image-edit pass that
+                # removes people and preserves only the architecture, fixtures,
+                # materials, colors, and lighting. If that pass fails, the asset
+                # is reported as failed instead of leaking the original image.
+                how = "qwen" if mine is not None else "krea"
                 sig = md5(prompts[view_key], seed_i, width, height, steps, how, mine_sig)[:8]
                 path = os.path.join(scenes_dir, f"S{i + 1}_{short[view_key]}_{sig}.png")
                 if os.path.exists(path):
                     batch_list.append(load_png(path)); reused += 1
                 else:
                     try:
-                        if how == "orig":
-                            img = fit_to_canvas(mine, width, height, "crop")
-                        elif how == "qwen":
+                        if how == "qwen":
                             img = user_refs.qwen_variant(
                                 fit_to_canvas(mine, width, height, "crop"),
-                                "[Image_1] This is the location. Show the SAME location, same architecture, "
-                                "materials, colors and lighting, completely empty, no people. "
+                                "[Image_1] This is a location reference. Rebuild the SAME architecture, "
+                                "materials, fixtures, colors and lighting as an EMPTY set. Remove every "
+                                "person, character, face, body, animal and human trace. Do not add props "
+                                "that are not part of the location. "
                                 + prompts[view_key].rsplit(". ", 1)[-1], seed_i)
                         else:
                             if model is None:
