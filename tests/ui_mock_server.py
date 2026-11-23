@@ -144,6 +144,7 @@ CLASSES = dict(pkg.NODE_CLASS_MAPPINGS, SaveImage=SaveImage)
 class Mock:
     def __init__(self):
         self.history, self.clients, self.interrupt, self.counter = {}, {}, False, 0
+        self.running = set()
         self.queue = asyncio.Queue()
 
     async def send(self, client, type_, data):
@@ -178,6 +179,7 @@ class Mock:
         outs, uis, messages = {}, {}, []
         status = "success"
         self.interrupt = False
+        self.running.add(pid)
         try:
             for nid in self.order(prompt):
                 if self.interrupt:
@@ -213,6 +215,7 @@ class Mock:
             messages = [["execution_error", {"prompt_id": pid, "node_type": ct, "exception_message": str(e)}]]
         uis.update(getattr(self, "_img_uis", {})); self._img_uis = {}
         self.history[pid] = {"outputs": uis, "status": {"status_str": status, "messages": messages}}
+        self.running.discard(pid)
         await self.send(client, "executing", {"node": None, "prompt_id": pid})
 
     def save_image(self, images, filename_prefix):
@@ -245,6 +248,9 @@ def make_app(port: int):
         if missing:
             return web.json_response({"error": {"type": "invalid_prompt"}, "node_errors": {m: "missing" for m in missing}}, status=400)
         pid = str(uuid.uuid4())
+        if getattr(mock, "lose_next", False):          # simulate ComfyUI restarting: job vanishes
+            mock.lose_next = False
+            return web.json_response({"prompt_id": pid, "number": 1})
         mock.queue.put_nowait((pid, p, body.get("client_id")))
         return web.json_response({"prompt_id": pid, "number": 1})
 
@@ -260,6 +266,16 @@ def make_app(port: int):
         if not os.path.isfile(path):
             raise web.HTTPNotFound()
         return web.FileResponse(path)
+
+    @routes.get("/queue")
+    async def queue(request):
+        return web.json_response({"queue_running": [[0, pid, {}] for pid in mock.running],
+                                  "queue_pending": [[1, item[0], {}] for item in list(mock.queue._queue)]})
+
+    @routes.get("/mock/lose_next")
+    async def lose_next(request):
+        mock.lose_next = True
+        return web.json_response({})
 
     @routes.get("/mock/stats")
     async def stats(request):

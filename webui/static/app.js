@@ -157,13 +157,37 @@ async function runStage(stage, part = 'all') {
   if (r.error) { S.run = null; render(); showError(r.error, r.details); return; }
   run.promptId = r.prompt_id; run.labels = r.labels || {}; run.label = '已提交，排队中…';
   renderDock();
+  const pid = r.prompt_id;
+  let missing = 0, down = 0, lost = '';
   while (S.run === run) {
     await sleep(1500);
     let h = null;
-    try { h = await (await fetch('/history/' + r.prompt_id)).json(); } catch (e) { continue; }
-    if (h && h[r.prompt_id]) break;
+    try { h = await (await fetch('/history/' + pid)).json(); down = 0; } catch (e) {
+      // ComfyUI unreachable (restarting?)
+      if (++down >= 8) { lost = '连接不上 ComfyUI（可能正在重启）。'; break; }
+      continue;
+    }
+    if (h && h[pid]) break;
+    // not finished: is it still queued / running? If it is in neither list, the job was lost
+    // (typically ComfyUI was restarted, e.g. by an update) -> do not wait forever
+    try {
+      const q = await (await fetch('/queue')).json();
+      const live = [...(q.queue_running || []), ...(q.queue_pending || [])].some(it => it && it[1] === pid);
+      missing = live ? 0 : missing + 1;
+    } catch (e) { /* counted above on the next round */ }
+    if (missing >= 4) {
+      try { h = await (await fetch('/history/' + pid)).json(); } catch (e) { h = null; }
+      if (h && h[pid]) break;
+      lost = '任务被中断了。'; break;
+    }
   }
   if (S.run !== run) return;
+  if (lost) {
+    S.run = null;
+    await loadProject(S.project, true);
+    showError(lost + '这通常是因为 ComfyUI 被重启了（比如刚更新过）。已经完成的内容都保留着，请重新点击这一步的按钮，会接着做。');
+    return;
+  }
   run.label = '正在整理结果…'; renderDock();
   const c = await api('/afe/api/collect', { project: S.project, stage, part, prompt_id: r.prompt_id });
   S.run = null;

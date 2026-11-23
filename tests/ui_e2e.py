@@ -268,6 +268,16 @@ def main():
             page.wait_for_function("() => document.querySelectorAll('.refrow .thumb img').length === 2")
             check("removing a reference picture works and flags an update", page.locator("#side .stale").count() == 1)
 
+            # a job that vanishes (ComfyUI restarted) must not leave the page waiting forever
+            urllib.request.urlopen(f"http://127.0.0.1:{PORT}/mock/lose_next").read()
+            page.evaluate("() => { S.open[2] = true; render(); }")
+            page.click(".card[data-step='2'] button[data-act=run][data-stage='2']")
+            page.wait_for_selector("#dock.err", timeout=40000)
+            check("lost job is detected, with a clear message", "被中断" in page.inner_text("#dockMsg"), page.inner_text("#dockMsg"))
+            check("buttons usable again after a lost job",
+                  page.locator(".card[data-step='2'] button[data-act=run][data-stage='2']").is_enabled())
+            page.click("#dockClose")
+
             # cancel
             page.evaluate("() => { S.open[2] = true; render(); }")
             page.click("button[data-act=redo-cast][data-char='1']")
