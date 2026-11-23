@@ -11,6 +11,10 @@ import torch
 
 logger = logging.getLogger("AFE_SceneImageGenerator")
 
+from ai_film_editor_nodes.nodes.video._common import (  # noqa: E402
+    auto_all_input, closed_result, gate_input, gate_is_open,
+)
+
 _MODEL_CACHE: dict = {}
 
 # Krea 2 Turbo models — split to bypass Manager scanner
@@ -186,6 +190,8 @@ class AFE_SceneImageGenerator:
                 "cfg":    ("FLOAT", {"default": 1.0,  "min": 1.0, "max": 1.0,
                                      "tooltip": "Krea 2 requires cfg=1.0 (fixed)"}),
                 "seed":   ("INT",   {"default": 42,   "min": 0,   "max": 2147483647}),
+                "approved": gate_input("生成场景图（每个场景 3 张）"),
+                "auto_all": auto_all_input(),
             },
         }
 
@@ -206,7 +212,11 @@ class AFE_SceneImageGenerator:
         steps:  int   = 8,
         cfg:    float = 1.0,
         seed:   int   = 42,
+        approved: bool = False,
+        auto_all: bool = False,
     ):
+        if not gate_is_open(approved, auto_all):
+            return closed_result("场景图（生成前请确认场景分析报告：场景数量、环境提示词）", "dddr")
         # Prefer scenes_json (full descriptions) over scene_report (formatted text)
         if scenes_json and scenes_json.strip():
             try:

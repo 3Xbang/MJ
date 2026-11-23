@@ -10,7 +10,11 @@ Appends the video-production chain to an existing integrated workflow JSON:
                                                           WanShotRenderer ──> MovieAssembler
 
 Usage:  python gen_video_extension.py <source.json> <dest.json> [<dest2.json> ...]
-Existing nodes, widget values and layout are left untouched.
+Existing nodes, widget values and layout are left untouched, except that the two image generators
+(scene / props) get their new "confirm to continue" switch.
+
+Every expensive stage has a confirm switch (default: waiting). One master switch node
+"全自动模式" (core PrimitiveBoolean) is wired into all of them: ON = run everything without stopping.
 """
 import copy
 import json
@@ -79,35 +83,53 @@ def build(src_path: str) -> dict:
 
     X0, Y0 = 50, 1350
 
+    def ensure_auto_all(node_id):
+        n = nodes[node_id]
+        if not any(i["name"] == "auto_all" for i in n["inputs"]):
+            n["inputs"].append(sock("auto_all", "BOOLEAN"))
+            n["widgets_values"].append(False)          # the new "approved" switch (last widget)
+        return [i["name"] for i in n["inputs"]].index("auto_all")
+
+    master = add_node("PrimitiveBoolean", (X0, Y0 - 230), (330, 100), [],
+                      [("BOOLEAN", "BOOLEAN")], [False],
+                      title="🚦 全自动模式（关=每步等你确认；开=一路跑到底）")
+
     cast_ref = add_node(
         "AFE_CastRefGenerator", (X0, Y0), (400, 300),
-        [sock("cast_data", "CAST_DATA")],
-        [("character_refs", "IMAGE"), ("report", "STRING")],
-        [style, 768, 1152, 8, 42, "fixed"],
+        [sock("cast_data", "CAST_DATA"), sock("auto_all", "BOOLEAN")],
+        [("character_refs", "IMAGE"), ("report", "STRING"), ("candidates_preview", "IMAGE")],
+        [style, 768, 1152, 8, 42, "fixed", 3, "", "", "afe_project", False],
         title="🎭 角色参考图 (Krea 2)")
     keyframe = add_node(
         "AFE_ShotKeyframeGenerator", (X0 + 480, Y0), (420, 420),
         [sock("shot_sequence", "SHOT_SEQUENCE"), sock("cast_data", "CAST_DATA"),
-         sock("scene_images", "IMAGE"), sock("character_refs", "IMAGE")],
-        [("keyframes", "IMAGE"), ("project_dir", "STRING"), ("report", "STRING")],
-        ["afe_project", style, TEST_SHOTS, False, 1024, 42, "fixed"],
+         sock("scene_images", "IMAGE"), sock("character_refs", "IMAGE"),
+         sock("scene_images_medium", "IMAGE"), sock("scene_images_atmosphere", "IMAGE"),
+         sock("auto_all", "BOOLEAN")],
+        [("keyframes", "IMAGE"), ("project_dir", "STRING"), ("report", "STRING"),
+         ("candidates_preview", "IMAGE")],
+        ["afe_project", style, TEST_SHOTS, False, 1024, 42, "fixed", 1, "", "", "", False],
         title="🖼 分镜首帧 (Qwen Image 2.1)")
     wan = add_node(
         "AFE_WanShotRenderer", (X0 + 980, Y0), (420, 420),
-        [sock("shot_sequence", "SHOT_SEQUENCE"), sock("project_dir", "STRING")],
+        [sock("shot_sequence", "SHOT_SEQUENCE"), sock("project_dir", "STRING"),
+         sock("auto_all", "BOOLEAN")],
         [("project_dir", "STRING"), ("report", "STRING")],
         [style, "all", TEST_SHOTS, 832, 480, True, False, 42, "fixed",
-         TEST_LONG_TAKE, False],
+         TEST_LONG_TAKE, False, "", False],
         title="🎬 分镜视频渲染 (Wan 2.2)")
     assembler = add_node(
         "AFE_MovieAssembler", (X0 + 1480, Y0), (380, 200),
-        [sock("shot_sequence", "SHOT_SEQUENCE"), sock("project_dir", "STRING")],
+        [sock("shot_sequence", "SHOT_SEQUENCE"), sock("project_dir", "STRING"),
+         sock("auto_all", "BOOLEAN")],
         [("movie_path", "STRING"), ("report", "STRING")],
-        ["final_movie"],
+        ["final_movie", "", False],
         title="🎞 成片合成")
 
-    prev_refs = preview("🎭 角色参考图", (X0, Y0 + 360), (400, 420))
-    prev_kf = preview("🖼 分镜首帧", (X0 + 480, Y0 + 480), (420, 420))
+    prev_refs = preview("🎭 角色参考图（选用的）", (X0, Y0 + 360), (400, 420))
+    prev_refs_c = preview("🎭 角色候选（挑选用，看 C序号 v版本）", (X0 - 460, Y0 + 360), (440, 520))
+    prev_kf = preview("🖼 分镜首帧（选用的）", (X0 + 480, Y0 + 480), (420, 420))
+    prev_kf_c = preview("🖼 首帧候选（挑选用，看 shot v版本）", (X0 + 480, Y0 + 920), (440, 520))
     txt_cast = show_text("角色参考图报告", (X0, Y0 + 820))
     txt_kf = show_text("首帧报告", (X0 + 480, Y0 + 940))
     txt_wan = show_text("视频渲染报告", (X0 + 980, Y0 + 480))
@@ -123,9 +145,17 @@ def build(src_path: str) -> dict:
     link(keyframe, 1, wan, 1, "STRING")            # project_dir
     link(1, 0, assembler, 0, "SHOT_SEQUENCE")
     link(wan, 0, assembler, 1, "STRING")           # project_dir (after rendering finished)
+    link(14, 1, keyframe, 4, "IMAGE")              # medium_shots_batch  (scene view 2)
+    link(14, 2, keyframe, 5, "IMAGE")              # atmosphere_shots_batch (scene view 3)
+    # master switch -> every confirm gate
+    for target, slot in ((14, ensure_auto_all(14)), (18, ensure_auto_all(18)),
+                         (cast_ref, 1), (keyframe, 6), (wan, 2), (assembler, 2)):
+        link(master, 0, target, slot, "BOOLEAN")
     # previews + reports
     link(cast_ref, 0, prev_refs, 0, "IMAGE")
+    link(cast_ref, 2, prev_refs_c, 0, "IMAGE")
     link(keyframe, 0, prev_kf, 0, "IMAGE")
+    link(keyframe, 3, prev_kf_c, 0, "IMAGE")
     link(cast_ref, 1, txt_cast, 0, "STRING")
     link(keyframe, 2, txt_kf, 0, "STRING")
     link(wan, 1, txt_wan, 0, "STRING")

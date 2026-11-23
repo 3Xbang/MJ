@@ -8,11 +8,16 @@ Node chain copied from ComfyUI's official "Wan 2.2 14B image to video" template:
   KSamplerAdvanced(high, steps 0..split, add_noise) -> KSamplerAdvanced(low, split..end) -> VAEDecode
 With the 4-step LoRA: steps=4, cfg=1.0, split=2.  Without it: steps=20, cfg=3.5, split=10.
 
-Clips are written to <output>/afe_projects/<project_name>/clips/<shot_id>.mp4 (silent, 16 fps).
-Clips that already exist are skipped, so a crashed or interrupted run can simply be re-queued.
+Clips are written to <output>/afe_projects/<project_name>/clips/<shot_id>.mp4 (silent, 16 fps) with a
+<shot_id>.json signature next to each. A clip is re-rendered only when what it depends on changed
+(first frame, prompt, size, duration, speed mode, seed) or when the shot is listed in redo_shots;
+everything else is skipped, so a crashed or interrupted run can simply be re-queued.
+Gate: waits until switched to "confirmed" (or the master switch is on).
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import math
 import os
@@ -22,8 +27,9 @@ import time
 import torch
 
 from ai_film_editor_nodes.nodes.video._common import (
-    call, check_interrupt, get_node, get_shots, has_dialogue, load_png, make_progress,
-    shot_id_of, sub_dir, write_mp4,
+    auto_all_input, call, check_interrupt, closed_result, gate_input, gate_is_open, get_node,
+    get_shots, has_dialogue, load_png, make_progress, md5, parse_shot_numbers, shot_id_of,
+    sub_dir, write_mp4,
 )
 
 logger = logging.getLogger("AFE_WanShotRenderer")
@@ -245,6 +251,11 @@ class AFE_WanShotRenderer:
                     "default": False,
                     "tooltip": "Experimental: for long takes, also feed the shot's first frame as an identity "
                                "anchor to later segments to reduce face/outfit drift."}),
+                "redo_shots": ("STRING", {
+                    "default": "",
+                    "tooltip": "不满意要重做的分镜视频。例：shot_005, 12:2  （再次重做把冒号后的数字加 1）"}),
+                "approved": gate_input("渲染分镜视频（耗时最长，建议先用 max_shots 试跑）"),
+                "auto_all": auto_all_input(),
             },
         }
 
@@ -257,10 +268,15 @@ class AFE_WanShotRenderer:
     def render(self, shot_sequence, project_dir, render_style,
                shots_to_render="all", max_shots=0, width=832, height=480,
                fast_4step=True, overwrite=False, seed=42,
-               long_take_overrides="", anchor_identity=False):
+               long_take_overrides="", anchor_identity=False, redo_shots="",
+               approved=False, auto_all=False):
+        if not gate_is_open(approved, auto_all):
+            return closed_result("分镜视频渲染（渲染前请确认首帧）", "dr")
+
         shots = get_shots(shot_sequence)
         if not shots:
             raise ValueError("shot_sequence is empty")
+        redo_map = parse_shot_numbers(redo_shots, default_value=1)
 
         overrides = parse_duration_overrides(long_take_overrides)
         if overrides:
@@ -290,38 +306,58 @@ class AFE_WanShotRenderer:
         models = None
         lines = ["🎬 Wan 2.2 渲染"]
         bar = make_progress(len(todo))
-        done = skipped = failed = 0
+        done = skipped = failed = redone = 0
         t_total = 0.0
 
         for n, (i, shot, speaking) in enumerate(todo):
             check_interrupt()
             sid = shot_id_of(shot, i)
             out_path = os.path.join(clip_dir, f"{sid}.mp4")
+            meta_path = os.path.join(clip_dir, f"{sid}.json")
             kf_path = os.path.join(kf_dir, f"{sid}.png")
 
-            if os.path.exists(out_path) and not overwrite:
-                skipped += 1
-                if bar: bar.update(1)
-                continue
             if not os.path.exists(kf_path):
                 lines.append(f"  ⚠️ {sid}: 缺少首帧 {kf_path}")
                 failed += 1
                 if bar: bar.update(1)
                 continue
 
-            if models is None:
-                models = _load_wan(fast_4step)
-
             duration = float(shot.get("duration_seconds") or 5.0)
             n_segs = len(plan_segments(duration)[0])
             prompt = build_video_prompt(shot, render_style, speaking)
+            salt = redo_map.get(sid, 0)
+            seed_eff = seed + i + salt * 9973
+            with open(kf_path, "rb") as f:
+                kf_hash = hashlib.md5(f.read()).hexdigest()
+            sig = md5(kf_hash, prompt, width, height, duration, fast_4step, anchor_identity, seed_eff)
+
+            existing = os.path.exists(out_path)
+            if existing and not overwrite:
+                old_sig = None
+                if os.path.exists(meta_path):
+                    try:
+                        old_sig = json.load(open(meta_path, encoding="utf-8")).get("sig")
+                    except Exception:
+                        pass
+                if old_sig == sig:
+                    skipped += 1
+                    if bar: bar.update(1)
+                    continue
+                redone += 1
+                lines.append(f"  ♻️ {sid}: 输入有变化（首帧/时长/提示词/重做），重新渲染")
+
+            if models is None:
+                models = _load_wan(fast_4step)
+
             logger.info("[AFE_WanShotRenderer] %d/%d %s (%.0fs, %d segment(s))",
                         n + 1, len(todo), sid, duration, n_segs)
             t0 = time.time()
             try:
                 frames = render_shot(models, load_png(kf_path), prompt, width, height, duration,
-                                     seed + i, fast_4step, anchor_identity)
+                                     seed_eff, fast_4step, anchor_identity)
                 write_mp4(frames, out_path, FPS)
+                with open(meta_path, "w", encoding="utf-8") as f:
+                    json.dump({"sig": sig, "duration": duration, "seed": seed_eff}, f)
                 done += 1
                 dt = time.time() - t0
                 t_total += dt
@@ -340,7 +376,8 @@ class AFE_WanShotRenderer:
             if bar: bar.update(1)
 
         avg = f"，平均 {t_total / done:.0f}s/镜头" if done else ""
-        lines.insert(1, f"新渲染 {done} / 已有跳过 {skipped} / 失败 {failed} / 本次范围 {len(todo)}{avg}")
+        lines.insert(1, f"新渲染 {done}（其中因变化重做 {redone}）/ 未变化跳过 {skipped} / 失败 {failed} / 本次范围 {len(todo)}{avg}")
         lines.append(f"目录：{clip_dir}")
+        lines.append("不满意某个分镜：在 redo_shots 写分镜号（如 shot_005），或回到首帧节点换版本，再点 Queue。")
         report = "\n".join(lines)
         return {"ui": {"text": [report]}, "result": (project_dir, report)}

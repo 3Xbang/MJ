@@ -6,8 +6,11 @@ ComfyUI-only imports (folder_paths, comfy.*) are done lazily inside functions.
 """
 from __future__ import annotations
 
+import filecmp
+import hashlib
 import logging
 import os
+import re
 import shutil
 import subprocess
 
@@ -17,6 +20,158 @@ import torch
 logger = logging.getLogger("AFE_Video")
 
 NO_DIALOGUE_MARKERS = {"", "（无）", "(无)", "无", "none", "null", "n/a"}
+
+try:  # present in current ComfyUI; lets a closed gate skip downstream nodes silently
+    from comfy_execution.graph import ExecutionBlocker
+except Exception:  # pragma: no cover - older ComfyUI / unit tests
+    ExecutionBlocker = None
+
+
+# ── Approval gates ────────────────────────────────────────────────────────────
+# Every expensive stage has a "confirm to continue" switch (default: waiting) and an optional
+# master switch `auto_all`. A closed gate does no work and blocks everything downstream of its
+# data outputs; its report output still carries the waiting message so the text boxes show it.
+
+def gate_input(what: str):
+    """The per-node 'confirm to continue' switch (default: waiting)."""
+    return ("BOOLEAN", {"default": False, "label_on": "▶ 已确认，开始", "label_off": "⏸ 等待确认",
+                        "tooltip": f"检查上一步结果后切到「已确认」再 Queue。本节点将：{what}"})
+
+
+def auto_all_input():
+    """Optional socket for the master switch (core PrimitiveBoolean). ON = never wait."""
+    return ("BOOLEAN", {"forceInput": True, "tooltip": "接「全自动模式」总开关。打开=所有关口都不停顿"})
+
+
+def gate_is_open(approved: bool, auto_all: bool = False) -> bool:
+    return bool(approved) or bool(auto_all)
+
+
+def waiting_message(stage: str) -> str:
+    return (f"⏸ 等待确认：{stage}\n"
+            f"请先检查上一步的结果，然后在本节点把开关切到「已确认」"
+            f"（或打开总开关「全自动模式」），再点 Queue。")
+
+
+def closed_result(stage: str, layout: str):
+    """Result for a closed gate. layout: one char per output, 'd' = data (blocked), 'r' = report."""
+    msg = waiting_message(stage)
+    if ExecutionBlocker is None:
+        raise RuntimeError(msg)
+    outs = tuple(msg if ch == "r" else ExecutionBlocker(None) for ch in layout)
+    return {"ui": {"text": [msg]}, "result": outs}
+
+
+# ── Pick / redo syntax ("shot_005:2, 7:3") ────────────────────────────────────
+
+def split_items(text: str) -> list[str]:
+    return [t.strip() for t in re.split(r"[,;，；\n]+", text or "") if t.strip()]
+
+
+def split_pair(item: str) -> tuple[str, str | None]:
+    m = re.match(r"^(.*?)\s*[:=：]\s*([^:=：]+?)\s*$", item)
+    return (m.group(1).strip(), m.group(2).strip()) if m else (item.strip(), None)
+
+
+def norm_shot_key(tok: str) -> str:
+    tok = tok.strip()
+    return f"shot_{int(tok):03d}" if tok.isdigit() else tok
+
+
+def parse_shot_numbers(text: str, default_value: int = 1) -> dict[str, int]:
+    """'shot_005:2, 7:3, shot_009' -> {'shot_005': 2, 'shot_007': 3, 'shot_009': default_value}"""
+    out: dict[str, int] = {}
+    for item in split_items(text):
+        key, val = split_pair(item)
+        if not key:
+            continue
+        try:
+            n = int(val) if val is not None else default_value
+        except ValueError:
+            logger.warning("ignoring bad entry %r", item)
+            continue
+        out[norm_shot_key(key)] = n
+    return out
+
+
+def parse_index_numbers(text: str, names: list[str] | None = None, default_value: int = 1) -> dict[int, int]:
+    """For items addressed by 1-based number OR name: 'Ann:2, 3:1, Bo' -> {0: 2, 2: 1, 1: default}"""
+    out: dict[int, int] = {}
+    low = [n.lower() for n in (names or [])]
+    for item in split_items(text):
+        key, val = split_pair(item)
+        if key.isdigit():
+            idx = int(key) - 1
+        elif key.lower() in low:
+            idx = low.index(key.lower())
+        else:
+            logger.warning("ignoring unknown name/number %r", item)
+            continue
+        try:
+            n = int(val) if val is not None else default_value
+        except ValueError:
+            logger.warning("ignoring bad entry %r", item)
+            continue
+        out[idx] = n
+    return out
+
+
+def clamp(n: int, lo: int, hi: int) -> int:
+    return max(lo, min(hi, n))
+
+
+# ── Signatures: an artifact is rebuilt only when what it depends on changed ──
+
+def md5(*parts) -> str:
+    h = hashlib.md5()
+    for p in parts:
+        h.update(str(p).encode("utf-8", errors="replace"))
+        h.update(b"|")
+    return h.hexdigest()
+
+
+def tensor_sig(t: torch.Tensor) -> str:
+    """Cheap content fingerprint of an image tensor."""
+    small = t[:, ::16, ::16, :3].detach().cpu().contiguous().numpy()
+    return hashlib.md5(small.tobytes()).hexdigest()[:10]
+
+
+def files_differ(a: str, b: str) -> bool:
+    if not os.path.exists(b):
+        return True
+    return not filecmp.cmp(a, b, shallow=False)
+
+
+# ── Preview helpers ───────────────────────────────────────────────────────────
+
+def label_image(image: torch.Tensor, text: str, max_width: int = 640) -> torch.Tensor:
+    """Down-size to max_width and stamp an ASCII label on a dark banner. (1,H,W,3) -> (1,h,w,3)."""
+    from PIL import Image, ImageDraw, ImageFont
+    arr = (image[0].clamp(0, 1).cpu().numpy() * 255.0).astype(np.uint8)[:, :, :3]
+    img = Image.fromarray(arr)
+    if img.width > max_width:
+        img = img.resize((max_width, max(1, round(img.height * max_width / img.width))), Image.LANCZOS)
+    draw = ImageDraw.Draw(img)
+    try:
+        font = ImageFont.load_default(size=max(14, img.width // 22))
+    except TypeError:                       # old Pillow: fixed-size bitmap font
+        font = ImageFont.load_default()
+    pad = 4
+    box = draw.textbbox((0, 0), text, font=font)
+    draw.rectangle([0, 0, box[2] - box[0] + pad * 2, box[3] - box[1] + pad * 2], fill=(0, 0, 0))
+    draw.text((pad, pad - box[1]), text, fill=(255, 255, 0), font=font)
+    return torch.from_numpy(np.asarray(img).astype(np.float32) / 255.0).unsqueeze(0)
+
+
+def align_batch(images: list[torch.Tensor]) -> torch.Tensor:
+    """Stack images of possibly different sizes by resizing to the first one."""
+    h, w = images[0].shape[1], images[0].shape[2]
+    out = []
+    for f in images:
+        if f.shape[1] != h or f.shape[2] != w:
+            f = torch.nn.functional.interpolate(f.movedim(-1, 1), size=(h, w), mode="bilinear").movedim(1, -1)
+        out.append(f)
+    return torch.cat(out, dim=0)
 
 
 # ── ComfyUI node access (same pattern as the existing image-generation nodes) ──

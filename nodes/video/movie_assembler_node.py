@@ -11,7 +11,8 @@ import logging
 import os
 
 from ai_film_editor_nodes.nodes.video._common import (
-    concat_mp4, get_shots, shot_id_of,
+    auto_all_input, closed_result, concat_mp4, gate_input, gate_is_open, get_shots, shot_id_of,
+    split_items, norm_shot_key,
 )
 
 logger = logging.getLogger("AFE_MovieAssembler")
@@ -37,6 +38,12 @@ class AFE_MovieAssembler:
                                            "tooltip": "project_dir from AFE_WanShotRenderer"}),
                 "output_name": ("STRING", {"default": "final_movie"}),
             },
+            "optional": {
+                "skip_shots": ("STRING", {"default": "",
+                                          "tooltip": "成片里不要的分镜。例：shot_007, 12"}),
+                "approved": gate_input("把所有分镜视频合成成片"),
+                "auto_all": auto_all_input(),
+            },
         }
 
     RETURN_TYPES = ("STRING", "STRING")
@@ -45,11 +52,17 @@ class AFE_MovieAssembler:
     CATEGORY = "AI Film Editor/Video"
     OUTPUT_NODE = True
 
-    def assemble(self, shot_sequence, project_dir, output_name="final_movie"):
+    def assemble(self, shot_sequence, project_dir, output_name="final_movie", skip_shots="",
+                 approved=False, auto_all=False):
+        if not gate_is_open(approved, auto_all):
+            return closed_result("成片合成（合成前请确认各分镜视频）", "dr")
+        skip = {norm_shot_key(t) for t in split_items(skip_shots)}
         shots = get_shots(shot_sequence)
         found, missing, total_s = [], [], 0.0
         for i, shot in enumerate(shots):
             sid = shot_id_of(shot, i)
+            if sid in skip:
+                continue
             path = find_clip(project_dir, sid)
             if path:
                 found.append(path)
@@ -66,7 +79,7 @@ class AFE_MovieAssembler:
 
         lines = [
             "🎞 成片合成完成",
-            f"镜头 {len(found)} / {len(shots)}，约 {total_s:.0f} 秒",
+            f"镜头 {len(found)} / {len(shots)}，约 {total_s:.0f} 秒" + (f"（按你的设置排除 {len(skip)} 个）" if skip else ""),
             f"文件：{out_path}",
         ]
         if missing:

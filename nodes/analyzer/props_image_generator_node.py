@@ -10,6 +10,10 @@ import torch
 
 logger = logging.getLogger("AFE_PropsImageGenerator")
 
+from ai_film_editor_nodes.nodes.video._common import (  # noqa: E402
+    auto_all_input, closed_result, gate_input, gate_is_open,
+)
+
 # Shared model cache with scene generator
 _MODEL_CACHE: dict = {}
 
@@ -127,6 +131,8 @@ class AFE_PropsImageGenerator:
                                     "tooltip": "Square size for props (1:1 ratio)"}),
                 "steps": ("INT",   {"default": 20,   "min": 8,   "max": 50}),
                 "seed":  ("INT",   {"default": 42,   "min": 0,   "max": 2147483647}),
+                "approved": gate_input("生成道具白底图"),
+                "auto_all": auto_all_input(),
             },
         }
 
@@ -143,7 +149,11 @@ class AFE_PropsImageGenerator:
         size: int = 1024,
         steps: int = 20,
         seed: int = 42,
+        approved: bool = False,
+        auto_all: bool = False,
     ):
+        if not gate_is_open(approved, auto_all):
+            return closed_result("道具白底图（生成前请确认道具分析报告）", "dr")
         # Prefer props_json (richer data)
         props = []
         if props_json and props_json.strip():
