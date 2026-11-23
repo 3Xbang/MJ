@@ -1,11 +1,11 @@
-# AFE 部署与更新
+﻿# AFE 部署与更新
 
 ## 一键（推荐）
 
 在 RunPod 终端粘贴这一行。新 Pod 和已有 Pod 都能用，可以重复运行，已有模型自动跳过：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/3Xbang/MJ/main/deploy_pod.sh | bash
+cd /workspace/runpod-slim/ComfyUI/custom_nodes && { [ -d ai_film_editor_nodes/.git ] && git -C ai_film_editor_nodes pull origin main || git clone https://github.com/3Xbang/MJ.git ai_film_editor_nodes; } && bash ai_film_editor_nodes/deploy_pod.sh
 ```
 
 脚本内容在仓库根目录 `deploy_pod.sh`。下面是它的分步版本，仅供参考。

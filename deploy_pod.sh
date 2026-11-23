@@ -1,9 +1,9 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 # AFE 一键部署 / 更新脚本（RunPod ComfyUI Pod 用）
 # 新 Pod 和已有 Pod 都能用；可以重复运行，已有的模型会自动跳过，不会重新下载。
 #
 # 用法（在 RunPod 终端粘贴这一行）：
-#   curl -fsSL https://raw.githubusercontent.com/3Xbang/MJ/main/deploy_pod.sh | bash
+#   cd /workspace/runpod-slim/ComfyUI/custom_nodes && { [ -d ai_film_editor_nodes/.git ] && git -C ai_film_editor_nodes pull origin main || git clone https://github.com/3Xbang/MJ.git ai_film_editor_nodes; } && bash ai_film_editor_nodes/deploy_pod.sh
 
 COMFY=/workspace/runpod-slim/ComfyUI
 CN=$COMFY/custom_nodes
