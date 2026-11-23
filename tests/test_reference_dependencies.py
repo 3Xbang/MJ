@@ -13,6 +13,7 @@ from ai_film_editor_nodes.nodes.video.shot_keyframe_node import pick_scene_image
 from ai_film_editor_nodes.nodes.video import shot_keyframe_node, wan_shot_renderer_node
 from ai_film_editor_nodes.nodes.analyzer import scene_image_generator_node, props_image_generator_node
 from ai_film_editor_nodes.nodes.video import cast_ref_generator_node
+from ai_film_editor_nodes.nodes.video import movie_assembler_node
 from ai_film_editor_nodes.nodes.video._common import save_png
 
 
@@ -125,6 +126,72 @@ def test_wan_failure_invalidates_existing_clip_and_blocks_completion():
                 raise AssertionError("Wan failure was reported as a completed render")
         assert not os.path.exists(os.path.join(project, "clips", "shot_001.mp4"))
         assert not os.path.exists(os.path.join(project, "clips", "shot_001.json"))
+        assert not os.path.exists(os.path.join(project, "clips_av", "shot_001.mp4"))
+
+
+
+
+def _write_current_clip_metadata(project, shot, sid="shot_001", render_sig="render-v1"):
+    os.makedirs(os.path.join(project, "keyframes"), exist_ok=True)
+    os.makedirs(os.path.join(project, "clips"), exist_ok=True)
+    save_png(torch.zeros(1, 8, 8, 3), os.path.join(project, "keyframes", f"{sid}.png"))
+    shot = dict(shot, shot_id=sid)
+    key_hash = movie_assembler_node._keyframe_hash(
+        os.path.join(project, "keyframes", f"{sid}.png"))
+    metadata = {"sig": render_sig, "keyframe_sig": key_hash,
+                "contract_sig": movie_assembler_node.md5(
+                    movie_assembler_node.render_shared_facts(shot), False),
+                "shot_id": sid}
+    open(os.path.join(project, "clips", f"{sid}.mp4"), "wb").write(b"silent")
+    with open(os.path.join(project, "clips", f"{sid}.json"), "w", encoding="utf-8") as handle:
+        json.dump(metadata, handle)
+    return shot, metadata
+
+
+def test_assembler_accepts_a_current_audio_copy_with_source_and_audio_signatures():
+    shot = {"shot_id": "shot_001", "scene_id": "scene_001", "character_names": [],
+            "props_list": [], "action": "waits", "duration_seconds": 1}
+    with tempfile.TemporaryDirectory() as project, patch.object(movie_assembler_node, "concat_mp4") as concat:
+        shot, metadata = _write_current_clip_metadata(project, shot)
+        os.makedirs(os.path.join(project, "clips_av"), exist_ok=True)
+        open(os.path.join(project, "clips_av", "shot_001.mp4"), "wb").write(b"audio")
+        with open(os.path.join(project, "clips_av", "shot_001.json"), "w", encoding="utf-8") as handle:
+            json.dump(dict(metadata, source_render_sig="render-v1", audio_sig="audio-v1"), handle)
+        result = movie_assembler_node.AFE_MovieAssembler().assemble(
+            [shot], project, approved=True)
+        assert result["result"][0].endswith("final_movie.mp4")
+        assert concat.call_args.args[0][0].endswith(os.path.join("clips_av", "shot_001.mp4"))
+
+
+def test_stale_audio_copy_does_not_mask_a_current_silent_clip():
+    shot = {"shot_id": "shot_001", "scene_id": "scene_001", "character_names": [],
+            "props_list": [], "action": "waits", "duration_seconds": 1}
+    with tempfile.TemporaryDirectory() as project, patch.object(movie_assembler_node, "concat_mp4") as concat:
+        shot, metadata = _write_current_clip_metadata(project, shot)
+        os.makedirs(os.path.join(project, "clips_av"), exist_ok=True)
+        open(os.path.join(project, "clips_av", "shot_001.mp4"), "wb").write(b"old audio")
+        with open(os.path.join(project, "clips_av", "shot_001.json"), "w", encoding="utf-8") as handle:
+            json.dump(dict(metadata, source_render_sig="old-render", audio_sig="audio-v1"), handle)
+        movie_assembler_node.AFE_MovieAssembler().assemble([shot], project, approved=True)
+        assert concat.call_args.args[0][0].endswith(os.path.join("clips", "shot_001.mp4"))
+
+
+def test_wan_model_load_failure_invalidates_audio_copy_without_silent_clip():
+    with tempfile.TemporaryDirectory() as project:
+        os.makedirs(os.path.join(project, "keyframes"), exist_ok=True)
+        os.makedirs(os.path.join(project, "clips_av"), exist_ok=True)
+        save_png(torch.zeros(1, 8, 8, 3), os.path.join(project, "keyframes", "shot_001.png"))
+        open(os.path.join(project, "clips_av", "shot_001.mp4"), "wb").write(b"old audio")
+        shot = {"shot_id": "shot_001", "scene_id": "scene_001", "character_names": [],
+                "props_list": [], "action": "waits", "duration_seconds": 1}
+        with patch.object(wan_shot_renderer_node, "_load_wan", side_effect=RuntimeError("model unavailable")):
+            try:
+                wan_shot_renderer_node.AFE_WanShotRenderer().render(
+                    [shot], project, "style", max_shots=1, approved=True, auto_all=False)
+            except RuntimeError as exc:
+                assert "shot_001" in str(exc) and "blocked" in str(exc)
+            else:
+                raise AssertionError("Wan model failure was not reported")
         assert not os.path.exists(os.path.join(project, "clips_av", "shot_001.mp4"))
 
 

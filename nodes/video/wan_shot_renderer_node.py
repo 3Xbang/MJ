@@ -354,13 +354,12 @@ class AFE_WanShotRenderer:
             elif existing and overwrite:
                 _invalidate_clip(project_dir, sid, out_path, meta_path)
 
-            if models is None:
-                models = _load_wan(fast_4step)
-
             logger.info("[AFE_WanShotRenderer] %d/%d %s (%.0fs, %d segment(s))",
                         n + 1, len(todo), sid, duration, n_segs)
             t0 = time.time()
             try:
+                if models is None:
+                    models = _load_wan(fast_4step)
                 frames = render_shot(models, load_png(kf_path), prompt, width, height, duration,
                                      seed_eff, fast_4step, anchor_identity)
                 write_mp4(frames, out_path, FPS)

@@ -408,13 +408,62 @@ def _first_present(*values, default=""):
     return default
 
 
+def _source_units(source_text: str) -> list[str]:
+    """Split one source block into small screenplay fragments without rewriting it."""
+    units = []
+    for paragraph in re.split(r"\n\s*\n+", str(source_text or "").strip()):
+        for unit in re.split(r"(?<=[。！？!?])\s+|(?<=[。！？!?])(?=[\u4e00-\u9fff])|(?<=[.!?])\s+", paragraph):
+            unit = unit.strip()
+            if unit:
+                units.append(unit)
+    return units
+
+
+def _compact_source(text: str) -> str:
+    return re.sub(r"\s+", " ", str(text or "")).strip()
+
+
+def _source_fragment_for_shot(source_block_text: str, raw_desc: str, shot: dict) -> str:
+    """Return only this shot's screenplay fragment, never the complete scene block.
+
+    Phase 1 is asked to copy a verbatim ``source_shot_text`` when possible.  The
+    matching fallback is deliberately conservative: it selects one source unit
+    by overlap and falls back to the model's shot description rather than
+    passing sibling actions, props, or dialogue to the downstream prompts.
+    """
+    source = str(source_block_text or "").strip()
+    model_fragment = _first_present(shot.get("source_shot_text"), raw_desc, default="")
+    compact_source = _compact_source(source)
+    compact_model = _compact_source(model_fragment)
+    if compact_model and compact_model in compact_source:
+        return model_fragment.strip()
+
+    clues = []
+    for value in (model_fragment, shot.get("dialogue"), shot.get("character_names"),
+                  shot.get("props_list"), shot.get("action"), shot.get("business"),
+                  shot.get("facial_expression"), shot.get("micro_expression")):
+        text = _compact_source(value)
+        clues.extend(re.findall(r"[A-Za-z]{3,}|[\u4e00-\u9fff]{2,}", text))
+    clues = list(dict.fromkeys(clues))
+    best = ""
+    best_score = 0
+    for unit in _source_units(source):
+        compact_unit = _compact_source(unit)
+        score = sum(1 for clue in clues if clue in compact_unit)
+        if score > best_score:
+            best, best_score = unit, score
+    if best:
+        return best
+    return model_fragment.strip()
+
+
 _CAMERA_STATIC_CUE_RE = re.compile(
     # Do not treat an ordinary action such as "hold the cup" as a locked shot.
     r"\b(?:static|fixed|still)\s+(?:camera|shot|frame|view)\b|"
     r"\b(?:locked(?:[- ]off)?|fixed|still)\s+(?:camera|shot|frame|view)\b|"
     r"\b(?:camera|shot|frame|view)\s+(?:is\s+)?(?:static|fixed|still|locked(?:[- ]off)?)\b|"
     r"\bhold\s+(?:on\s+)?(?:the\s+)?(?:camera|shot|frame|view)\b|"
-    r"(?:静止|固定机位|固定镜头|定机位|镜头停留|画面停留|"
+    r"(?:固定机位|固定镜头|定机位|镜头停留|画面停留|"
     r"(?:镜头|机位|画面)(?:保持不动|静止|固定)|"
     r"(?:保持不动|静止|固定)(?:镜头|机位|画面))", re.IGNORECASE,
 )
@@ -431,9 +480,9 @@ _CAMERA_MOTION_CUE_RE = re.compile(
 def _camera_motion_from_text(text: str) -> str:
     """Infer the direction from the exact shot text, never from model provenance."""
     low = text.lower()
-    if re.search(r"(?:pan|摇镜).{0,12}(?:left|左)", low) or re.search(r"(?:向左|左摇).{0,12}(?:镜头|运镜)?", text):
+    if re.search(r"(?:pan|摇镜).{0,12}(?:left|左)", low) or re.search(r"(?:向左|左摇|左移|向左摇|镜头左).{0,12}", text):
         return "pan_left"
-    if re.search(r"(?:pan|摇镜).{0,12}(?:right|右)", low) or re.search(r"(?:向右|右摇).{0,12}(?:镜头|运镜)?", text):
+    if re.search(r"(?:pan|摇镜).{0,12}(?:right|右)", low) or re.search(r"(?:向右|右摇|右移|向右摇|镜头右).{0,12}", text):
         return "pan_right"
     if re.search(r"(?:push(?:es)? in|dolly in|推进|推近)", low if not any(ord(c) > 127 for c in text) else text):
         return "slow_push_in"
@@ -453,22 +502,18 @@ def _camera_motion_from_text(text: str) -> str:
 
 
 def _camera_motion_from_phases(phase1: dict, phase2: dict, source_text: str, raw_desc: str) -> tuple[str, str, bool]:
-    """Validate camera cues against this shot's source text, not its whole scene block."""
-    cue_text = str(raw_desc or "").strip()
+    """Validate camera cues against this shot's exact source fragment."""
+    cue_text = str(source_text or raw_desc or "").strip()
     static_cue = bool(_CAMERA_STATIC_CUE_RE.search(cue_text))
     motion_cue = bool(_CAMERA_MOTION_CUE_RE.search(cue_text))
-    p1_motion = str(phase1.get("camera_motion") or "").strip()
-    p2_motion = str(phase2.get("camera_motion") or "").strip()
+    # The phase dictionaries are enrichment only. A camera value is a script
+    # fact only when the exact source fragment contains the corresponding cue.
     text_motion = _camera_motion_from_text(cue_text) if motion_cue else ""
 
-    # Direction in the screenplay wins even when the model omitted or falsified
-    # camera_motion_source. A source-block cue must not leak into sibling shots.
     if text_motion:
         return text_motion, "script", True
     if static_cue:
         return "static", "script", True
-    # A model motion without an exact screenplay cue is not a script fact.
-    # Returning empty lets normalize_shot derive a deterministic non-static rule.
     return "", "derived", False
 
 
@@ -761,11 +806,12 @@ class AFE_ScriptFullParser:
             occurrence_id = str(shot.get("scene_occurrence_id") or "").strip()
             if source_block is not None:
                 occurrence_id = source_block.get("scene_occurrence_id", occurrence_id)
-            source_text = source_block.get("source_text", "") if source_block else ""
-            if not source_text:
-                source_text = scene_info.get("source_text", "") if scene_info else ""
+            source_block_text = source_block.get("source_text", "") if source_block else ""
+            if not source_block_text:
+                source_block_text = scene_info.get("source_text", "") if scene_info else ""
             char_names = _clean_semantic(shot.get("character_names")) or []
             raw_desc   = _first_present(shot.get("raw_description"), default="")
+            source_shot_text = _source_fragment_for_shot(source_block_text, raw_desc, shot)
             dialogue   = _first_present(shot.get("dialogue"), default="")
             props_list = _clean_semantic(shot.get("props_list")) or []
 
@@ -786,8 +832,9 @@ class AFE_ScriptFullParser:
                 f"Characters: {', '.join(char_names) if char_names else 'none'}\n"
                 f"Character Appearance:\n{char_context}\n"
                 f"Source block ID: {source_block_id or 'unverified'}; occurrence: {occurrence_id or 'unverified'}\n"
-                f"Complete source screenplay block (do not omit facts):\n{source_text}\n"
-                f"Shot moment from Phase 1 (preserve all facts; not a summary): {raw_desc}\n"
+                f"Exact source fragment for THIS shot (canonical visual facts; do not add sibling moments):\n{source_shot_text or 'unverified'}\n"
+                f"Scene block context (environment only; do not copy its other actions, characters, props, or dialogue):\n{source_block_text}\n"
+                f"Phase 1 shot description (use only to enrich the exact fragment): {raw_desc}\n"
                 f"Dialogue fact: {dialogue or 'null'}; Props fact: {json.dumps(props_list, ensure_ascii=False)}\n"
                 f"Requested structured facts: expression={shot.get('facial_expression','')}; micro_expression={shot.get('micro_expression','')}; gaze={shot.get('gaze','')}; body_language={shot.get('body_language','')}; action_start={shot.get('action_start','')}; action_process={shot.get('action_process','')}; action_end={shot.get('action_end','')}; prop_interactions={shot.get('prop_interactions','')}\n"
                 f"Render Style: {style_full}\nShot duration: {shot.get('duration_seconds', seconds_per_shot)}s"
@@ -816,7 +863,7 @@ class AFE_ScriptFullParser:
             p2_data["shot_description"] = sd
 
             camera_motion, camera_motion_source, camera_motion_explicit = _camera_motion_from_phases(
-                shot, p2_data, source_text, raw_desc
+                shot, p2_data, source_shot_text, raw_desc
             )
             # Phase 2 is an enrichment pass. JSON null/empty values must never
             # erase a fact already extracted by Phase 1.
@@ -855,8 +902,9 @@ class AFE_ScriptFullParser:
                 "scene_id":          scene_id,
                 "scene_occurrence_id": occurrence_id,
                 "source_block_id":   source_block_id or None,
-                "source_text":       source_text,
-                "source_shot_text":  raw_desc,
+                "source_text":       source_shot_text,
+                "source_shot_text":  source_shot_text,
+                "source_block_text": source_block_text,
                 "raw_description":   raw_desc,
                 "scene_assignment_error": shot.get("scene_assignment_error", ""),
                 "environment": {

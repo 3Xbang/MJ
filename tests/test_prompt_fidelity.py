@@ -98,6 +98,49 @@ def test_camera_cues_are_scoped_to_the_shot_and_preserve_direction():
     assert person_still[0] != "static"
 
 
+def test_exact_source_fragment_excludes_sibling_screenplay_moments():
+    import importlib.util
+    path = os.path.join(ROOT, "nodes", "director", "script_full_parser_node.py")
+    spec = importlib.util.spec_from_file_location("full_parser_for_source", path)
+    parser = importlib.util.module_from_spec(spec); spec.loader.exec_module(parser)
+    block = ("Scene: Workshop\nMina grips the red cup and narrows her eyes.\n\n"
+             "Bo opens the brass drawer and shouts across the room.")
+    fragment = parser._source_fragment_for_shot(
+        block, "Mina grips the red cup and narrows her eyes.",
+        {"source_shot_text": "Mina grips the red cup and narrows her eyes.",
+         "character_names": ["Mina"], "props_list": ["red cup"]})
+    assert fragment == "Mina grips the red cup and narrows her eyes."
+    assert "Bo" not in fragment and "brass drawer" not in fragment
+
+
+def test_shared_prompts_do_not_receive_sibling_character_or_prop_facts():
+    shot = normalize_shot({
+        "character_names": ["Mina"], "props_list": ["red cup"],
+        "source_text": "Mina grips the red cup and narrows her eyes.",
+        "source_block_text": "Mina grips the red cup. Bo opens the brass drawer.",
+        "action_start": "Mina reaches for the red cup",
+    })
+    for prompt in (build_keyframe_prompt(shot), build_video_prompt(shot)):
+        assert "Mina" in prompt and "red cup" in prompt
+        assert "Bo" not in prompt and "brass drawer" not in prompt
+
+
+def test_camera_uses_exact_source_when_phase_summary_omits_pan():
+    import importlib.util
+    path = os.path.join(ROOT, "nodes", "director", "script_full_parser_node.py")
+    spec = importlib.util.spec_from_file_location("full_parser_for_source_camera", path)
+    parser = importlib.util.module_from_spec(spec); spec.loader.exec_module(parser)
+    result = parser._camera_motion_from_phases(
+        {}, {}, "The camera pans left as Mina looks up.", "Mina looks up.")
+    assert result == ("pan_left", "script", True)
+
+
+def test_chinese_person_stillness_does_not_lock_camera():
+    shot = normalize_shot({"camera_motion": "static", "camera_motion_source": "script",
+                           "source_text": "人物静止不动地看向门。", "action": "看向门"})
+    assert shot["camera_motion"] != "static"
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):

@@ -22,12 +22,15 @@ from ai_film_editor_nodes.nodes.video.shot_prompt_contract import build_video_pr
 logger = logging.getLogger("AFE_MovieAssembler")
 
 
+def _clip_candidates(project: str, sid: str) -> list[str]:
+    return [os.path.join(project, folder, f"{sid}.mp4")
+            for folder in ("clips_av", "clips")
+            if os.path.exists(os.path.join(project, folder, f"{sid}.mp4"))]
+
+
 def find_clip(project: str, sid: str) -> str | None:
-    for folder in ("clips_av", "clips"):
-        p = os.path.join(project, folder, f"{sid}.mp4")
-        if os.path.exists(p):
-            return p
-    return None
+    candidates = _clip_candidates(project, sid)
+    return candidates[0] if candidates else None
 
 
 def _keyframe_hash(path: str) -> str:
@@ -43,9 +46,25 @@ def _clip_current(project: str, shot: dict, sid: str, path: str, render_style: s
     if not os.path.exists(meta_path):
         return False, f"missing render metadata {meta_path}"
     try:
-        meta = json.load(open(meta_path, encoding="utf-8"))
+        with open(meta_path, encoding="utf-8") as f:
+            meta = json.load(f)
     except (OSError, ValueError) as exc:
         return False, f"invalid render metadata: {exc}"
+    is_audio_copy = os.path.basename(os.path.dirname(path)) == "clips_av"
+    if is_audio_copy:
+        # Audio copies must identify the exact silent render they wrap. This
+        # prevents an old clips_av file from masking a current clips file.
+        source_meta_path = os.path.join(project, "clips", f"{sid}.json")
+        source_sig = meta.get("source_render_sig")
+        if not meta.get("audio_sig") or not source_sig:
+            return False, "audio copy lacks source render/audio signatures"
+        try:
+            with open(source_meta_path, encoding="utf-8") as f:
+                source_meta = json.load(f)
+        except (OSError, ValueError) as exc:
+            return False, f"audio copy source metadata unavailable: {exc}"
+        if source_meta.get("sig") != source_sig:
+            return False, "audio copy wraps a stale render"
     if meta.get("keyframe_sig") != _keyframe_hash(keyframe):
         return False, "clip keyframe signature is stale"
     expected_contract = md5(render_shared_facts(shot), has_dialogue(shot))
@@ -95,17 +114,24 @@ class AFE_MovieAssembler:
             sid = shot_id_of(shot, i)
             if sid in skip:
                 continue
-            path = find_clip(project_dir, sid)
-            if not path:
+            candidates = _clip_candidates(project_dir, sid)
+            if not candidates:
                 missing.append(sid)
-            else:
-                current, reason = _clip_current(project_dir, shot, sid, path, render_style)
+                continue
+            reasons = []
+            selected = None
+            for candidate in candidates:
+                current, reason = _clip_current(project_dir, shot, sid, candidate, render_style)
                 if current:
-                    found.append(path)
-                    total_s += float(shot.get("duration_seconds") or 5.0)
-                else:
-                    invalid.append(f"{sid} ({reason})")
-                    missing.append(sid)
+                    selected = candidate
+                    break
+                reasons.append(f"{os.path.basename(os.path.dirname(candidate))}: {reason}")
+            if selected:
+                found.append(selected)
+                total_s += float(shot.get("duration_seconds") or 5.0)
+            else:
+                invalid.append(f"{sid} ({'; '.join(reasons)})")
+                missing.append(sid)
 
         if missing:
             details = ", ".join(invalid) if invalid else "none"
