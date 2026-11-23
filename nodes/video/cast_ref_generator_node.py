@@ -25,9 +25,12 @@ import torch
 from ai_film_editor_nodes.nodes.analyzer.scene_image_generator_node import (
     _generate_scene_image, _load_models,
 )
+from ai_film_editor_nodes.nodes.generation.character_card_9views_node import VIEW_TEMPLATES
+from ai_film_editor_nodes.nodes.video import user_refs
 from ai_film_editor_nodes.nodes.video._common import (
-    auto_all_input, check_interrupt, clamp, closed_result, gate_input, gate_is_open, label_image,
-    load_png, make_progress, md5, parse_index_numbers, project_dir, save_png, sub_dir, align_batch,
+    auto_all_input, check_interrupt, clamp, closed_result, fit_to_canvas, gate_input, gate_is_open,
+    label_image, load_png, make_progress, md5, parse_index_numbers, project_dir, save_png, sub_dir,
+    align_batch, tensor_sig,
 )
 
 logger = logging.getLogger("AFE_CastRefGenerator")
@@ -115,24 +118,40 @@ class AFE_CastRefGenerator:
 
         for ci, member in enumerate(cast):
             prompt = build_cast_prompt(member, render_style)
+            mine = user_refs.load_user_ref(project_name, "cast", member["name"])
+            mine_sig = tensor_sig(mine) if mine is not None else ""
+            look = ", ".join(x for x in [(member.get("appearance_en") or "").strip(),
+                                         (f"wearing {member['default_costume_en']}"
+                                          if member.get("default_costume_en") else "")] if x)
+            qwen_prompt = VIEW_TEMPLATES[1].replace("{char}", look).replace("{style}", render_style)
+            if mine is not None:
+                lines.append(f"  📎 {member['name']}：使用你上传的参考图")
             salt = redo_map.get(ci, 0)
             chosen = clamp(pick_map.get(ci, 1), 1, K)
             versions = []
             for k in range(1, K + 1):
                 check_interrupt()
                 seed_k = seed + ci * 101 + (k - 1) * 17 + salt * 9973
-                sig = md5(prompt, width, height, steps, seed_k)[:8]
+                is_original = mine is not None and k == 1          # v1 = the user's own picture
+                how = "orig" if is_original else ("qwen" if mine is not None else "krea")
+                sig = md5(prompt, width, height, steps, seed_k, how, mine_sig)[:8]
                 path = os.path.join(out_dir, f"C{ci + 1}_v{k}_{sig}.png")
                 if os.path.exists(path):
                     img = load_png(path); reused += 1
                 else:
-                    if model is None:
-                        model, clip, vae = _load_models()
-                    logger.info("[AFE_CastRefGenerator] %s version %d/%d", member["name"], k, K)
+                    logger.info("[AFE_CastRefGenerator] %s version %d/%d (%s)", member["name"], k, K, how)
                     try:
-                        img = _generate_scene_image(
-                            clip=clip, vae=vae, base_model=model, prompt=prompt, seed=seed_k,
-                            width=width, height=height, steps=steps, cfg=1.0, negative=CAST_NEGATIVE)
+                        if is_original:
+                            img = fit_to_canvas(mine, width, height, "pad")
+                        elif mine is not None:
+                            img = user_refs.qwen_variant(fit_to_canvas(mine, width, height, "pad"),
+                                                         qwen_prompt, seed_k)
+                        else:
+                            if model is None:
+                                model, clip, vae = _load_models()
+                            img = _generate_scene_image(
+                                clip=clip, vae=vae, base_model=model, prompt=prompt, seed=seed_k,
+                                width=width, height=height, steps=steps, cfg=1.0, negative=CAST_NEGATIVE)
                         save_png(img, path); made += 1
                     except Exception as e:
                         logger.error("[AFE_CastRefGenerator] %s v%d failed: %s", member["name"], k, e)
@@ -141,8 +160,10 @@ class AFE_CastRefGenerator:
                 versions.append(img)
                 if os.path.exists(path):
                     manifest.append({"char": ci + 1, "name": member["name"], "variant": k,
-                                     "file": f"cast_refs/{os.path.basename(path)}", "chosen": k == chosen})
-                preview.append(label_image(img, f"C{ci + 1} v{k}" + (" *" if k == chosen else ""), 512))
+                                     "file": f"cast_refs/{os.path.basename(path)}", "chosen": k == chosen,
+                                     "source": "upload" if is_original else "ai"})
+                preview.append(label_image(img, f"C{ci + 1} v{k}" + (" mine" if is_original else "")
+                                           + (" *" if k == chosen else ""), 512))
                 if bar:
                     bar.update(1)
             selected.append(versions[chosen - 1])

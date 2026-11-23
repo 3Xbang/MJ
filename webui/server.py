@@ -11,6 +11,8 @@ project state next to the generated files:
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import io
 import json
 import logging
 import os
@@ -31,6 +33,14 @@ USED_KEYS = ("cast_picks", "cast_redo", "scene_view_picks", "kf_picks", "kf_redo
 
 
 # ── project files ─────────────────────────────────────────────────────────────
+
+REF_KINDS = ("cast", "scene", "prop")
+
+
+def ref_filename(kind: str, name: str) -> str:
+    """Must stay identical to nodes.video._common.ref_filename()."""
+    return f"{kind}_{hashlib.md5((name or '').strip().lower().encode('utf-8')).hexdigest()[:10]}.png"
+
 
 def safe_project_name(name: str) -> str:
     """Must stay identical to nodes.video._common.project_dir()'s sanitising."""
@@ -183,6 +193,8 @@ class Api:
                           "look": c.get("appearance_en")} for c in analysis.get("cast", [])],
                 "scenes": st.get("scenes", []), "props": st.get("props", []),
             }
+        view["refs"] = self.refs_view(pname, pp, analysis, st.get("scenes", []), st.get("props", []))
+        view["ref_sig"] = self.ref_sig(pp)
         kd = os.path.join(pp, "keyframes")
         if os.path.isdir(kd):
             for f in os.listdir(kd):
@@ -201,6 +213,54 @@ class Api:
         pp, pname = self.project_path(name), safe_project_name(name)
         return [dict(m, url=file_url(pname, m["file"], pp)) for m in manifest
                 if os.path.exists(os.path.join(pp, m["file"]))]
+
+    # reference pictures uploaded by the user ------------------------------------------------
+    def ref_sig(self, pp: str) -> str:
+        d = os.path.join(pp, "refs")
+        if not os.path.isdir(d):
+            return ""
+        items = sorted((f, int(os.path.getmtime(os.path.join(d, f)))) for f in os.listdir(d) if f.endswith(".png"))
+        return hashlib.md5(json.dumps(items).encode()).hexdigest()[:10] if items else ""
+
+    def refs_view(self, pname: str, pp: str, analysis: dict | None, scenes: list, props: list) -> dict:
+        out = {"cast": {}, "scene": {}, "prop": {}}
+        names = {"cast": [c.get("name") for c in (analysis or {}).get("cast", [])],
+                 "scene": [s.get("scene_name") for s in scenes or []],
+                 "prop": [p.get("name") for p in props or []]}
+        for kind, lst in names.items():
+            for name in lst:
+                if name and os.path.exists(os.path.join(pp, "refs", ref_filename(kind, name))):
+                    out[kind][name] = file_url(pname, f"refs/{ref_filename(kind, name)}", pp)
+        return out
+
+    async def upload_ref(self, request):
+        q = request.query
+        kind, name = q.get("kind", ""), (q.get("name") or "").strip()
+        if kind not in REF_KINDS or not name:
+            return web.json_response({"error": "缺少参数。"}, status=400)
+        data = await request.read()
+        try:
+            from PIL import Image
+            im = Image.open(io.BytesIO(data))
+            im.load()
+            im = im.convert("RGB")
+            im.thumbnail((2048, 2048))
+        except Exception:
+            return web.json_response({"error": "这个文件不是可用的图片，请换成 JPG 或 PNG。"}, status=400)
+        pp = self.project_path(q.get("project", "afe_project"))
+        os.makedirs(os.path.join(pp, "refs"), exist_ok=True)
+        im.save(os.path.join(pp, "refs", ref_filename(kind, name)), "PNG")
+        return web.json_response({"ok": True})
+
+    async def delete_ref(self, request):
+        body = await request.json()
+        kind, name = body.get("kind", ""), (body.get("name") or "").strip()
+        if kind not in REF_KINDS or not name:
+            return web.json_response({"error": "缺少参数。"}, status=400)
+        path = os.path.join(self.project_path(body.get("project", "afe_project")), "refs", ref_filename(kind, name))
+        if os.path.exists(path):
+            os.remove(path)
+        return web.json_response({"ok": True})
 
     # handlers
     async def index(self, request):
@@ -248,7 +308,8 @@ class Api:
         if stage >= 2 and not os.path.exists(os.path.join(pp, "analysis.json")):
             return web.json_response({"error": "请先完成第 ① 步「分析剧本」。"}, status=400)
         os.makedirs(pp, exist_ok=True)
-        st.setdefault("run_settings", {})[str(stage)] = {k: s.get(k, "") for k in USED_KEYS}
+        st.setdefault("run_settings", {})[str(stage)] = {**{k: s.get(k, "") for k in USED_KEYS},
+                                                         "refs": self.ref_sig(pp)}
         self.save_state(pp, st)
 
         part = "cast" if body.get("part") == "cast" and stage == 2 else "all"
@@ -353,6 +414,8 @@ class Api:
         routes.post("/afe/api/collect")(self.collect)
         routes.post("/afe/api/cancel")(self.cancel)
         routes.get("/afe/api/file")(self.file)
+        routes.post("/afe/api/upload")(self.upload_ref)
+        routes.post("/afe/api/ref/delete")(self.delete_ref)
 
     async def index_redirect(self, request):
         raise web.HTTPFound("/afe/")

@@ -220,6 +220,45 @@ def main():
             wait_idle(page, 60000)
             check("everything fresh again", page.locator("#side .stale").count() == 0 and page.locator("#side .fresh").count() == 1)
 
+            # ---- the user's own reference pictures ----
+            from PIL import Image
+            png = os.path.join(tempfile.gettempdir(), "afe_ref.png")
+            Image.new("RGB", (300, 500), (200, 30, 30)).save(png)
+            page.evaluate("() => { S.open[2] = true; render(); }")
+            page.click(".card[data-step='2'] details.refs summary")
+            before = stats()
+            for n, (kind, name) in enumerate([("cast", "阿明"), ("scene", "超市外卖厨房"), ("prop", "佛珠")], start=1):
+                page.set_input_files(f"input[data-ref-kind={kind}][data-ref-name='{name}']", png)
+                page.wait_for_function(f"() => document.querySelectorAll('.refrow .thumb img').length >= {n}")
+            check("3 uploads show thumbnails", page.locator(".refrow .thumb img").count() == 3)
+            page.locator(".card[data-step='2']").screenshot(path=f"{SHOTS}/07_refs.png")
+            check("uploading marks steps stale and says why",
+                  "参考图" in page.inner_text("#side .stale") and page.locator("#stepper .step-chip.stale").count() >= 1,
+                  page.inner_text("#side .stale")[:60])
+            page.click("#side .stale button")                      # first stale step = 2 (materials)
+            wait_idle(page, 90000)
+            after = stats()
+            check("only the pictures that depend on uploads were redrawn (4 Qwen edits, no new text-to-image)",
+                  after["qwen"] == before["qwen"] + 4 and after["scene"] == before["scene"]
+                  and after["prop"] == before["prop"] and after["cast"] == before["cast"], f"{before} -> {after}")
+            page.wait_for_selector(".card[data-step='2'] .group")
+            ming = page.inner_text(".card[data-step='2'] .group:has(h3:has-text('阿明'))")
+            check("character candidates: v1 is labelled as the user's own picture", "你的原图" in ming, ming[:40])
+            check("sidebar says 'your picture' for that character", "你的原图" in page.inner_text("#side"))
+            kf_before = len(stats()["kf_imgs"])
+            for _ in range(4):                                     # step 3 (first frames), then 4, 5 ...
+                if page.locator("#side .stale").count() == 0:
+                    break
+                page.click("#side .stale button")
+                wait_idle(page, 90000)
+            counts = stats()["kf_imgs"][kf_before:]
+            check("first frames now receive the prop picture too (scene + characters + prop)",
+                  set(counts) == {3, 4}, str(counts))
+            check("everything fresh after propagating the uploads", page.locator("#side .stale").count() == 0)
+            page.click("button[data-act=ref-del][data-kind=prop]")
+            page.wait_for_function("() => document.querySelectorAll('.refrow .thumb img').length === 2")
+            check("removing a reference picture works and flags an update", page.locator("#side .stale").count() == 1)
+
             # cancel
             page.evaluate("() => { S.open[2] = true; render(); }")
             page.click("button[data-act=redo-cast][data-char='1']")

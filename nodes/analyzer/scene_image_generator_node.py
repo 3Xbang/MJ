@@ -13,8 +13,10 @@ logger = logging.getLogger("AFE_SceneImageGenerator")
 
 import json  # noqa: E402
 import os  # noqa: E402
+from ai_film_editor_nodes.nodes.video import user_refs  # noqa: E402
 from ai_film_editor_nodes.nodes.video._common import (  # noqa: E402
-    auto_all_input, closed_result, gate_input, gate_is_open, load_png, md5, project_dir, save_png, sub_dir,
+    auto_all_input, closed_result, fit_to_canvas, gate_input, gate_is_open, load_png, md5, project_dir,
+    save_png, sub_dir, tensor_sig,
 )
 
 _MODEL_CACHE: dict = {}
@@ -272,25 +274,37 @@ class AFE_SceneImageGenerator:
                 ),
             }
             logger.info("[AFE_SceneImageGenerator] Scene %d/%d: %s", i+1, len(scenes), env_desc[:60])
+            mine = user_refs.load_user_ref(project_name, "scene", scene.get("scene_name") or scene.get("name", ""))
+            mine_sig = tensor_sig(mine) if mine is not None else ""
             for view_key, batch_list in [("establishing", establishing),
                                           ("medium",        medium),
                                           ("atmosphere",    atmosphere)]:
                 seed_i = seed + i * 100
-                sig = md5(prompts[view_key], seed_i, width, height, steps)[:8]
+                how = ("orig" if view_key == "establishing" else "qwen") if mine is not None else "krea"
+                sig = md5(prompts[view_key], seed_i, width, height, steps, how, mine_sig)[:8]
                 path = os.path.join(scenes_dir, f"S{i + 1}_{short[view_key]}_{sig}.png")
                 if os.path.exists(path):
                     batch_list.append(load_png(path)); reused += 1
                 else:
                     try:
-                        if model is None:
-                            model, clip, vae = _load_models()
-                        img = _generate_scene_image(
-                            clip=clip, vae=vae, base_model=model,
-                            prompt=prompts[view_key],
-                            seed=seed_i,
-                            width=width, height=height,
-                            steps=steps, cfg=cfg,
-                        )
+                        if how == "orig":
+                            img = fit_to_canvas(mine, width, height, "crop")
+                        elif how == "qwen":
+                            img = user_refs.qwen_variant(
+                                fit_to_canvas(mine, width, height, "crop"),
+                                "[Image_1] This is the location. Show the SAME location, same architecture, "
+                                "materials, colors and lighting, completely empty, no people. "
+                                + prompts[view_key].rsplit(". ", 1)[-1], seed_i)
+                        else:
+                            if model is None:
+                                model, clip, vae = _load_models()
+                            img = _generate_scene_image(
+                                clip=clip, vae=vae, base_model=model,
+                                prompt=prompts[view_key],
+                                seed=seed_i,
+                                width=width, height=height,
+                                steps=steps, cfg=cfg,
+                            )
                         save_png(img, path)
                         batch_list.append(img); made += 1
                         logger.info("[AFE_SceneImageGenerator]   ✓ %s %s", scene.get("name","?")[:30], view_key)

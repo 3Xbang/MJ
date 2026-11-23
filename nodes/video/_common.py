@@ -228,6 +228,40 @@ def project_dir(project_name: str) -> str:
     return path
 
 
+# ── User-supplied reference images (uploaded in the web UI) ───────────────────
+# Stored by NAME, not by position, so re-analysing the script (which can reorder things) does not
+# attach a picture to the wrong character / scene / prop.
+
+def ref_filename(kind: str, name: str) -> str:
+    key = hashlib.md5((name or "").strip().lower().encode("utf-8")).hexdigest()[:10]
+    return f"{kind}_{key}.png"
+
+
+def user_ref_file(project_name: str, kind: str, name: str) -> str:
+    return os.path.join(project_dir(project_name), "refs", ref_filename(kind, name))
+
+
+def fit_to_canvas(img: torch.Tensor, width: int, height: int, mode: str = "pad") -> torch.Tensor:
+    """(1,H,W,3) -> (1,height,width,3) keeping the aspect ratio.
+    mode 'pad' = whole picture visible on white; 'crop' = fill the canvas, centre crop."""
+    _, h, w, _ = img.shape
+    scale = min(width / w, height / h) if mode == "pad" else max(width / w, height / h)
+    nw, nh = max(1, round(w * scale)), max(1, round(h * scale))
+    if mode == "pad":
+        nw, nh = min(nw, width), min(nh, height)
+    else:
+        nw, nh = max(nw, width), max(nh, height)
+    x = torch.nn.functional.interpolate(img.movedim(-1, 1), size=(nh, nw), mode="bilinear",
+                                        antialias=True, align_corners=False)
+    if mode == "pad":
+        canvas = torch.ones(1, 3, height, width)
+        top, left = (height - nh) // 2, (width - nw) // 2
+        canvas[:, :, top:top + nh, left:left + nw] = x
+        return canvas.movedim(1, -1).clamp(0, 1)
+    top, left = (nh - height) // 2, (nw - width) // 2
+    return x[:, :, top:top + height, left:left + width].movedim(1, -1).clamp(0, 1)
+
+
 def sub_dir(project: str, name: str) -> str:
     path = os.path.join(project, name)
     os.makedirs(path, exist_ok=True)

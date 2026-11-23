@@ -12,8 +12,10 @@ logger = logging.getLogger("AFE_PropsImageGenerator")
 
 import json  # noqa: E402
 import os  # noqa: E402
+from ai_film_editor_nodes.nodes.video import user_refs  # noqa: E402
 from ai_film_editor_nodes.nodes.video._common import (  # noqa: E402
-    auto_all_input, closed_result, gate_input, gate_is_open, load_png, md5, project_dir, save_png, sub_dir,
+    auto_all_input, closed_result, fit_to_canvas, gate_input, gate_is_open, load_png, md5, project_dir,
+    save_png, sub_dir, tensor_sig,
 )
 
 # Shared model cache with scene generator
@@ -193,7 +195,9 @@ class AFE_PropsImageGenerator:
                          f"{desc}. No shadows, no environment, no people, studio lighting, 8k"
 
             seed_i = seed + i * 100
-            sig = md5(prompt, seed_i, size, steps)[:8]
+            mine = user_refs.load_user_ref(project_name, "prop", name)
+            mine_sig = tensor_sig(mine) if mine is not None else ""
+            sig = md5(prompt, seed_i, size, steps, "orig" if mine is not None else "krea", mine_sig)[:8]
             path = os.path.join(props_dir, f"P{i + 1}_{sig}.png")
             logger.info("[AFE_PropsImageGenerator] Prop %d/%d: %s", i+1, len(props), name[:50])
 
@@ -201,14 +205,17 @@ class AFE_PropsImageGenerator:
                 images.append(load_png(path)); reused += 1
             else:
                 try:
-                    if model is None:
-                        model, clip, vae = _load_models()
-                    img = _generate_prop_image(
-                        clip=clip, vae=vae, base_model=model,
-                        prop_prompt=prompt,
-                        seed=seed_i,
-                        size=size, steps=steps,
-                    )
+                    if mine is not None:                      # the user's own picture: use it as is
+                        img = fit_to_canvas(mine, size, size, "pad")
+                    else:
+                        if model is None:
+                            model, clip, vae = _load_models()
+                        img = _generate_prop_image(
+                            clip=clip, vae=vae, base_model=model,
+                            prop_prompt=prompt,
+                            seed=seed_i,
+                            size=size, steps=steps,
+                        )
                     save_png(img, path)
                     images.append(img); made += 1
                     logger.info("[AFE_PropsImageGenerator]   ✓ %s", name[:30])

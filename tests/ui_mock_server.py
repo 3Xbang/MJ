@@ -50,7 +50,7 @@ def fake_img(h, w, seed):
     return (img * stripe).clamp(0, 1)
 
 
-CALLS = {"scene": 0, "prop": 0, "cast": 0, "kf": 0}
+CALLS = {"scene": 0, "prop": 0, "cast": 0, "kf": 0, "qwen": 0, "kf_imgs": []}
 
 
 def _count(kind, img):
@@ -65,7 +65,10 @@ sg._generate_scene_image = lambda **kw: _count("scene", fake_img(kw["height"], k
 sg._load_models = lambda: (None, None, None)
 pg._generate_prop_image = lambda clip, vae, base_model, prop_prompt, seed, size, steps: _count("prop", fake_img(size, size, seed))
 pg._load_models = lambda: (None, None, None)
-kf._generate_frame = lambda cached, clip, vae, images, prompt, negative, seed, resolution: _count("kf", fake_img(288, 512, seed))
+kf._generate_frame = lambda cached, clip, vae, images, prompt, negative, seed, resolution: (
+    CALLS["kf_imgs"].append(len(images)), _count("kf", fake_img(288, 512, seed)))[1]
+from ai_film_editor_nodes.nodes.video import user_refs as _user_refs  # noqa: E402
+_user_refs.qwen_variant = lambda reference, prompt, seed: _count("qwen", fake_img(reference.shape[1], reference.shape[2], seed))
 kf._load_models = lambda: (None, None, None)
 kf.call = lambda cls, **k: (None,)
 kf.get_node = lambda n: None

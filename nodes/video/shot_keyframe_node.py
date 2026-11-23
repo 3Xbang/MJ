@@ -30,9 +30,10 @@ import torch
 from ai_film_editor_nodes.nodes.generation.character_card_9views_node import (
     QWEN_TURBO_SIGMAS, _load_models,
 )
+from ai_film_editor_nodes.nodes.video import user_refs
 from ai_film_editor_nodes.nodes.video._common import (
     align_batch, auto_all_input, call, check_interrupt, clamp, closed_result, files_differ,
-    gate_input, gate_is_open, get_node, get_shots, label_image, load_png, make_progress, md5,
+    fit_to_canvas, gate_input, gate_is_open, get_node, get_shots, label_image, load_png, make_progress, md5,
     parse_shot_numbers, project_dir, save_png, scene_names_in_order, shot_id_of, split_items,
     split_pair, sub_dir, tensor_sig,
 )
@@ -44,6 +45,7 @@ KEYFRAME_NEGATIVE = (
     "text, watermark, logo, subtitles, low quality"
 )
 MAX_CHARS_PER_SHOT = 3
+MAX_PROPS_PER_SHOT = 2
 VIEW_BY_NAME = {"1": 0, "establishing": 0, "wide": 0, "2": 1, "medium": 1, "3": 2, "atmosphere": 2}
 VIEW_LABEL = ["establishing", "medium", "atmosphere"]
 
@@ -53,9 +55,10 @@ def cast_names(cast_data) -> list[str]:
     return [c["name"] for c in (cast_data or []) if isinstance(c, dict) and c.get("name")]
 
 
-def build_keyframe_prompt(shot: dict, char_names: list[str], render_style: str) -> str:
-    """Prompt for Qwen Image 2.1. [Image_1] = set, [Image_2..] = characters (same
-    convention as AFE_CharacterCard9Views)."""
+def build_keyframe_prompt(shot: dict, char_names: list[str], render_style: str,
+                          prop_names: list[str] | tuple = ()) -> str:
+    """Prompt for Qwen Image 2.1. [Image_1] = set, then the characters, then the props the user
+    uploaded pictures for (same [Image_n] convention as AFE_CharacterCard9Views)."""
     lines = [
         "[Image_1] is the location reference. Keep its architecture, materials, colors and "
         "lighting exactly as shown."
@@ -64,6 +67,11 @@ def build_keyframe_prompt(shot: dict, char_names: list[str], render_style: str) 
         lines.append(
             f"[Image_{k + 2}] is the character {name}. Keep the face, hairstyle, body shape "
             f"and outfit exactly as shown."
+        )
+    for k, name in enumerate(prop_names):
+        lines.append(
+            f"[Image_{len(char_names) + k + 2}] is the prop {name}. Keep its exact shape, color and "
+            f"details, and show it in the frame where the action uses it."
         )
     lines.append("Create ONE new cinematic film frame inside this location.")
 
@@ -199,6 +207,16 @@ class AFE_ShotKeyframeGenerator:
         proj = project_dir(project_name)
         kf_dir = sub_dir(proj, "keyframes")
 
+        # props the user uploaded a picture for (matched by name against each shot's props_list)
+        prop_refs = {}
+        for shot in all_shots:
+            for p in shot.get("props_list") or []:
+                p = str(p).strip()
+                if p and p not in prop_refs:
+                    img = user_refs.load_user_ref(project_name, "prop", p)
+                    if img is not None:
+                        prop_refs[p] = fit_to_canvas(img, 768, 768, "pad")
+
         model = clip = vae = cached = None
         chosen_frames, preview, lines = [], [], ["🖼 首帧（选用的版本带 * 号）"]
         manifest = []
@@ -212,7 +230,11 @@ class AFE_ShotKeyframeGenerator:
             images = {"image_1": scene_img}
             for k, n in enumerate(in_shot):
                 images[f"image_{k + 2}"] = ref_by_name[n]
-            prompt = build_keyframe_prompt(shot, in_shot, render_style)
+            in_props = [p for p in dict.fromkeys(str(x).strip() for x in (shot.get("props_list") or []))
+                        if p in prop_refs][:MAX_PROPS_PER_SHOT]
+            for k, p in enumerate(in_props):
+                images[f"image_{len(in_shot) + k + 2}"] = prop_refs[p]
+            prompt = build_keyframe_prompt(shot, in_shot, render_style, in_props)
             base_sig = md5(prompt, resolution, KEYFRAME_NEGATIVE,
                            *[tensor_sig(t) for t in images.values()])
             salt = redo_map.get(sid, 0)

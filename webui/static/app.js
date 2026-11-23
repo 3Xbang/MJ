@@ -196,8 +196,11 @@ function changedSince(keys, used) {
 function staleList() {
   const v = S.view; if (!v) return [];
   const d = v.done || {}, u = v.used || {}, out = [];
-  if (d['3'] && changedSince(['cast_picks', 'cast_redo', 'scene_view_picks', 'kf_picks', 'kf_redo', 'kf_variants'], u['3']))
-    out.push({ stage: 3, text: '你更换了角色、场景或首帧的选择。首帧需要更新（只会重画受影响的分镜）。' });
+  const refsChanged = k => u[k] && 'refs' in u[k] && (u[k].refs || '') !== (v.ref_sig || '');
+  if (d['2'] && refsChanged('2'))
+    out.push({ stage: 2, text: '你上传或更换了参考图，场景和角色需要按新的参考图重画（没变的不会重画）。' });
+  if (d['3'] && (refsChanged('3') || changedSince(['cast_picks', 'cast_redo', 'scene_view_picks', 'kf_picks', 'kf_redo', 'kf_variants'], u['3'])))
+    out.push({ stage: 3, text: '你更换了参考图或角色、场景、首帧的选择。首帧需要更新（只会重画受影响的分镜）。' });
   if (d['4'] && (Number(d['3']) > Number(d['4']) || changedSince(['video_redo', 'long_takes'], u['4'])))
     out.push({ stage: 4, text: '首帧或镜头设置有变化，视频需要更新（只会重新渲染受影响的分镜）。' });
   if (d['5'] && (Number(d['4']) > Number(d['5']) || changedSince(['skip_shots'], u['5'])))
@@ -220,7 +223,7 @@ function renderSide() {
       const imgs = (v.cast_images || []).filter(x => x.char === j + 1);
       const cur = S.sel.cast[j + 1] || (imgs.find(x => x.chosen) || {}).variant || 1;
       const it = imgs.find(x => x.variant === cur) || imgs[0];
-      if (it) h += `<div class="sel"><img src="${esc(it.url)}" alt="" class="tall"><span><b>${esc(c.name)}</b><br><small>版本 ${it.variant}</small></span></div>`;
+      if (it) h += `<div class="sel"><img src="${esc(it.url)}" alt="" class="tall"><span><b>${esc(c.name)}</b><br><small>${it.source === 'upload' ? '你的原图' : '版本 ' + it.variant}</small></span></div>`;
     });
   } else {
     h += '<p class="mini">还没有素材。完成第 ② 步后，这里会显示你选用的图。</p>';
@@ -347,7 +350,7 @@ function renderStep2() {
       const cur = S.sel.cast[j + 1] || (imgs.find(x => x.chosen) || {}).variant || 1;
       return `<div class="group"><h3>角色：${esc(c.name)} <button class="small" data-act="redo-cast" data-char="${j + 1}" ${S.run ? 'disabled' : ''}>🔄 不满意，重画这个角色</button></h3>
         <div class="gallery">${imgs.map(x => `<label class="pick ${cur === x.variant ? 'on' : ''}"><input type="radio" name="cast${j}" data-sel="cast" data-id="${j + 1}" data-val="${x.variant}" ${cur === x.variant ? 'checked' : ''}>
-          <img src="${esc(x.url)}" loading="lazy"><div class="cap">版本 ${x.variant}</div></label>`).join('')}</div></div>`;
+          <img src="${esc(x.url)}" loading="lazy"><div class="cap">${x.source === 'upload' ? '你的原图' : '版本 ' + x.variant}</div></label>`).join('')}</div></div>`;
     }).join('');
     const props = (as.props_images || []).length ? `<div class="group"><h3>道具白底图</h3><div class="gallery">${as.props_images.map(p =>
       `<div class="pick"><img src="${esc(p.url)}" loading="lazy" style="max-height:130px"><div class="cap">${esc(p.name)}</div></div>`).join('')}</div></div>` : '';
@@ -357,11 +360,42 @@ function renderStep2() {
   }
   return card(2, '素材：场景、角色、道具', `
     <p class="help">AI 会为每个场景画 3 张图（全景、中景、氛围），为每个角色画几个版本供你挑选，并画出道具图。</p>
+    ${renderRefs()}
     <div class="row">
       <div class="field"><label>每个角色画几个版本</label><input type="number" min="1" max="4" data-set="cast_candidates" data-type="int" value="${esc(s.cast_candidates)}"></div>
       <label class="switch"><input type="checkbox" data-set="make_props" data-type="bool" ${s.make_props ? 'checked' : ''}> 同时画道具图</label>
       ${runBtn(2)}
     </div>${result}`);
+}
+
+/* optional reference pictures (uploaded by the user) */
+function refRow(kind, name, sub) {
+  const url = ((S.view.refs || {})[kind] || {})[name];
+  return `<div class="refrow"><div class="thumb">${url ? `<img src="${esc(url)}" alt="">` : '<span>无</span>'}</div>
+    <div class="who"><b>${esc(name)}</b><br><small>${esc(sub || '')}</small></div>
+    <label class="upl">📎 ${url ? '更换' : '上传'}参考图<input type="file" accept="image/*" data-ref-kind="${kind}" data-ref-name="${esc(name)}"></label>
+    ${url ? `<button class="small ghost" data-act="ref-del" data-kind="${kind}" data-name="${esc(name)}">移除</button>` : ''}</div>`;
+}
+function renderRefs() {
+  const a = S.view.analysis;
+  if (!a) return '';
+  const cast = (a.cast || []).map(c => refRow('cast', c.name, c.look)).join('');
+  const scenes = (a.scenes || []).map(c => refRow('scene', c.scene_name, c.scene_name_en)).join('');
+  const props = (a.props || []).map(c => refRow('prop', c.name, '')).join('');
+  const n = Object.values(S.view.refs || {}).reduce((t, o) => t + Object.keys(o).length, 0);
+  return `<details class="refs" ${n ? 'open' : ''}><summary>📎 我有参考图（可选）${n ? `<span class="chip" style="margin-left:8px">已上传 ${n} 张</span>` : ''}</summary>
+    <p class="help">有现成的图就上传，AI 会<b>以你的图为准</b>来画，后面的首帧也会按它保持一致；没有就留空，AI 会根据文字描述来画。
+    角色请用正面、清晰、背景干净的图；场景请用没有人的空镜头；道具请用单个物品的图。</p>
+    ${cast ? `<h4>角色</h4>${cast}` : ''}${scenes ? `<h4>场景</h4>${scenes}` : ''}${props ? `<h4>道具</h4>${props}` : ''}</details>`;
+}
+async function uploadRef(kind, name, file) {
+  if (!file) return;
+  const q = `project=${encodeURIComponent(S.project)}&kind=${kind}&name=${encodeURIComponent(name)}`;
+  const r = await fetch('/afe/api/upload?' + q, { method: 'POST', headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: file });
+  let d = {}; try { d = await r.json(); } catch (e) { /* ignore */ }
+  if (!r.ok) return showError(d.error || '上传失败');
+  await loadProject(S.project, true);
+  showOk(`已上传「${name}」的参考图` + (done(2) ? '。点右边的「现在更新」让它生效。' : '。点「② 生成素材」时会按它来画。'));
 }
 
 /* step 3 ─ keyframes */
@@ -446,6 +480,10 @@ document.addEventListener('click', async ev => {
     return;
   }
   if (act === 'tab') { S.tab = el.dataset.tab; return render(); }
+  if (act === 'ref-del') {
+    await api('/afe/api/ref/delete', { project: S.project, kind: el.dataset.kind, name: el.dataset.name });
+    return loadProject(S.project, true);
+  }
   if (act === 'redo-cast') {
     const k = el.dataset.char; S.redo.cast[k] = (S.redo.cast[k] || 0) + 1; saveSettingsSoon(); return runStage(2, 'cast');
   }
@@ -466,6 +504,9 @@ document.addEventListener('change', ev => {
     S.settings[el.dataset.set] = val;
     saveSettingsSoon();
     if (el.dataset.set === 'test_mode') render();
+  } else if (el.dataset.refKind) {
+    uploadRef(el.dataset.refKind, el.dataset.refName, el.files[0]);
+    el.value = '';
   } else if (el.dataset.sel) {
     const kind = el.dataset.sel;
     S.sel[kind][el.dataset.id] = Number(el.dataset.val);
