@@ -1738,7 +1738,9 @@
         true,
         false,
         42,
-        "fixed"
+        "fixed",
+        "shot_001:10",
+        false
       ],
       "title": "🎬 分镜视频渲染 (Wan 2.2)"
     },

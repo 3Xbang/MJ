@@ -14,8 +14,12 @@ Clips that already exist are skipped, so a crashed or interrupted run can simply
 from __future__ import annotations
 
 import logging
+import math
 import os
+import re
 import time
+
+import torch
 
 from ai_film_editor_nodes.nodes.video._common import (
     call, check_interrupt, get_node, get_shots, has_dialogue, load_png, make_progress,
@@ -112,14 +116,87 @@ def _load_wan(use_lora: bool):
     return _CACHE[key]
 
 
-def render_clip(models, keyframe, prompt, width, height, length, seed, use_lora):
-    """One shot: start image + prompt -> frames tensor (length,H,W,3)."""
+MAX_SEG_FRAMES = 81          # Wan 2.2 14B: one segment is at most ~5 s at 16 fps
+MAX_SHOT_SECONDS = 120.0
+CONTINUE_SUFFIX = (". Continuing the same continuous shot without any cut, same character, "
+                   "same location, same lighting")
+
+
+def plan_segments(duration_seconds: float, fps: int = FPS) -> tuple[list[int], int]:
+    """Split one shot into consecutive Wan segments.
+
+    Returns (segment_lengths, target_total_frames). Every length is 4n+1 and <= 81.
+    Segment 1 starts from the keyframe. Each later segment starts from the LAST frame of the
+    previous one, so its first frame is a duplicate and is dropped when joining (it adds L-1).
+    """
+    target = max(5, round(duration_seconds * fps) + 1)
+    segs: list[int] = []
+    have = 0
+    # stop when <= 4 frames (0.25 s) are missing: not worth a whole extra sampling pass
+    while not segs or target - have > 4:
+        needed = target - have
+        if not segs:
+            length = min(MAX_SEG_FRAMES, 4 * math.ceil((needed - 1) / 4) + 1)
+            have += length
+        else:
+            length = min(MAX_SEG_FRAMES, 4 * math.ceil(needed / 4) + 1)
+            have += length - 1
+        segs.append(length)
+    return segs, target
+
+
+def parse_duration_overrides(text: str) -> dict[str, float]:
+    """'shot_005:15, 20=30' -> {'shot_005': 15.0, 'shot_020': 30.0}  (seconds, clamped 1..120)."""
+    out: dict[str, float] = {}
+    for item in re.split(r"[,;\n]+", text or ""):
+        item = item.strip()
+        if not item:
+            continue
+        m = re.match(r"^\s*([A-Za-z0-9_\-]+)\s*[:=]\s*([0-9]+(?:\.[0-9]+)?)\s*s?\s*$", item)
+        if not m:
+            logger.warning("[AFE_WanShotRenderer] ignoring bad long_take_overrides entry: %r", item)
+            continue
+        key, secs = m.group(1), float(m.group(2))
+        if key.isdigit():
+            key = f"shot_{int(key):03d}"
+        out[key] = min(max(secs, 1.0), MAX_SHOT_SECONDS)
+    return out
+
+
+def render_shot(models, keyframe, prompt, width, height, duration_seconds, seed, use_lora,
+                anchor_identity=False):
+    """One shot of any length: chains 5-second Wan segments through their last frames."""
+    segs, target = plan_segments(duration_seconds)
+    parts = []
+    start = keyframe
+    for k, length in enumerate(segs):
+        check_interrupt()
+        seg_prompt = prompt if k == 0 else prompt + CONTINUE_SUFFIX
+        logger.info("[AFE_WanShotRenderer]   segment %d/%d (%d frames)", k + 1, len(segs), length)
+        seg = render_clip(models, start, seg_prompt, width, height, length, seed + k * 13, use_lora,
+                          ref_pad_image=keyframe if (anchor_identity and k > 0) else None)
+        parts.append(seg if k == 0 else seg[1:])
+        start = seg[-1:]
+    return torch.cat(parts, dim=0)[:target]
+
+
+def render_clip(models, keyframe, prompt, width, height, length, seed, use_lora, ref_pad_image=None):
+    """One segment: start image + prompt -> frames tensor (length,H,W,3)."""
     high, low, clip, vae, neg = models
     steps, cfg, split = (4, 1.0, 2) if use_lora else (20, 3.5, 10)
 
     pos = call(get_node("CLIPTextEncode"), clip=clip, text=prompt)[0]
-    cond = call(get_node("WanImageToVideo"), positive=pos, negative=neg, vae=vae,
-                width=width, height=height, length=length, batch_size=1, start_image=keyframe)
+    wan_args = dict(positive=pos, negative=neg, vae=vae, width=width, height=height,
+                    length=length, batch_size=1, start_image=keyframe)
+    if ref_pad_image is not None:
+        try:
+            cond = call(get_node("WanImageToVideo"), ref_pad_image=ref_pad_image, **wan_args)
+        except TypeError:   # older ComfyUI without ref_pad_image
+            logger.warning("[AFE_WanShotRenderer] this ComfyUI has no ref_pad_image; "
+                           "identity anchoring skipped (update ComfyUI to use it)")
+            cond = call(get_node("WanImageToVideo"), **wan_args)
+    else:
+        cond = call(get_node("WanImageToVideo"), **wan_args)
     pos2, neg2, latent = cond[0], cond[1], cond[2]
 
     KS = get_node("KSamplerAdvanced")
@@ -160,6 +237,14 @@ class AFE_WanShotRenderer:
                 "overwrite": ("BOOLEAN", {"default": False,
                                           "tooltip": "False = skip clips already on disk"}),
                 "seed": ("INT", {"default": 42, "min": 0, "max": 2147483647}),
+                "long_take_overrides": ("STRING", {
+                    "default": "",
+                    "tooltip": "Make chosen shots longer than 5 s (one continuous take, no cut). "
+                               "Format: shot_005:15, shot_020:30  (seconds). Empty = use each shot's own duration."}),
+                "anchor_identity": ("BOOLEAN", {
+                    "default": False,
+                    "tooltip": "Experimental: for long takes, also feed the shot's first frame as an identity "
+                               "anchor to later segments to reduce face/outfit drift."}),
             },
         }
 
@@ -171,10 +256,21 @@ class AFE_WanShotRenderer:
 
     def render(self, shot_sequence, project_dir, render_style,
                shots_to_render="all", max_shots=0, width=832, height=480,
-               fast_4step=True, overwrite=False, seed=42):
+               fast_4step=True, overwrite=False, seed=42,
+               long_take_overrides="", anchor_identity=False):
         shots = get_shots(shot_sequence)
         if not shots:
             raise ValueError("shot_sequence is empty")
+
+        overrides = parse_duration_overrides(long_take_overrides)
+        if overrides:
+            shots = [dict(s, duration_seconds=overrides[shot_id_of(s, i)])
+                     if shot_id_of(s, i) in overrides else s
+                     for i, s in enumerate(shots)]
+            known = {shot_id_of(s, i) for i, s in enumerate(shots)}
+            unknown = [k for k in overrides if k not in known]
+            if unknown:
+                logger.warning("[AFE_WanShotRenderer] long_take_overrides: unknown shot ids %s", unknown)
 
         kf_dir = sub_dir(project_dir, "keyframes")
         clip_dir = sub_dir(project_dir, "clips")
@@ -216,17 +312,21 @@ class AFE_WanShotRenderer:
             if models is None:
                 models = _load_wan(fast_4step)
 
-            length = frames_for(float(shot.get("duration_seconds") or 5.0))
+            duration = float(shot.get("duration_seconds") or 5.0)
+            n_segs = len(plan_segments(duration)[0])
             prompt = build_video_prompt(shot, render_style, speaking)
-            logger.info("[AFE_WanShotRenderer] %d/%d %s (%d frames)", n + 1, len(todo), sid, length)
+            logger.info("[AFE_WanShotRenderer] %d/%d %s (%.0fs, %d segment(s))",
+                        n + 1, len(todo), sid, duration, n_segs)
             t0 = time.time()
             try:
-                frames = render_clip(models, load_png(kf_path), prompt, width, height, length,
-                                     seed + i, fast_4step)
+                frames = render_shot(models, load_png(kf_path), prompt, width, height, duration,
+                                     seed + i, fast_4step, anchor_identity)
                 write_mp4(frames, out_path, FPS)
                 done += 1
                 dt = time.time() - t0
                 t_total += dt
+                if n_segs > 1:
+                    lines.append(f"  🔗 {sid}: 长镜头 {duration:.0f}s = {n_segs} 段接续，用时 {dt:.0f}s")
                 logger.info("[AFE_WanShotRenderer]   %s done in %.0fs", sid, dt)
             except Exception as e:
                 logger.error("[AFE_WanShotRenderer] %s failed: %s", sid, e)

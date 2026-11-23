@@ -18,6 +18,7 @@ import os
 import sys
 
 TEST_SHOTS = 2   # first run renders only this many shots (set max_shots to 0 for the full film)
+TEST_LONG_TAKE = "shot_001:10"   # first run also tests a 10 s continuous take (2 chained segments); clear it for normal runs
 
 
 def build(src_path: str) -> dict:
@@ -95,7 +96,8 @@ def build(src_path: str) -> dict:
         "AFE_WanShotRenderer", (X0 + 980, Y0), (420, 420),
         [sock("shot_sequence", "SHOT_SEQUENCE"), sock("project_dir", "STRING")],
         [("project_dir", "STRING"), ("report", "STRING")],
-        [style, "all", TEST_SHOTS, 832, 480, True, False, 42, "fixed"],
+        [style, "all", TEST_SHOTS, 832, 480, True, False, 42, "fixed",
+         TEST_LONG_TAKE, False],
         title="🎬 分镜视频渲染 (Wan 2.2)")
     assembler = add_node(
         "AFE_MovieAssembler", (X0 + 1480, Y0), (380, 200),
