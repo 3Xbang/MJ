@@ -107,6 +107,34 @@ def main():
             st = page.evaluate("() => ({scene: S.settings.scene_view_picks, cast: S.settings.cast_picks})")
             check("picks stored as settings", st["scene"] == "1:2" and st["cast"] == "2:3", str(st))
 
+            # redoing ONE character must not touch scenes or props
+            def stats():
+                return __import__("json").loads(urllib.request.urlopen(f"http://127.0.0.1:{PORT}/mock/stats").read())
+            before = stats()
+            check("step 2 drew 6 scene images, 2 props, 6 character versions",
+                  (before["scene"], before["prop"], before["cast"]) == (6, 2, 6), str(before))
+            first_cast_src = page.get_attribute(".card[data-step='2'] input[data-sel=cast][data-id='1'][data-val='1'] ~ img", "src")
+            page.click("button[data-act=redo-cast][data-char='1']")
+            page.wait_for_selector("#dock:not(.hidden)")
+            wait_idle(page)
+            after = stats()
+            check("redo character: only characters redrawn (scenes/props untouched)",
+                  after["scene"] == before["scene"] and after["prop"] == before["prop"] and after["cast"] == before["cast"] + 3,
+                  f"{before} -> {after}")
+            check("redo character: message says so", "角色已重画" in page.inner_text("#dockMsg"), page.inner_text("#dockMsg"))
+            new_cast_src = page.get_attribute(".card[data-step='2'] input[data-sel=cast][data-id='1'][data-val='1'] ~ img", "src")
+            check("redo character: new image shown", new_cast_src.split("&t=")[0] != first_cast_src.split("&t=")[0])
+            check("scenes + props still displayed after cast-only redo",
+                  page.locator(".card[data-step='2'] input[data-sel=scene]").count() == 6 and
+                  page.locator(".card[data-step='2'] .group:last-child img").count() >= 1)
+            check("picks survived the redo", page.evaluate("() => S.settings.scene_view_picks") == "1:2")
+            page.click("button[data-act=run][data-stage='2']")
+            page.wait_for_selector("#dock:not(.hidden)")
+            wait_idle(page)
+            again = stats()
+            check("re-running step 2 reuses scene/props images from disk",
+                  again["scene"] == before["scene"] and again["prop"] == before["prop"], str(again))
+
             # step 3 (test mode => 2 shots)
             page.fill("select[data-set=kf_variants]", "") if False else page.select_option("select[data-set=kf_variants]", "2")
             page.click("button[data-act=run][data-stage='3']")

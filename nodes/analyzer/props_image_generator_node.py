@@ -10,8 +10,10 @@ import torch
 
 logger = logging.getLogger("AFE_PropsImageGenerator")
 
+import json  # noqa: E402
+import os  # noqa: E402
 from ai_film_editor_nodes.nodes.video._common import (  # noqa: E402
-    auto_all_input, closed_result, gate_input, gate_is_open,
+    auto_all_input, closed_result, gate_input, gate_is_open, load_png, md5, project_dir, save_png, sub_dir,
 )
 
 # Shared model cache with scene generator
@@ -132,6 +134,7 @@ class AFE_PropsImageGenerator:
                 "steps": ("INT",   {"default": 20,   "min": 8,   "max": 50}),
                 "seed":  ("INT",   {"default": 42,   "min": 0,   "max": 2147483647}),
                 "approved": gate_input("生成道具白底图"),
+                "project_name": ("STRING", {"default": "afe_project"}),
                 "auto_all": auto_all_input(),
             },
         }
@@ -150,6 +153,7 @@ class AFE_PropsImageGenerator:
         steps: int = 20,
         seed: int = 42,
         approved: bool = False,
+        project_name: str = "afe_project",
         auto_all: bool = False,
     ):
         if not gate_is_open(approved, auto_all):
@@ -169,8 +173,11 @@ class AFE_PropsImageGenerator:
         if not props:
             raise ValueError("No props found. Connect props_report from AFE_PropsAnalyzer.")
 
-        model, clip, vae = _load_models()
+        props_dir = sub_dir(project_dir(project_name), "props")
+        model = clip = vae = None
         images = []
+        manifest = []
+        made = reused = 0
 
         for i, prop in enumerate(props):
             name = prop.get("name", f"prop_{i+1}")
@@ -185,25 +192,37 @@ class AFE_PropsImageGenerator:
                 prompt = f"Product photography, pure white studio background, clean isolated {name}, " \
                          f"{desc}. No shadows, no environment, no people, studio lighting, 8k"
 
+            seed_i = seed + i * 100
+            sig = md5(prompt, seed_i, size, steps)[:8]
+            path = os.path.join(props_dir, f"P{i + 1}_{sig}.png")
             logger.info("[AFE_PropsImageGenerator] Prop %d/%d: %s", i+1, len(props), name[:50])
 
-            try:
-                img = _generate_prop_image(
-                    clip=clip, vae=vae, base_model=model,
-                    prop_prompt=prompt,
-                    seed=seed + i * 100,
-                    size=size, steps=steps,
-                )
-                images.append(img)
-                logger.info("[AFE_PropsImageGenerator]   ✓ %s", name[:30])
-            except Exception as e:
-                logger.error("[AFE_PropsImageGenerator]   ✗ %s: %s", name, e)
-                images.append(torch.ones(1, size, size, 3))
+            if os.path.exists(path):
+                images.append(load_png(path)); reused += 1
+            else:
+                try:
+                    if model is None:
+                        model, clip, vae = _load_models()
+                    img = _generate_prop_image(
+                        clip=clip, vae=vae, base_model=model,
+                        prop_prompt=prompt,
+                        seed=seed_i,
+                        size=size, steps=steps,
+                    )
+                    save_png(img, path)
+                    images.append(img); made += 1
+                    logger.info("[AFE_PropsImageGenerator]   ✓ %s", name[:30])
+                except Exception as e:
+                    logger.error("[AFE_PropsImageGenerator]   ✗ %s: %s", name, e)
+                    images.append(torch.ones(1, size, size, 3))
+                    continue
+            manifest.append({"index": i + 1, "name": name, "file": f"props/{os.path.basename(path)}"})
 
         def stack(imgs):
             return torch.cat(imgs, dim=0) if imgs else torch.ones(1, size, size, 3)
 
-        report = f"🔧 道具白底图生成完成\n共 {len(props)} 个道具\n"
+        report = f"🔧 道具白底图完成：新画 {made} 张，复用 {reused} 张\n共 {len(props)} 个道具\n"
         report += "\n".join(f"  ✅ {p.get('name','?')}" for p in props)
 
-        return (stack(images), report)
+        return {"ui": {"text": [report], "afe_manifest": [json.dumps(manifest, ensure_ascii=False)]},
+                "result": (stack(images), report)}

@@ -50,9 +50,22 @@ def fake_img(h, w, seed):
     return (img * stripe).clamp(0, 1)
 
 
-cr._generate_scene_image = lambda **kw: fake_img(kw["height"], kw["width"], kw["seed"])
+CALLS = {"scene": 0, "prop": 0, "cast": 0, "kf": 0}
+
+
+def _count(kind, img):
+    CALLS[kind] += 1
+    return img
+
+
+cr._generate_scene_image = lambda **kw: _count("cast", fake_img(kw["height"], kw["width"], kw["seed"]))
 cr._load_models = lambda: (None, None, None)
-kf._generate_frame = lambda cached, clip, vae, images, prompt, negative, seed, resolution: fake_img(288, 512, seed)
+from ai_film_editor_nodes.nodes.analyzer import scene_image_generator_node as sg, props_image_generator_node as pg  # noqa: E402
+sg._generate_scene_image = lambda **kw: _count("scene", fake_img(kw["height"], kw["width"], kw["seed"]))
+sg._load_models = lambda: (None, None, None)
+pg._generate_prop_image = lambda clip, vae, base_model, prop_prompt, seed, size, steps: _count("prop", fake_img(size, size, seed))
+pg._load_models = lambda: (None, None, None)
+kf._generate_frame = lambda cached, clip, vae, images, prompt, negative, seed, resolution: _count("kf", fake_img(288, 512, seed))
 kf._load_models = lambda: (None, None, None)
 kf.call = lambda cls, **k: (None,)
 kf.get_node = lambda n: None
@@ -108,8 +121,7 @@ def fake_props_gen(**kw):
     return (torch.cat([fake_img(256, 256, 100 + i) for i in range(n)]), "ok")
 
 
-FAKES = {"AFE_ScriptFullParser": fake_parser, "AFE_SceneImageGenerator": fake_scene_gen,
-         "AFE_PropsImageGenerator": fake_props_gen}
+FAKES = {"AFE_ScriptFullParser": fake_parser}
 
 
 class SaveImage:                      # stand-in for ComfyUI's core node
@@ -245,6 +257,10 @@ def make_app(port: int):
         if not os.path.isfile(path):
             raise web.HTTPNotFound()
         return web.FileResponse(path)
+
+    @routes.get("/mock/stats")
+    async def stats(request):
+        return web.json_response(CALLS)
 
     @routes.post("/interrupt")
     async def interrupt(request):

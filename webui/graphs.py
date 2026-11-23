@@ -64,8 +64,12 @@ def _max_shots(s: dict) -> int:
     return int(s["test_shots"]) if s["test_mode"] else 0
 
 
-def build_prompt(stage: int, project: str, settings: dict | None, project_path: str) -> tuple[dict, dict]:
-    """Returns (api_prompt, labels). labels maps node id -> text shown while that node runs."""
+def build_prompt(stage: int, project: str, settings: dict | None, project_path: str,
+                 part: str = "all") -> tuple[dict, dict]:
+    """Returns (api_prompt, labels). labels maps node id -> text shown while that node runs.
+
+    part: for step 2 only. "all" = scenes + props + characters, "cast" = characters only
+    (used by the per-character redo button, so scenes and props are never touched)."""
     s = merged(settings)
     g: dict[str, dict] = {}
     labels: dict[str, str] = {}
@@ -84,7 +88,7 @@ def build_prompt(stage: int, project: str, settings: dict | None, project_path: 
     def scene_images():
         g["4"] = _n("AFE_SceneImageGenerator", scene_report=["2", 2], render_style=style,
                     scenes_json=["2", 0], width=1024, height=576, steps=20, cfg=1.0,
-                    seed=int(s["seed"]), approved=True)
+                    seed=int(s["seed"]), approved=True, project_name=project)
         labels["4"] = "绘制场景图（每个场景 3 张）"
 
     def cast_refs():
@@ -103,14 +107,14 @@ def build_prompt(stage: int, project: str, settings: dict | None, project_path: 
         analyzers()
 
     elif stage == 2:
-        loader(); analyzers(); scene_images(); cast_refs()
-        for nid, slot, prefix in (("7", 0, "est"), ("8", 1, "med"), ("9", 2, "atm")):
-            g[nid] = _n("SaveImage", images=["4", slot], filename_prefix=f"afe_projects/{project}/scenes/{prefix}")
-        if s["make_props"]:
-            g["5"] = _n("AFE_PropsImageGenerator", props_report=["3", 2], props_json=["3", 0],
-                        size=1024, steps=20, seed=int(s["seed"]), approved=True)
-            g["10"] = _n("SaveImage", images=["5", 0], filename_prefix=f"afe_projects/{project}/props/prop")
-            labels["5"] = "绘制道具图"
+        loader()
+        cast_refs()
+        if part != "cast":
+            analyzers(); scene_images()
+            if s["make_props"]:
+                g["5"] = _n("AFE_PropsImageGenerator", props_report=["3", 2], props_json=["3", 0],
+                            size=1024, steps=20, seed=int(s["seed"]), approved=True, project_name=project)
+                labels["5"] = "绘制道具图"
 
     elif stage == 3:
         loader(); analyzers(); scene_images(); cast_refs()

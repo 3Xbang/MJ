@@ -77,7 +77,7 @@ def _text(entry: dict) -> str:
     return "\n".join(str(t) for t in (entry.get("text") or []))
 
 
-def extract_results(stage: int, outputs: dict) -> dict:
+def extract_results(stage: int, outputs: dict, part: str = "all") -> dict:
     """outputs = history[prompt_id]["outputs"]  ->  dict of what the UI should remember."""
     res: dict = {}
     if stage == 1:
@@ -90,10 +90,13 @@ def extract_results(stage: int, outputs: dict) -> dict:
         res["props"] = _first_json(o3, "afe_props", [])
         res["reports"] = {"parse": _text(o1), "scenes": _text(o2), "props": _text(o3)}
     elif stage == 2:
-        res["scene_images"] = {k: view_urls(outputs.get(n, {})) for k, n in (("est", "7"), ("med", "8"), ("atm", "9"))}
-        res["props_images"] = view_urls(outputs.get("10", {}))
         res["cast_manifest"] = _first_json(outputs.get("6", {}), "afe_manifest", [])
         res["report"] = _text(outputs.get("6", {}))
+        if part != "cast":
+            sm = sorted(_first_json(outputs.get("4", {}), "afe_manifest", []), key=lambda m: m["scene"])
+            res["scene_files"] = {k: [m["file"] for m in sm if m["view"] == k] for k in ("est", "med", "atm")}
+            res["props_files"] = [{"name": m.get("name", ""), "file": m["file"]}
+                                for m in sorted(_first_json(outputs.get("5", {}), "afe_manifest", []), key=lambda m: m["index"])]
     elif stage == 3:
         o = outputs.get("11", {})
         res["kf_manifest"] = _first_json(o, "afe_manifest", [])
@@ -155,8 +158,14 @@ class Api:
         pname = safe_project_name(name)
         st = self.state(pp)
         analysis = read_json(os.path.join(pp, "analysis.json"))
+        assets = st.get("assets")
+        if assets:
+            assets = {"scene_images": {k: [file_url(pname, f, pp) for f in files]
+                                       for k, files in assets.get("scene_files", {}).items()},
+                      "props_images": [{"url": file_url(pname, p["file"], pp), "name": p.get("name", "")}
+                                       for p in assets.get("props_files", [])]}
         view = {"project": pname, "settings": graphs.merged(st.get("settings")), "done": st.get("done", {}),
-                "has_analysis": bool(analysis), "analysis": None, "assets": st.get("assets"),
+                "has_analysis": bool(analysis), "analysis": None, "assets": assets,
                 "kf_manifest": st.get("kf_manifest", []), "reports": st.get("reports", {}),
                 "keyframes": {}, "clips": {}, "movie": None}
         if analysis:
@@ -237,7 +246,8 @@ class Api:
         os.makedirs(pp, exist_ok=True)
         self.save_state(pp, st)
 
-        prompt, labels = graphs.build_prompt(stage, project, s, pp)
+        part = "cast" if body.get("part") == "cast" and stage == 2 else "all"
+        prompt, labels = graphs.build_prompt(stage, project, s, pp, part)
         classes = self._node_classes() if callable(self._node_classes) else self._node_classes
         if classes:
             problems = graphs.validate_prompt(prompt, classes)
@@ -259,6 +269,7 @@ class Api:
     async def collect(self, request):
         body = await request.json()
         stage = int(body["stage"])
+        part = "cast" if body.get("part") == "cast" and stage == 2 else "all"
         project = safe_project_name(body.get("project", "afe_project"))
         pp = self.project_path(project)
         pid = body["prompt_id"]
@@ -282,7 +293,7 @@ class Api:
             return web.json_response({"ok": False, "error": friendly_error(
                 err.get("exception_message", ""), err.get("node_type", "")), "details": err.get("exception_message", "")[:800]})
         try:
-            res = extract_results(stage, entry.get("outputs", {}))
+            res = extract_results(stage, entry.get("outputs", {}), part)
         except ValueError as e:
             return web.json_response({"ok": False, "error": str(e)})
 
@@ -295,7 +306,8 @@ class Api:
                 st["done"].pop(k, None)
             st.pop("assets", None); st.pop("cast_manifest", None); st.pop("kf_manifest", None); st.pop("movie", None)
         elif stage == 2:
-            st["assets"] = {"scene_images": res["scene_images"], "props_images": res["props_images"], "report": res["report"]}
+            if part != "cast":
+                st["assets"] = {"scene_files": res["scene_files"], "props_files": res["props_files"]}
             st["cast_manifest"] = res["cast_manifest"]
         elif stage == 3:
             st["kf_manifest"] = res["kf_manifest"]

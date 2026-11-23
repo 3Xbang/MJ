@@ -258,7 +258,8 @@
         1,
         883578100,
         "randomize",
-        false
+        false,
+        "afe_project"
       ],
       "widgets_values_named": {
         "scene_report": "",
@@ -329,7 +330,8 @@
         20,
         281624328,
         "randomize",
-        false
+        false,
+        "afe_project"
       ],
       "widgets_values_named": {
         "props_report": "",

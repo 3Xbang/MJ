@@ -87,7 +87,7 @@ def build(src_path: str) -> dict:
         n = nodes[node_id]
         if not any(i["name"] == "auto_all" for i in n["inputs"]):
             n["inputs"].append(sock("auto_all", "BOOLEAN"))
-            n["widgets_values"].append(False)          # the new "approved" switch (last widget)
+            n["widgets_values"].extend([False, "afe_project"])   # new widgets: approved, project_name
         return [i["name"] for i in n["inputs"]].index("auto_all")
 
     master = add_node("PrimitiveBoolean", (X0, Y0 - 230), (330, 100), [],

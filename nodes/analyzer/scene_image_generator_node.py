@@ -11,8 +11,10 @@ import torch
 
 logger = logging.getLogger("AFE_SceneImageGenerator")
 
+import json  # noqa: E402
+import os  # noqa: E402
 from ai_film_editor_nodes.nodes.video._common import (  # noqa: E402
-    auto_all_input, closed_result, gate_input, gate_is_open,
+    auto_all_input, closed_result, gate_input, gate_is_open, load_png, md5, project_dir, save_png, sub_dir,
 )
 
 _MODEL_CACHE: dict = {}
@@ -191,6 +193,7 @@ class AFE_SceneImageGenerator:
                                      "tooltip": "Krea 2 requires cfg=1.0 (fixed)"}),
                 "seed":   ("INT",   {"default": 42,   "min": 0,   "max": 2147483647}),
                 "approved": gate_input("生成场景图（每个场景 3 张）"),
+                "project_name": ("STRING", {"default": "afe_project"}),
                 "auto_all": auto_all_input(),
             },
         }
@@ -213,6 +216,7 @@ class AFE_SceneImageGenerator:
         cfg:    float = 1.0,
         seed:   int   = 42,
         approved: bool = False,
+        project_name: str = "afe_project",
         auto_all: bool = False,
     ):
         if not gate_is_open(approved, auto_all):
@@ -240,9 +244,12 @@ class AFE_SceneImageGenerator:
                 "Connect scene_report output of AFE_SceneAnalyzer."
             )
 
-        model, clip, vae = _load_models()
-
+        scenes_dir = sub_dir(project_dir(project_name), "scenes")
+        model = clip = vae = None
         establishing, medium, atmosphere = [], [], []
+        manifest = []
+        made = reused = 0
+        short = {"establishing": "est", "medium": "med", "atmosphere": "atm"}
 
         for i, scene in enumerate(scenes):
             # One clean English place description; the 3 views differ only by camera suffix.
@@ -250,7 +257,6 @@ class AFE_SceneImageGenerator:
                     or scene.get("environment_description_en") \
                     or scene.get("name", f"scene_{i+1}")
             base = f"{env_desc}, {render_style}, empty scene, no people"
-
             prompts = {
                 "establishing": (
                     f"{base}. Wide establishing shot, full environment and layout visible, "
@@ -265,32 +271,42 @@ class AFE_SceneImageGenerator:
                     f"atmospheric detail, shallow depth of field."
                 ),
             }
-
             logger.info("[AFE_SceneImageGenerator] Scene %d/%d: %s", i+1, len(scenes), env_desc[:60])
-
             for view_key, batch_list in [("establishing", establishing),
                                           ("medium",        medium),
                                           ("atmosphere",    atmosphere)]:
-                try:
-                    img = _generate_scene_image(
-                        clip=clip, vae=vae, base_model=model,
-                        prompt=prompts[view_key],
-                        seed=seed + i * 100,
-                        width=width, height=height,
-                        steps=steps, cfg=cfg,
-                    )
-                    batch_list.append(img)
-                    logger.info("[AFE_SceneImageGenerator]   ✓ %s %s", scene.get("name","?")[:30], view_key)
-                except Exception as e:
-                    logger.error("[AFE_SceneImageGenerator]   ✗ %s %s: %s", scene.get("name","?"), view_key, e)
-                    batch_list.append(torch.ones(1, height, width, 3))
+                seed_i = seed + i * 100
+                sig = md5(prompts[view_key], seed_i, width, height, steps)[:8]
+                path = os.path.join(scenes_dir, f"S{i + 1}_{short[view_key]}_{sig}.png")
+                if os.path.exists(path):
+                    batch_list.append(load_png(path)); reused += 1
+                else:
+                    try:
+                        if model is None:
+                            model, clip, vae = _load_models()
+                        img = _generate_scene_image(
+                            clip=clip, vae=vae, base_model=model,
+                            prompt=prompts[view_key],
+                            seed=seed_i,
+                            width=width, height=height,
+                            steps=steps, cfg=cfg,
+                        )
+                        save_png(img, path)
+                        batch_list.append(img); made += 1
+                        logger.info("[AFE_SceneImageGenerator]   ✓ %s %s", scene.get("name","?")[:30], view_key)
+                    except Exception as e:
+                        logger.error("[AFE_SceneImageGenerator]   ✗ %s %s: %s", scene.get("name","?"), view_key, e)
+                        batch_list.append(torch.ones(1, height, width, 3))
+                        continue
+                manifest.append({"scene": i + 1, "view": short[view_key], "file": f"scenes/{os.path.basename(path)}"})
 
         def stack(imgs):
             return torch.cat(imgs, dim=0) if imgs else torch.ones(1, height, width, 3)
 
-        report_lines = [f"🌄 场景三视图生成完成", f"共 {len(scenes)} 个场景，每场景3张图"]
-        for s in scenes:
-            report_lines.append(f"  ✅ {s.get('name', '?')}")
+        report_lines = [f"🌄 场景三视图完成：新画 {made} 张，复用 {reused} 张", f"共 {len(scenes)} 个场景，每场景3张图"]
+        for s_ in scenes:
+            report_lines.append(f"  ✅ {s_.get('name', '?')}")
         report = "\n".join(report_lines)
 
-        return (stack(establishing), stack(medium), stack(atmosphere), report)
+        return {"ui": {"text": [report], "afe_manifest": [json.dumps(manifest, ensure_ascii=False)]},
+                "result": (stack(establishing), stack(medium), stack(atmosphere), report)}

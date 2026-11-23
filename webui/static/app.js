@@ -146,14 +146,14 @@ const showError = (text, detail) => { S.dock = { kind: 'err', text, detail }; re
 const showOk = text => { S.dock = { kind: 'ok', text }; renderDock(); };
 
 /* ── running a step ─────────────────────────────────────────────────────── */
-async function runStage(stage) {
+async function runStage(stage, part = 'all') {
   if (S.run) return;
   syncToSettings();
   S.dock = null;
   S.run = { stage, promptId: null, labels: {}, label: '正在提交…', t0: Date.now(), progress: null };
   renderDock(); render();
   const run = S.run;
-  const r = await api('/afe/api/run', { project: S.project, stage, client_id: S.clientId, settings: S.settings });
+  const r = await api('/afe/api/run', { project: S.project, stage, part, client_id: S.clientId, settings: S.settings });
   if (r.error) { S.run = null; render(); showError(r.error, r.details); return; }
   run.promptId = r.prompt_id; run.labels = r.labels || {}; run.label = '已提交，排队中…';
   renderDock();
@@ -165,14 +165,15 @@ async function runStage(stage) {
   }
   if (S.run !== run) return;
   run.label = '正在整理结果…'; renderDock();
-  const c = await api('/afe/api/collect', { project: S.project, stage, prompt_id: r.prompt_id });
+  const c = await api('/afe/api/collect', { project: S.project, stage, part, prompt_id: r.prompt_id });
   S.run = null;
   await loadProject(S.project, true);
   if (c.ok) {
     S.open[stage] = true;
     if (stage < 5) S.open[stage + 1] = true;
     render();
-    showOk(`「${STEPS[stage - 1].title}」完成` + (stage < 5 ? `，可以进行下一步 ${STEPS[stage].verb}` : '，成片已生成'));
+    showOk(part === 'cast' ? '角色已重画完成，请在上面重新挑选'
+      : `「${STEPS[stage - 1].title}」完成` + (stage < 5 ? `，可以进行下一步 ${STEPS[stage].verb}` : '，成片已生成'));
   } else if (c.cancelled) {
     S.dock = { kind: 'ok', text: c.error }; renderDock();
   } else {
@@ -293,10 +294,8 @@ function renderStep2() {
         <div class="gallery">${imgs.map(x => `<label class="pick ${cur === x.variant ? 'on' : ''}"><input type="radio" name="cast${j}" data-sel="cast" data-id="${j + 1}" data-val="${x.variant}" ${cur === x.variant ? 'checked' : ''}>
           <img src="${esc(x.url)}" loading="lazy"><div class="cap">版本 ${x.variant}</div></label>`).join('')}</div></div>`;
     }).join('');
-    const props = (as.props_images || []).length ? `<div class="group"><h3>道具白底图</h3><div class="gallery">${as.props_images.map((u, i) => {
-      const p = (a.props || [])[i] || {};
-      return `<div class="pick"><img src="${esc(u)}" loading="lazy" style="max-height:130px"><div class="cap">${esc(p.name || p.prop_name || '')}</div></div>`;
-    }).join('')}</div></div>` : '';
+    const props = (as.props_images || []).length ? `<div class="group"><h3>道具白底图</h3><div class="gallery">${as.props_images.map(p =>
+      `<div class="pick"><img src="${esc(p.url)}" loading="lazy" style="max-height:130px"><div class="cap">${esc(p.name)}</div></div>`).join('')}</div></div>` : '';
     result = `<h3 style="margin:18px 0 0">请挑选</h3>
       <div class="note">点图片即可选用。选好后直接进入第 ③ 步；以后如果更换了选择，第 ③ 步会自动只重画受影响的分镜。</div>
       ${scenes}${cast}${props}`;
@@ -393,7 +392,7 @@ document.addEventListener('click', async ev => {
   }
   if (act === 'tab') { S.tab = el.dataset.tab; return render(); }
   if (act === 'redo-cast') {
-    const k = el.dataset.char; S.redo.cast[k] = (S.redo.cast[k] || 0) + 1; saveSettingsSoon(); return runStage(2);
+    const k = el.dataset.char; S.redo.cast[k] = (S.redo.cast[k] || 0) + 1; saveSettingsSoon(); return runStage(2, 'cast');
   }
   if (act === 'redo-kf') {
     const k = el.dataset.shot; S.redo.kf[k] = (S.redo.kf[k] || 0) + 1; saveSettingsSoon(); return runStage(3);
