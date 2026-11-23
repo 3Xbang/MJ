@@ -263,6 +263,7 @@ class AFE_ShotKeyframeGenerator:
         model = clip = vae = cached = None
         chosen_frames, preview, lines = [], [], ["🖼 首帧（选用的版本带 * 号）"]
         manifest = []
+        blocked_shots = []
         bar = make_progress(len(shots) * K)
         made = reused = failed = 0
 
@@ -272,18 +273,21 @@ class AFE_ShotKeyframeGenerator:
             if shot.get("scene_assignment_error"):
                 lines.append(f"  ❌ {sid}: {shot['scene_assignment_error']}")
                 failed += 1
+                blocked_shots.append(sid)
                 continue
             in_shot = [n for n in requested_chars if n in ref_by_name]
             if len(in_shot) != len(requested_chars):
                 missing_names = [n for n in requested_chars if n not in ref_by_name]
                 lines.append(f"  ❌ {sid}: missing character reference(s) {', '.join(missing_names)}; upload or regenerate them")
                 failed += 1
+                blocked_shots.append(sid)
                 continue
             try:
                 scene_img, sidx, vidx = pick_scene_image(views, shot, scene_order, view_picks)
             except Exception as exc:
                 lines.append(f"  ❌ {sid}: scene reference unavailable: {exc}")
                 failed += 1
+                blocked_shots.append(sid)
                 continue
             images = {"image_1": scene_img}
             for k, n in enumerate(in_shot):
@@ -333,7 +337,7 @@ class AFE_ShotKeyframeGenerator:
             if use is None:
                 if os.path.exists(current):
                     os.remove(current)                       # never leave a stale frame behind
-                chosen_frames.append(label_image(scene_img, f"{sid} FAILED", 768))
+                blocked_shots.append(sid)
                 continue
             if files_differ(version_paths[use], current):
                 shutil.copyfile(version_paths[use], current)
@@ -352,6 +356,11 @@ class AFE_ShotKeyframeGenerator:
         lines.append(f"目录：{kf_dir}")
         lines.append("挑选：在 picks 写「分镜号:版本号」；不满意：在 redo_shots 写分镜号；改完再点 Queue。")
         report = "\n".join(lines)
+        if blocked_shots:
+            raise RuntimeError(
+                "Keyframe generation blocked for shots: " + ", ".join(dict.fromkeys(blocked_shots)) +
+                ". Resolve the reported reference or generation errors and retry."
+            )
         kf_batch = align_batch(chosen_frames)
         prev_batch = align_batch(preview) if preview else kf_batch
         return {"ui": {"text": [report], "afe_manifest": [json.dumps(manifest, ensure_ascii=False)]},

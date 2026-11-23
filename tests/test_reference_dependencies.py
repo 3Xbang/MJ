@@ -23,6 +23,25 @@ def test_reference_slot_identity_does_not_use_a_different_scene_or_person():
                     "props": ["OnlyProp"], "shot": ["shot_3"]}
 
 
+import tempfile
+
+from ai_film_editor_nodes.nodes.video.movie_assembler_node import AFE_MovieAssembler
+
+
+def test_assembler_does_not_hide_unskipped_missing_clip():
+    with tempfile.TemporaryDirectory() as project:
+        try:
+            AFE_MovieAssembler().assemble(
+                [{"shot_id": "shot_001"}, {"shot_id": "shot_002"}],
+                project, skip_shots="shot_001", approved=True,
+            )
+        except RuntimeError as exc:
+            assert "shot_002" in str(exc)
+            assert "unskipped" in str(exc)
+        else:
+            raise AssertionError("missing unskipped clip was silently accepted")
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):

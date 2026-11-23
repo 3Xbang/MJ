@@ -22,6 +22,11 @@ CAMERA_MOTIONS = {
     "orbit": "the camera slowly orbits around the subject",
 }
 
+_STATIC_CAMERA_CUES = re.compile(
+    r"\b(?:static|locked(?:[- ]off)?|hold|fixed camera|still camera)\b|"
+    r"(?:静止|固定机位|固定镜头|定机位|保持不动|停留)", re.IGNORECASE,
+)
+
 
 def _text(value: Any) -> str:
     if value is None:
@@ -40,14 +45,26 @@ def _list(value: Any) -> list:
 
 
 def camera_motion_for(shot: dict) -> tuple[str, str]:
-    """Return a supported motion and whether it came from the screenplay/rule."""
+    """Return a supported motion and its provenance.
+
+    A static camera is a screenplay fact, not a safe default.  A caller may mark
+    it as ``script`` only after validating that provenance, or provide an explicit
+    locked/hold cue in the source text.  Otherwise a missing or model-invented
+    static value is replaced by a deterministic non-static rule.
+    """
     raw = _text(shot.get("camera_motion")).lower().replace(" ", "_")
     aliases = {"push_in": "slow_push_in", "pull_back": "slow_pull_back", "track": "tracking_shot",
                "pan": "pan_right", "locked": "static", "hold": "static", "locked_off": "static"}
     raw = aliases.get(raw, raw)
-    if raw in CAMERA_MOTIONS and not (raw == "static" and _text(shot.get("camera_motion_source")).lower() in {"derived", "llm"}):
-        return raw, _text(shot.get("camera_motion_source")) or "script"
-    if shot.get("locked_camera") or re.search(r"\b(static|locked|hold|固定|静止)\b", _text(shot.get("director_notes") or shot.get("shot_description")), re.I):
+    source = _text(shot.get("camera_motion_source")).lower()
+    source_text = " ".join(_text(shot.get(k)) for k in (
+        "source_text", "screenplay_source_text", "raw_description", "shot_description", "director_notes"
+    ))
+    explicit_static = bool(shot.get("locked_camera") or shot.get("camera_motion_explicit"))
+    explicit_static = explicit_static or bool(_STATIC_CAMERA_CUES.search(source_text))
+    if raw in CAMERA_MOTIONS and raw != "static":
+        return raw, source or "script"
+    if raw == "static" and (explicit_static or source == "script"):
         return "static", "script"
     text = " ".join(_text(shot.get(k)) for k in ("shot_type", "action", "business", "section_type", "director_notes")).lower()
     section = _text(shot.get("section_type")).lower()

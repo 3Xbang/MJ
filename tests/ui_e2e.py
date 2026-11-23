@@ -187,7 +187,8 @@ def main():
             page.dispatch_event(".card[data-step='4'] input[data-long='shot_001']", "change")
             check("long take stored", page.evaluate("() => S.settings.long_takes") == "shot_001:10")
             page.locator(".card[data-step='4'] input[data-skip='shot_002']").click()
-            check("skip stored", page.evaluate("() => S.settings.skip_shots") == "shot_002")
+            page.evaluate("() => { ['shot_003','shot_004','shot_005','shot_006'].forEach(x => S.skip.add(x)); syncToSettings(); render(); }")
+            check("skip stored", page.evaluate("() => S.settings.skip_shots") == "shot_002, shot_003, shot_004, shot_005, shot_006")
             page.screenshot(path=f"{SHOTS}/05_step4_done.png", full_page=True)
 
             # re-render only changed shot (long take on shot_001)

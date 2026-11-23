@@ -70,10 +70,10 @@ class AFE_MovieAssembler:
             else:
                 missing.append(sid)
 
-        if missing and not skip:
+        if missing:
             raise RuntimeError(
-                "Cannot assemble film because clips are missing for: " + ", ".join(missing) +
-                ". Render the missing shots or explicitly list them in skip_shots."
+                "Cannot assemble film because clips are missing for unskipped shots: " + ", ".join(missing) +
+                ". Render those shots or add their shot IDs to skip_shots."
             )
         if not found:
             raise ValueError(f"No clips found in {project_dir}/clips. Run AFE_WanShotRenderer first.")

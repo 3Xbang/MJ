@@ -263,6 +263,7 @@ Format:
       "action_end": "ending state or null",
       "prop_interactions": ["exact interaction or null"],
       "camera_motion": "explicit motion or null",
+      "camera_motion_source": "script only when the screenplay explicitly specifies camera motion or a locked/hold shot, otherwise null",
       "camera_path": "path or null",
       "pace": "rhythm or null"
     }
@@ -367,6 +368,56 @@ def _normalize_durations(shots: list, target_seconds: int, default_secs: int) ->
 def _mostly_cjk(text: str, threshold: float = 0.2) -> bool:
     t = text or ""
     return bool(t) and sum(1 for c in t if "\u4e00" <= c <= "\u9fff") / len(t) > threshold
+
+
+def _present(value) -> bool:
+    """Treat JSON null/empty values as absent during phase merging."""
+    if value is None:
+        return False
+    if isinstance(value, (list, tuple, dict)):
+        return bool(value)
+    return str(value).strip().lower() not in {"", "null", "none", "n/a"}
+
+
+def _first_present(*values, default=""):
+    for value in values:
+        if _present(value):
+            return value
+    return default
+
+
+_CAMERA_STATIC_CUE_RE = re.compile(
+    r"\b(?:static|locked(?:[- ]off)?|hold|fixed camera|still camera)\b|"
+    r"(?:静止|固定机位|固定镜头|定机位|保持不动|停留)", re.IGNORECASE,
+)
+_CAMERA_MOTION_CUE_RE = re.compile(
+    r"\b(?:push(?:es)? in|dolly|pull(?:s)? back|zoom|pan(?:s)?|tracking|track(?:s)?|"
+    r"crane|handheld|orbit(?:s)?|camera movement|camera moves?)\b|"
+    r"(?:推近|推进|拉远|拉镜|变焦|摇镜|跟拍|升镜|降镜|手持|环绕|运镜)", re.IGNORECASE,
+)
+
+
+def _camera_motion_from_phases(phase1: dict, phase2: dict, source_text: str, raw_desc: str) -> tuple[str, str, bool]:
+    """Select camera data without allowing a phase-2 model default to erase provenance."""
+    source = f"{source_text} {raw_desc}"
+    static_cue = bool(_CAMERA_STATIC_CUE_RE.search(source))
+    motion_cue = bool(_CAMERA_MOTION_CUE_RE.search(source))
+    p1_motion = str(phase1.get("camera_motion") or "").strip()
+    p1_source = str(phase1.get("camera_motion_source") or "").strip().lower()
+    p2_motion = str(phase2.get("camera_motion") or "").strip()
+    p2_source = str(phase2.get("camera_motion_source") or "").strip().lower()
+
+    # Phase 1 is the screenplay pass.  Preserve an explicitly scripted motion,
+    # but only accept static when its provenance is explicit or the source has a hold cue.
+    if p1_motion and (p1_source == "script" or motion_cue or (p1_motion.lower() == "static" and static_cue)):
+        if p1_motion.lower() != "static" or static_cue or p1_source == "script":
+            return p1_motion, "script", True
+    if p2_motion and p2_source == "script" and (p2_motion.lower() != "static" or static_cue or motion_cue):
+        return p2_motion, "script", True
+    if p2_motion and p2_motion.lower() != "static" and p2_source not in {"script", "llm"}:
+        return p2_motion, "derived", False
+    # Let normalize_shot derive a non-static motion from the shot semantics.
+    return "", "derived", False
 
 
 TO_ENGLISH_SYSTEM = (
@@ -710,6 +761,36 @@ class AFE_ScriptFullParser:
                     logger.warning("[AFE_ScriptFullParser] English rewrite failed for %s: %s", shot_id, exc)
                 p2_data["shot_description"] = sd or raw_desc
 
+            camera_motion, camera_motion_source, camera_motion_explicit = _camera_motion_from_phases(
+                shot, p2_data, source_text, raw_desc
+            )
+            # Phase 2 is an enrichment pass. JSON null/empty values must never
+            # erase a fact already extracted by Phase 1.
+            get_fact = lambda key, *fallbacks: _first_present(
+                p2_data.get(key), *(shot.get(k) for k in (key,) + fallbacks)
+            )
+            action = get_fact("action")
+            business = get_fact("business")
+            facial_expression = get_fact("facial_expression", "emotion")
+            micro_expression = get_fact("micro_expression", "micro_emotion")
+            gaze = get_fact("gaze")
+            body_language = get_fact("body_language")
+            action_start = get_fact("action_start", "action")
+            action_process = get_fact("action_process", "business")
+            action_end = get_fact("action_end")
+            prop_interactions = _first_present(p2_data.get("prop_interactions"), shot.get("prop_interactions"), default=[])
+            camera_angle = get_fact("camera_angle")
+            shot_type = get_fact("shot_type")
+            lighting_style = get_fact("lighting_style")
+            director_notes = get_fact("director_notes")
+            location = get_fact("location", "scene_name")
+            time_of_day = get_fact("time_of_day")
+            weather = get_fact("weather")
+            lighting = get_fact("lighting")
+            color_temperature = get_fact("color_temperature")
+            camera_path = get_fact("camera_path")
+            pace = get_fact("pace", "rhythm")
+
             # 5. Merge minimal + phase2 into full shot dict
             full_shot = {
                 "shot_id":          shot_id,
@@ -723,45 +804,46 @@ class AFE_ScriptFullParser:
                 "scene_assignment_error": shot.get("scene_assignment_error", ""),
                 "environment": {
                     "description": scene_env.get(scene_idx, {}).get("environment_prompt_en", ""),
-                    "location": p2_data.get("location", ""),
-                    "time_of_day": p2_data.get("time_of_day") or shot.get("time_of_day", ""),
-                    "weather": p2_data.get("weather") or shot.get("weather", ""),
-                    "lighting": p2_data.get("lighting") or shot.get("lighting", ""),
-                    "color_temperature": p2_data.get("color_temperature") or shot.get("color_temperature", ""),
+                    "location": location,
+                    "time_of_day": time_of_day,
+                    "weather": weather,
+                    "lighting": lighting,
+                    "color_temperature": color_temperature,
                 },
                 "character_names":  char_names,
-                "costume_description": p2_data.get("costume_description", ""),
-                "costume_en":          p2_data.get("costume_en", ""),
+                "costume_description": _first_present(p2_data.get("costume_description"), shot.get("costume_description")),
+                "costume_en":          _first_present(p2_data.get("costume_en"), shot.get("costume_en")),
                 "props_list":          props_list,
                 "scene_name":          scene_name,
                 "scene_name_en":       scene_env.get(scene_idx, {}).get("scene_name_en", ""),
                 "scene_environment_en": scene_env.get(scene_idx, {}).get("environment_prompt_en", ""),
-                "camera_angle":        p2_data.get("camera_angle") or shot.get("camera_angle", ""),
-                "camera_motion":       p2_data.get("camera_motion") or shot.get("camera_motion", ""),
-                "camera_motion_source": p2_data.get("camera_motion_source") or ("script" if p2_data.get("camera_motion") or shot.get("camera_motion") else "derived"),
-                "shot_type":           p2_data.get("shot_type", ""),
-                "lighting_style":      p2_data.get("lighting_style", ""),
-                "director_notes":      p2_data.get("director_notes", ""),
-                "shot_description":    p2_data.get("shot_description", raw_desc),
-                "negative_prompt":     p2_data.get("negative_prompt", "ugly, blurry, low quality, distorted"),
+                "camera_angle":        camera_angle,
+                "camera_motion":       camera_motion,
+                "camera_motion_source": camera_motion_source,
+                "camera_motion_explicit": camera_motion_explicit,
+                "shot_type":           shot_type,
+                "lighting_style":      lighting_style,
+                "director_notes":      director_notes,
+                "shot_description":    p2_data.get("shot_description") or raw_desc,
+                "negative_prompt":     _first_present(p2_data.get("negative_prompt"), shot.get("negative_prompt"), default="ugly, blurry, low quality, distorted"),
                 "dialogue":            dialogue if dialogue else "（无）",
-                "location":            p2_data.get("location", scene_name),
-                "time_of_day":         p2_data.get("time_of_day") or shot.get("time_of_day", ""),
-                "weather":             p2_data.get("weather") or shot.get("weather", ""),
-                "lighting":            p2_data.get("lighting", ""),
-                "action":              p2_data.get("action", ""),
-                "business":            p2_data.get("business", shot.get("business", "")),
-                "facial_expression":   p2_data.get("facial_expression", shot.get("facial_expression", p2_data.get("emotion", ""))),
-                "micro_expression":    p2_data.get("micro_expression", shot.get("micro_expression", "")),
-                "gaze":                p2_data.get("gaze", shot.get("gaze", "")),
-                "body_language":       p2_data.get("body_language", shot.get("body_language", "")),
-                "action_start":        p2_data.get("action_start", shot.get("action_start", p2_data.get("action", ""))),
-                "action_process":      p2_data.get("action_process", shot.get("action_process", p2_data.get("business", ""))),
-                "action_end":          p2_data.get("action_end", shot.get("action_end", "")),
-                "prop_interactions":   p2_data.get("prop_interactions", shot.get("prop_interactions", [])),
-                "camera_path":         p2_data.get("camera_path", shot.get("camera_path", "")),
-                "pace":                p2_data.get("pace") or shot.get("pace", ""),
-                "color_temperature":  p2_data.get("color_temperature") or shot.get("color_temperature", ""),
+                "location":            location or scene_name,
+                "time_of_day":         time_of_day,
+                "weather":             weather,
+                "lighting":            lighting,
+                "action":              action,
+                "business":            business,
+                "facial_expression":   facial_expression,
+                "micro_expression":    micro_expression,
+                "gaze":                gaze,
+                "body_language":       body_language,
+                "action_start":        action_start,
+                "action_process":      action_process,
+                "action_end":          action_end,
+                "prop_interactions":   prop_interactions,
+                "camera_path":         camera_path,
+                "pace":                pace,
+                "color_temperature":   color_temperature,
             }
             full_shots.append(normalize_shot(full_shot, i))
 

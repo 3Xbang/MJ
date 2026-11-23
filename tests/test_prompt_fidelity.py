@@ -46,6 +46,21 @@ def test_missing_time_weather_stay_empty_and_static_requires_explicit_hold():
     assert held["camera_motion"] == "static"
 
 
+def test_camera_provenance_covers_explicit_static_script_motion_and_dialogue_rule():
+    held = normalize_shot({"shot_id": "held", "camera_motion": "static",
+                           "camera_motion_source": "script", "source_text": "Hold the camera locked off.",
+                           "dialogue": "Wait."})
+    assert held["camera_motion"] == "static"
+    scripted = normalize_shot({"shot_id": "move", "camera_motion": "tracking_shot",
+                               "camera_motion_source": "script", "source_text": "The camera tracks Mina.",
+                               "dialogue": "Follow me."})
+    assert scripted["camera_motion"] == "tracking_shot"
+    ordinary_dialogue = normalize_shot({"shot_id": "dialogue", "camera_motion": "static",
+                                        "camera_motion_source": "derived", "dialogue": "Hello."})
+    assert ordinary_dialogue["camera_motion"] != "static"
+    assert ordinary_dialogue["camera_motion_source"] == "derived"
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):
