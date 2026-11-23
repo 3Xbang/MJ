@@ -378,15 +378,21 @@ function refRow(kind, name, sub) {
 }
 function renderRefs() {
   const a = S.view.analysis;
-  if (!a) return '';
+  if (!a) {
+    return `<details class="refs" open><summary>📎 我有参考图（可选）</summary>
+      <p class="help">想让 AI 照着你自己的图来画角色、场景或道具，可以在这里上传参考图；<b>不上传也完全没问题</b>，AI 会根据剧本里的文字描述来画。<br>
+      请先完成上面第 ① 步「分析剧本」，分析完成后这里会列出每个角色、场景和道具，你就可以逐个上传。</p></details>`;
+  }
   const cast = (a.cast || []).map(c => refRow('cast', c.name, c.look)).join('');
   const scenes = (a.scenes || []).map(c => refRow('scene', c.scene_name, c.scene_name_en)).join('');
+  const nProps = Object.keys((S.view.refs || {}).prop || {}).length;
   const props = (a.props || []).map(c => refRow('prop', c.name, '')).join('');
   const n = Object.values(S.view.refs || {}).reduce((t, o) => t + Object.keys(o).length, 0);
-  return `<details class="refs" ${n ? 'open' : ''}><summary>📎 我有参考图（可选）${n ? `<span class="chip" style="margin-left:8px">已上传 ${n} 张</span>` : ''}</summary>
+  return `<details class="refs" open><summary>📎 我有参考图（可选）${n ? `<span class="chip" style="margin-left:8px">已上传 ${n} 张</span>` : ''}</summary>
     <p class="help">有现成的图就上传，AI 会<b>以你的图为准</b>来画，后面的首帧也会按它保持一致；没有就留空，AI 会根据文字描述来画。
     角色请用正面、清晰、背景干净的图；场景请用没有人的空镜头；道具请用单个物品的图。</p>
-    ${cast ? `<h4>角色</h4>${cast}` : ''}${scenes ? `<h4>场景</h4>${scenes}` : ''}${props ? `<h4>道具</h4>${props}` : ''}</details>`;
+    ${cast ? `<h4>角色</h4>${cast}` : ''}${scenes ? `<h4>场景</h4>${scenes}` : ''}
+    ${props ? `<details class="props" ${nProps ? 'open' : ''}><summary>道具（${(a.props || []).length} 件，需要时展开）</summary>${props}</details>` : ''}</details>`;
 }
 async function uploadRef(kind, name, file) {
   if (!file) return;
@@ -537,6 +543,7 @@ $('#projOpen').addEventListener('click', () => {
 /* ── start ──────────────────────────────────────────────────────────────── */
 (async function init() {
   S.opts = await api('/afe/api/options');
+  $('#ver').textContent = S.opts.version ? `· 版本 ${S.opts.version}` : '';
   await loadProject(S.project);
   connectWs();
 })();

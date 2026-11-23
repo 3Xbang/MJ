@@ -140,6 +140,24 @@ def friendly_error(message: str, node_type: str = "") -> str:
 
 # ── API ───────────────────────────────────────────────────────────────────────
 
+_VERSION = None
+
+
+def code_version() -> str:
+    """Short git commit of the installed code, shown in the page header so support can tell at a glance
+    whether the Pod runs the latest version."""
+    global _VERSION
+    if _VERSION is None:
+        try:
+            import subprocess
+            root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            _VERSION = subprocess.run(["git", "-C", root, "rev-parse", "--short", "HEAD"], capture_output=True,
+                                      text=True, timeout=5).stdout.strip() or "未知"
+        except Exception:
+            _VERSION = "未知"
+    return _VERSION
+
+
 class Api:
     def __init__(self, out_dir, comfy_base, node_classes=None, options=None):
         """out_dir/comfy_base/node_classes: values or zero-arg callables (lazy, ComfyUI starts later)."""
@@ -278,7 +296,7 @@ class Api:
         root = self.projects_root()
         projects = sorted(d for d in os.listdir(root) if os.path.isdir(os.path.join(root, d))) if os.path.isdir(root) else []
         return web.json_response({**opts, "projects": projects, "defaults": graphs.DEFAULTS,
-                                  "stage_names": graphs.STAGE_NAMES})
+                                  "stage_names": graphs.STAGE_NAMES, "version": code_version()})
 
     async def get_project(self, request):
         view = self.project_view(request.query.get("name", "afe_project"))

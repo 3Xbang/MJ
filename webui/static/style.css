@@ -149,3 +149,7 @@ details.refs h4 { margin: 12px 0 4px; font-size: 13px; color: var(--muted); }
 label.upl { border: 1px solid #cfd6e4; border-radius: 10px; padding: 6px 12px; cursor: pointer; background: #fff; font-size: 13.5px; white-space: nowrap; }
 label.upl:hover { border-color: var(--brand); }
 label.upl input { display: none; }
+
+small#ver { color: #9aa3b5; font-size: 12px; }
+details.props { margin-top: 12px; }
+details.props > summary { cursor: pointer; font-size: 13px; color: var(--muted); font-weight: 600; }

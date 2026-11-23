@@ -60,6 +60,13 @@ def main():
 
             page.goto(URL)
             page.wait_for_selector("#stepper .step-chip")
+            page.evaluate("() => { S.open[2] = true; render(); }")
+            check("reference upload entry is visible even before the script is analysed",
+                  page.locator(".card[data-step='2'] details.refs summary").is_visible())
+            check("... with an explanation that it is optional",
+                  "不上传也完全没问题" in page.inner_text(".card[data-step='2'] details.refs"))
+            check("version label shown in the header", "版本" in page.inner_text("#ver"), page.inner_text("#ver"))
+            page.evaluate("() => { S.open = {1: true}; render(); }")
             check("page loads, 5 steps shown", page.locator("#stepper .step-chip").count() == 5)
             check("test mode banner visible by default", "试跑模式已开启" in page.inner_text("#banner"))
             page.screenshot(path=f"{SHOTS}/01_start.png")
@@ -225,7 +232,9 @@ def main():
             png = os.path.join(tempfile.gettempdir(), "afe_ref.png")
             Image.new("RGB", (300, 500), (200, 30, 30)).save(png)
             page.evaluate("() => { S.open[2] = true; render(); }")
-            page.click(".card[data-step='2'] details.refs summary")
+            check("reference section is open by default once the script is analysed",
+                  page.evaluate("() => document.querySelector('.card[data-step=\"2\"] details.refs').open"))
+            page.evaluate("() => { document.querySelector('details.props').open = true; }")
             before = stats()
             for n, (kind, name) in enumerate([("cast", "阿明"), ("scene", "超市外卖厨房"), ("prop", "佛珠")], start=1):
                 page.set_input_files(f"input[data-ref-kind={kind}][data-ref-name='{name}']", png)
