@@ -88,7 +88,7 @@ function saveSettingsSoon() {
 
 async function loadProject(name, keep = false) {
   const v = await api('/afe/api/project?name=' + encodeURIComponent(name));
-  if (v.error) { showError(v.error); return; }
+  if (v.error) { showError(v.error, '项目状态没有被覆盖。请检查服务连接后重试。'); return false; }
   S.view = v;
   S.project = v.project;
   localStorage.setItem('afe_project', v.project);
@@ -100,6 +100,7 @@ async function loadProject(name, keep = false) {
     S.open[currentStep()] = true;
   }
   render();
+  return true;
 }
 
 /* ── progress dock + websocket ──────────────────────────────────────────── */
@@ -439,10 +440,22 @@ function renderRefs() {
 async function uploadRef(kind, name, file) {
   if (!file) return;
   const q = `project=${encodeURIComponent(S.project)}&kind=${kind}&name=${encodeURIComponent(name)}`;
-  const r = await fetch('/afe/api/upload?' + q, { method: 'POST', headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: file });
-  let d = {}; try { d = await r.json(); } catch (e) { /* ignore */ }
-  if (!r.ok) return showError(d.error || '上传失败');
-  await loadProject(S.project, true);
+  let r;
+  try {
+    r = await fetch('/afe/api/upload?' + q, {
+      method: 'POST', headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: file
+    });
+  } catch (e) {
+    const detail = e && e.message ? `：${e.message}` : '';
+    return showError('上传参考图失败', `网络请求失败${detail}。原有选择已保留，请检查服务连接后重试。`);
+  }
+  let d = {};
+  try { d = await r.json(); } catch (e) { d = {}; }
+  if (!r.ok || d.error) {
+    return showError(d.error || `上传参考图失败（${r.status}）`, '原有选择已保留。请检查图片格式或服务连接后重试。');
+  }
+  const loaded = await loadProject(S.project, true);
+  if (!loaded) return;
   showOk(`已上传「${name}」的参考图` + (done(2) ? '。点右边的「现在更新」让它生效。' : '。点「② 生成素材」时会按它来画。'));
 }
 
@@ -529,8 +542,14 @@ document.addEventListener('click', async ev => {
   }
   if (act === 'tab') { S.tab = el.dataset.tab; return render(); }
   if (act === 'ref-del') {
-    await api('/afe/api/ref/delete', { project: S.project, kind: el.dataset.kind, name: el.dataset.name });
-    return loadProject(S.project, true);
+    const kind = el.dataset.kind, name = el.dataset.name;
+    const r = await api('/afe/api/ref/delete', { project: S.project, kind, name });
+    if (r.error) {
+      return showError(`移除「${name}」的参考图失败`, `${r.error}。原有选择已保留，请检查服务连接后重试。`);
+    }
+    const loaded = await loadProject(S.project, true);
+    if (!loaded) return;
+    return showOk(`已移除「${name}」的参考图。点「现在更新」让它生效。`);
   }
   if (act === 'redo-cast') {
     const k = el.dataset.char; S.redo.cast[k] = (S.redo.cast[k] || 0) + 1; saveSettingsSoon(); return runStage(2, 'cast');

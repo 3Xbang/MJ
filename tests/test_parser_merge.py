@@ -123,6 +123,52 @@ def test_missing_source_evidence_blocks_ambiguous_shot_without_sibling_fallback(
     assert fragment == "" and "not adjacent" in error
 
 
+def test_phase1_coverage_rejects_truncated_or_repeated_source_blocks():
+    scene_map = parser_mod._build_scene_map(
+        "【场景 A：Kitchen】\nMina opens the drawer.\n"
+        "【场景 B：Garden】\nBo looks up."
+    )
+    errors = parser_mod._phase1_source_coverage_errors([
+        {"shot_id": "shot_001", "scene_index": 1, "source_block_id": "block_001",
+         "source_unit_ids": ["unit_001"]},
+        {"shot_id": "shot_002", "scene_index": 1, "source_block_id": "block_001",
+         "source_unit_ids": ["unit_001"]},
+    ], scene_map, target_count=2)
+    assert any("重复覆盖" in error for error in errors), errors
+    assert any("block_002" in error and "遗漏" in error for error in errors), errors
+
+
+    ordered_map = parser_mod._build_scene_map(
+        "【场景 A：Kitchen】\nMina opens the drawer.\n"
+        "【场景 B：Garden】\nBo looks up.\n"
+        "【场景 A：Kitchen】\nMina closes the drawer."
+    )
+    ordered_errors = parser_mod._phase1_source_coverage_errors([
+        {"shot_id": "shot_001", "source_block_id": "block_001", "source_unit_ids": ["unit_001"]},
+        {"shot_id": "shot_002", "source_block_id": "block_003", "source_unit_ids": ["unit_001"]},
+        {"shot_id": "shot_003", "source_block_id": "block_002", "source_unit_ids": ["unit_001"]},
+    ], ordered_map, target_count=3)
+    assert any("顺序" in error for error in ordered_errors), ordered_errors
+
+
+def test_environment_prompt_failure_blocks_analysis_instead_of_fallback():
+    class EnvFailureParser(StubParser):
+        def _call_llm(self, system_prompt, user_prompt, model_path, max_new_tokens=2048):
+            if system_prompt == parser_mod.SCENE_ENV_SYSTEM:
+                raise RuntimeError("environment model unavailable")
+            return super()._call_llm(system_prompt, user_prompt, model_path, max_new_tokens)
+
+    parser = EnvFailureParser(_phase1(), _null_phase2())
+    try:
+        parser.parse_script("【场景一：Workshop】\nMina reaches for the brass lever.",
+                            target_duration_seconds=5, seconds_per_shot=5, model_path="stub")
+    except ValueError as exc:
+        message = str(exc)
+        assert "空场景环境分析失败" in message and "降级" in message
+    else:
+        raise AssertionError("environment failure silently used a generic fallback")
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):

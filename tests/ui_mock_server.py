@@ -101,7 +101,10 @@ def fake_parser(raw_script, **kw):
     for i in range(6):
         scene = "超市外卖厨房" if i < 4 else "公寓客厅"
         shots.append({
-            "shot_id": f"shot_{i + 1:03d}", "scene_name": scene, "scene_name_en": "Supermarket" if i < 4 else "Apartment",
+            "shot_id": f"shot_{i + 1:03d}", "scene_id": "scene_001" if i < 4 else "scene_002",
+            "scene_occurrence_id": "occurrence_001" if i < 4 else "occurrence_002",
+            "source_block_id": "block_001" if i < 4 else "block_002", "section_type": "location_scene",
+            "scene_name": scene, "scene_name_en": "Supermarket" if i < 4 else "Apartment",
             "scene_environment_en": "bright interior, steel counter" if i < 4 else "warm living room, sofa",
             "character_names": ["阿明"] if i % 2 == 0 else ["阿明", "小红"],
             "dialogue": "你好" if i == 1 else "（无）", "props_list": ["佛珠", "茶杯"][: 1 + i % 2],

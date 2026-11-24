@@ -139,6 +139,26 @@ def test_source_offsets_must_match_verbatim_evidence_or_unit_boundaries():
     assert error == ""
 
 
+def test_ascii_bracketed_title_sections_are_separate_blocks():
+    script = ("[Title]\nA title card appears.\n"
+              "[Prologue]\nA hand turns a bead.\n"
+              "INT. HALL - DAY\nA door opens.\n"
+              "[Epilogue]\nThe image fades out.\n")
+    sm = m._build_scene_map(script)
+    assert [scene["section_type"] for scene in sm] == [
+        "title_sequence", "prologue", "location_scene", "epilogue"
+    ], [scene["sample_header"] for scene in sm]
+    assert "title card" in sm[0]["source_text"]
+    assert "door opens" in sm[2]["source_text"]
+
+
+def test_ascii_bracketed_title_sequence_does_not_swallow_location():
+    sm = m._build_scene_map("[TITLE SEQUENCE]\nLogo.\n[场景 A：Harbor]\nA boat waits.")
+    assert len(sm) == 2
+    assert sm[0]["section_type"] == "title_sequence"
+    assert sm[1]["section_type"] == "location_scene"
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for f in fns:

@@ -43,6 +43,17 @@ _SCENE_HEADER_PATTERNS = [
     r'^[ \t]*(?:TITLE\s+SEQUENCE|TITLE\s+CARD|OPENING\s+TITLES?|END\s+CREDITS?|CREDITS|'
     r'MONTAGE|QUICK\s+FLASH(?:ES)?|FLASH\s+CUT|BLACK\s+SCREEN|HALF\s+SILHOUETTE|'
     r'SILHOUETTE|FADE\s+(?:IN|OUT)|CUT\s+TO|TRANSITION)\b[^\n]*',
+    # ASCII bracketed screenplay labels are common in customer scripts. Keep
+    # them as standalone semantic blocks instead of attaching their title or
+    # transition facts to the next physical location.
+    r'^[ \t]*\[(?:TITLE(?:\s+SEQUENCE)?|TITLE\s+CARD|OPENING\s+TITLES?|END\s+CREDITS?|'
+    r'CREDITS|PROLOGUE|OPENING|TEASER|EPILOGUE|ENDING|MONTAGE|QUICK\s+FLASH(?:ES)?|'
+    r'FLASH\s+CUT|BLACK\s+SCREEN|HALF\s+SILHOUETTE|SILHOUETTE|FADE\s+(?:IN|OUT)|'
+    r'CUT\s+TO|TRANSITION)\b[^\]\n]*\][ \t]*$',
+    r'^[ \t]*\[(?:片头|序幕|序章|序言|引子|开场|开篇|尾声|片尾|结尾|彩蛋|预告|'
+    r'快速闪切|蒙太奇|黑屏|半剪影|淡出|转场)(?:[ \t]*[：:-][^\]\n]*)?\][ \t]*$',
+    r'^[ \t]*\[(?:场景\s*[A-Za-z0-9一二三四五六七八九十\d]+(?:[：:][^\]\n]{0,80})?|'
+    r'Scene\s*[A-Za-z0-9]+(?:[：:.][^\]\n]{0,80})?|(?:INT|EXT)[./]\s*[^\]\n]{0,80})\][ \t]*$',
     # Chinese screenplay labels are also valid boundaries when written as a
     # standalone line.  Requiring a line start plus a label delimiter (or the
     # label alone) avoids treating ordinary prose such as "开场很安静" as a
@@ -197,7 +208,7 @@ def _header_to_scene_name(header: str) -> str:
     the SAME header always produces the SAME scene_name (code-guaranteed).
     """
     # Strip bracket/punctuation wrapper, keep the descriptive text
-    cleaned = re.sub(r'[【】]', '', header).strip()
+    cleaned = re.sub(r'[\[\]【】]', '', header).strip()
     # Drop leading "场景 X：" / "Scene X:" prefix, keep the location + time part
     cleaned = re.sub(r'^(场景\s*[A-Za-z0-9]+[：:]|Scene\s*[A-Za-z0-9]+[：:.])\s*', '', cleaned, flags=re.IGNORECASE)
     return cleaned.strip() or header.strip()
@@ -567,6 +578,106 @@ def _source_fragment_for_shot(source_block_text: str, raw_desc: str, shot: dict)
     return fragment
 
 
+def _phase1_source_coverage_errors(shots: list, scene_map: list[dict], target_count: int) -> list[str]:
+    """Validate that phase 1 did not silently omit or duplicate screenplay spans.
+
+    Phase 2 is deliberately not allowed to enrich a truncated or reordered shot
+    list.  Source-unit evidence is local to each source block, while block order
+    is global screenplay order.  This permits several shots from one block but
+    rejects the common failure where the model repeats its first valid block and
+    never covers a later location/occurrence.
+    """
+    errors: list[str] = []
+    if len(shots) != target_count:
+        errors.append(f"分镜数量不完整：需要 {target_count} 个，模型返回 {len(shots)} 个")
+
+    blocks_by_id = {}
+    block_order = {}
+    all_units = {}
+    for scene in scene_map:
+        for block in scene.get("source_blocks", []):
+            block_id = str(block.get("source_block_id") or "")
+            if not block_id:
+                continue
+            units = _source_units_with_offsets(block.get("source_text", ""))
+            blocks_by_id[block_id] = block
+            all_units[block_id] = units
+    ordered_block_ids = sorted(
+        blocks_by_id,
+        key=lambda value: (int(re.search(r"(\d+)$", value).group(1))
+                           if re.search(r"(\d+)$", value) else 10**9, value),
+    )
+    block_order.update({block_id: position for position, block_id in enumerate(ordered_block_ids)})
+
+    covered: dict[str, set[str]] = {key: set() for key in blocks_by_id}
+    evidence_positions: list[tuple[int, int, str, str]] = []
+    for index, shot in enumerate(shots):
+        sid = str(shot.get("shot_id") or f"shot_{index + 1:03d}")
+        block_id = str(shot.get("source_block_id") or "").strip()
+        if block_id not in blocks_by_id:
+            errors.append(f"{sid}: 缺少或无效 source_block_id={block_id or '<empty>'}")
+            continue
+        block = blocks_by_id[block_id]
+        units = all_units[block_id]
+        by_id = {unit["unit_id"]: unit for unit in units}
+        selected = []
+        requested_ids = shot.get("source_unit_ids")
+        if isinstance(requested_ids, str):
+            requested_ids = [requested_ids]
+        if requested_ids:
+            ids = [str(value).strip() for value in requested_ids if str(value).strip()]
+            if any(unit_id not in by_id for unit_id in ids):
+                errors.append(f"{sid}: source_unit_ids 不属于 {block_id}")
+                continue
+            if ids != sorted(ids, key=lambda unit_id: by_id[unit_id]["start"]):
+                errors.append(f"{sid}: source_unit_ids 未按原文顺序排列")
+                continue
+            selected = [by_id[unit_id] for unit_id in ids]
+        else:
+            start, end = shot.get("source_start"), shot.get("source_end")
+            if isinstance(start, int) and isinstance(end, int):
+                selected = [unit for unit in units if start <= unit["start"] and unit["end"] <= end]
+                if not selected or selected[0]["start"] != start or selected[-1]["end"] != end:
+                    errors.append(f"{sid}: source offsets 未覆盖 {block_id} 的完整原文单元")
+                    continue
+            else:
+                declared = _first_present(shot.get("source_shot_text"), shot.get("raw_description"), default="")
+                matches = [match.start() for match in re.finditer(re.escape(str(declared)), block.get("source_text", ""))] if declared else []
+                if len(units) == 1:
+                    # A block containing one source unit has one deterministic
+                    # span. The later exact-fragment validator still protects
+                    # multi-unit blocks from sibling leakage.
+                    selected = units
+                else:
+                    errors.append(f"{sid}: 缺少可验证的原文片段，无法确认 {block_id} 的来源")
+                    continue
+        if not selected:
+            errors.append(f"{sid}: 没有覆盖 {block_id} 的原文单元")
+            continue
+        selected_ids = [unit["unit_id"] for unit in selected]
+        duplicate = [unit_id for unit_id in selected_ids if unit_id in covered[block_id]]
+        if duplicate:
+            errors.append(f"{sid}: 重复覆盖 {block_id} 的原文单元 {', '.join(duplicate)}")
+        covered[block_id].update(selected_ids)
+        evidence_positions.append((block_order[block_id], selected[0]["start"], block_id, sid))
+
+    covered_blocks = {item[2] for item in evidence_positions}
+    missing_blocks = [block_id for block_id in all_units if block_id not in covered_blocks]
+    for block_id in missing_blocks:
+        block = blocks_by_id[block_id]
+        errors.append(f"遗漏原文段 {block_id}（{_compact_source(block.get('source_text', ''))[:160]}）")
+    for block_id, units in all_units.items():
+        missing = [unit["text"] for unit in units if unit["unit_id"] not in covered[block_id]]
+        if missing:
+            spans = " | ".join(_compact_source(text)[:120] for text in missing)
+            errors.append(f"{block_id} 遗漏原文单元：{spans}")
+
+    ordered = [(block, start) for block, start, _, _ in evidence_positions]
+    if ordered != sorted(ordered):
+        errors.append("分镜来源顺序与剧本顺序不一致，存在跨场景或跨段落错序")
+    return errors
+
+
 _CAMERA_STATIC_CUE_RE = re.compile(
     # Do not treat an ordinary action such as "hold the cup" as a locked shot.
     r"\b(?:static|fixed|still)\s+(?:camera|shot|frame|view)\b|"
@@ -837,6 +948,19 @@ class AFE_ScriptFullParser:
         minimal_shots = _normalize_durations(minimal_shots, target_duration_seconds, seconds_per_shot)
         logger.info(f"[AFE_ScriptFullParser] Phase 1 done: {len(cast_list)} cast, {len(minimal_shots)} shots")
 
+        # Do not let Phase 2 make a truncated or reordered Phase 1 result look
+        # complete. Every source block/unit must be represented exactly once
+        # and the model must honor the requested shot count before enrichment.
+        coverage_errors = _phase1_source_coverage_errors(
+            minimal_shots, scene_map, target_shot_count
+        )
+        if coverage_errors:
+            detail = "\n".join(f"  - {error}" for error in coverage_errors[:40])
+            raise ValueError(
+                "剧本分镜解析被阻止：Phase 1 没有完整覆盖原文。请重试；"
+                "系统未继续生成可能遗漏场景、动作或对白的分镜。\n" + detail
+            )
+
         # 3a. Build scene_index → scene_name lookup (code-level, guaranteed consistent).
         # scene_name is derived directly from the regex-detected header text, NOT
         # regenerated by the LLM each time — this is what prevents scene collapse/drift.
@@ -846,13 +970,14 @@ class AFE_ScriptFullParser:
         }
 
         # 3a-2. One LLM call per scene: screenplay text -> English environment prompt
-        # (place only, no people). Falls back to empty; SceneAnalyzer then uses old logic.
+        # (place only, no people). A missing environment is a hard analysis error:
+        # a generic name/location fallback would silently lose set facts.
         scene_env: dict[int, dict] = {}
         for s in scene_map:
             idx = s["scene_index"]
             src = s.get("source_text", "")
             if not src.strip():
-                continue
+                raise ValueError(f"场景 {idx}（{s.get('sample_header', '')}）没有可用的原文环境")
             try:
                 env_raw = self._call_llm(
                     SCENE_ENV_SYSTEM,
@@ -860,15 +985,23 @@ class AFE_ScriptFullParser:
                     model_path, max_new_tokens=400,
                 )
                 env_data = self._parse_llm_json(env_raw)
-                if isinstance(env_data, dict):
-                    scene_env[idx] = {
-                        "scene_name_en": str(env_data.get("scene_name_en", "")).strip(),
-                        "environment_prompt_en": str(env_data.get("environment_prompt_en", "")).strip(),
-                    }
-                    logger.info("[AFE_ScriptFullParser] Scene %d env: %s", idx,
-                                scene_env[idx]["environment_prompt_en"][:100])
+                environment_prompt = (env_data.get("environment_prompt_en", "")
+                                      if isinstance(env_data, dict) else "")
+                scene_name_en = (env_data.get("scene_name_en", "")
+                                 if isinstance(env_data, dict) else "")
+                if not str(environment_prompt).strip() or not str(scene_name_en).strip():
+                    raise ValueError("返回内容缺少 scene_name_en 或 environment_prompt_en")
+                scene_env[idx] = {
+                    "scene_name_en": str(scene_name_en).strip(),
+                    "environment_prompt_en": str(environment_prompt).strip(),
+                }
+                logger.info("[AFE_ScriptFullParser] Scene %d env: %s", idx,
+                            scene_env[idx]["environment_prompt_en"][:100])
             except Exception as exc:
-                logger.warning("[AFE_ScriptFullParser] Scene env prompt failed for scene %d: %s", idx, exc)
+                raise ValueError(
+                    f"场景 {idx}（{s.get('sample_header', '')}）的空场景环境分析失败：{exc}。"
+                    "未使用降级地点提示词，请重试或检查语言模型。"
+                ) from exc
 
         # Validate the LLM assignment. Never round-robin a shot into another place.
         valid_indices = {s["scene_index"] for s in scene_map}

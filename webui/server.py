@@ -90,14 +90,46 @@ def _text(entry: dict) -> str:
     return "\n".join(str(t) for t in (entry.get("text") or []))
 
 
+def _validate_analysis_payload(analysis: dict) -> None:
+    """Reject a non-empty but structurally incomplete parser result.
+
+    The parser performs source-span coverage before Phase 2. This second guard
+    keeps the web UI from marking an old/custom parser output successful when it
+    lacks the identities needed to isolate scenes and downstream references.
+    """
+    shots = analysis.get("shots") if isinstance(analysis, dict) else None
+    if not isinstance(shots, list) or not shots:
+        raise ValueError("剧本分析没有返回分镜，请检查剧本内容是否完整。")
+    errors = []
+    seen = set()
+    for index, shot in enumerate(shots):
+        if not isinstance(shot, dict):
+            errors.append(f"shot_{index + 1:03d}: 分镜不是结构化对象")
+            continue
+        shot_id = str(shot.get("shot_id") or f"shot_{index + 1:03d}")
+        if shot_id in seen:
+            errors.append(f"{shot_id}: 分镜编号重复")
+        seen.add(shot_id)
+        required = ("scene_id", "scene_occurrence_id", "source_block_id", "section_type")
+        missing = [key for key in required if not str(shot.get(key) or "").strip()]
+        if missing:
+            errors.append(f"{shot_id}: 缺少 {', '.join(missing)}")
+        if shot.get("scene_assignment_error") or shot.get("source_validation_error"):
+            errors.append(f"{shot_id}: 原文来源未验证")
+    if errors:
+        raise ValueError(
+            "剧本分析被阻止：返回的分镜未通过来源完整性检查。\n"
+            + "\n".join(f"  - {error}" for error in errors[:40])
+        )
+
+
 def extract_results(stage: int, outputs: dict, part: str = "all") -> dict:
     """outputs = history[prompt_id]["outputs"]  ->  dict of what the UI should remember."""
     res: dict = {}
     if stage == 1:
         o1, o2, o3 = outputs.get("1", {}), outputs.get("2", {}), outputs.get("3", {})
         analysis = _first_json(o1, "afe_analysis")
-        if not analysis or not analysis.get("shots"):
-            raise ValueError("剧本分析没有返回分镜，请检查剧本内容是否完整。")
+        _validate_analysis_payload(analysis or {})
         res["analysis"] = analysis
         res["scenes"] = _first_json(o2, "afe_scenes", [])
         res["props"] = _first_json(o3, "afe_props", [])

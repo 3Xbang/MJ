@@ -163,6 +163,16 @@ class AFE_SceneAnalyzer:
 
             base_en = _scene_to_english(name, lighting)
 
+            # A generic name/location prompt is unsafe here: it drops layout,
+            # materials, props, weather and light-source facts from the empty
+            # set. The parser normally guarantees this field, but direct node
+            # use must fail visibly rather than silently degrade.
+            if not info["scene_environment_en"].strip():
+                raise ValueError(
+                    f"场景 {info.get('scene_id', key)} 缺少空场景环境提示词，"
+                    "已阻止生成，重试剧本分析或补充环境描述后再继续。"
+                )
+
             # Build environment_description_en
             tod_weather = " ".join(filter(None, [time_of_day, weather]))
             atm_part = f"{tod_weather} atmosphere" if tod_weather else ""
