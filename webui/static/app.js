@@ -89,9 +89,9 @@ function saveSettingsSoon() {
 function restorePersistedAnalysisRun(view) {
   const p = view && view.analysis_progress;
   const batch = p && (p.batches || []).find(b => b.status === 'running' && b.prompt_id);
-  if (!batch) return;
+  if (!batch) return null;
   const sameBatch = S.run && S.run.stage === 1 && S.run.promptId === String(batch.prompt_id);
-  if (sameBatch) return;
+  if (sameBatch) return null;
   S.run = {
     stage: 1,
     promptId: String(batch.prompt_id),
@@ -101,6 +101,7 @@ function restorePersistedAnalysisRun(view) {
     progress: null,
     persisted: true,
   };
+  return S.run;
 }
 async function loadProject(name, keep = false) {
   const v = await api('/afe/api/project?name=' + encodeURIComponent(name));
@@ -110,13 +111,14 @@ async function loadProject(name, keep = false) {
   localStorage.setItem('afe_project', v.project);
   S.settings = v.settings;
   syncFromSettings();
-  restorePersistedAnalysisRun(v);
+  const restoredRun = restorePersistedAnalysisRun(v);
   $('#projName').value = S.project;
   if (!keep) {
     S.open = {};
     S.open[currentStep()] = true;
   }
   render();
+  if (restoredRun) monitorPrompt(restoredRun, restoredRun.promptId, 1, 'all', true);
   return true;
 }
 
@@ -173,6 +175,67 @@ const showError = (text, detail) => { S.dock = { kind: 'err', text, detail }; re
 const showOk = text => { S.dock = { kind: 'ok', text }; renderDock(); };
 
 /* ── running a step ─────────────────────────────────────────────────────── */
+async function monitorPrompt(run, pid, stage = 1, part = 'all', restored = false) {
+  let missing = 0, down = 0, lost = '';
+  while (S.run === run) {
+    await sleep(1500);
+    let h = null;
+    try { h = await (await fetch('/history/' + encodeURIComponent(pid))).json(); down = 0; } catch (e) {
+      // ComfyUI may be restarting. Do not mark a task lost while its API is down.
+      if (++down >= 8) { lost = '连接不上 ComfyUI（可能正在重启）。'; break; }
+      continue;
+    }
+    if (h && h[pid]) break;
+    try {
+      const q = await (await fetch('/queue')).json();
+      const live = [...(q.queue_running || []), ...(q.queue_pending || [])]
+        .some(it => it && String(it[1]) === String(pid));
+      missing = live ? 0 : missing + 1;
+    } catch (e) { /* retry on the next round */ }
+    if (missing >= 4) {
+      try { h = await (await fetch('/history/' + encodeURIComponent(pid))).json(); } catch (e) { h = null; }
+      if (h && h[pid]) break;
+      lost = '任务被中断了。';
+      break;
+    }
+  }
+  if (S.run !== run) return;
+  if (lost) {
+    // The server checks the persisted prompt against both history and queue,
+    // then atomically releases only this batch. Completed batches remain safe.
+    const recovery = stage === 1
+      ? await api('/afe/api/analysis/recover', { project: S.project, prompt_id: pid })
+      : {};
+    S.run = null;
+    await loadProject(S.project, true);
+    const detail = recovery.error && !recovery.network_error
+      ? recovery.error
+      : '已经完成的批次都保留着，请重新点击这一步的按钮，会接着做。';
+    showError(lost + '这通常是因为 ComfyUI 被重启了（比如刚更新过）。' + detail);
+    return;
+  }
+  run.label = '正在整理结果…'; renderDock();
+  const c = await api('/afe/api/collect', { project: S.project, stage, part, prompt_id: pid });
+  S.run = null;
+  await loadProject(S.project, true);
+  if (c.ok) {
+    S.open[stage] = true;
+    if (c.partial) {
+      render();
+      showOk('本批分析已保存。请点击“继续分析”处理下一批。');
+      return;
+    }
+    if (stage < 5) S.open[stage + 1] = true;
+    render();
+    showOk(part === 'cast' ? '角色已重画完成，请在上面重新挑选'
+      : `「${STEPS[stage - 1].title}」完成` + (stage < 5 ? `，可以进行下一步 ${STEPS[stage].verb}` : '，成片已生成'));
+  } else if (c.cancelled) {
+    S.dock = { kind: 'ok', text: c.error }; renderDock();
+  } else {
+    showError(c.error || '运行失败', c.details);
+  }
+}
+
 async function runStage(stage, part = 'all') {
   if (S.run) return;
   syncToSettings();
@@ -191,58 +254,7 @@ async function runStage(stage, part = 'all') {
   if (r.complete) { S.run = null; await loadProject(S.project, true); showOk('剧本分析已完成，可以进行下一步'); return; }
   run.promptId = r.prompt_id; run.labels = r.labels || {}; run.label = '已提交，排队中…';
   renderDock();
-  const pid = r.prompt_id;
-  let missing = 0, down = 0, lost = '';
-  while (S.run === run) {
-    await sleep(1500);
-    let h = null;
-    try { h = await (await fetch('/history/' + pid)).json(); down = 0; } catch (e) {
-      // ComfyUI unreachable (restarting?)
-      if (++down >= 8) { lost = '连接不上 ComfyUI（可能正在重启）。'; break; }
-      continue;
-    }
-    if (h && h[pid]) break;
-    // not finished: is it still queued / running? If it is in neither list, the job was lost
-    // (typically ComfyUI was restarted, e.g. by an update) -> do not wait forever
-    try {
-      const q = await (await fetch('/queue')).json();
-      const live = [...(q.queue_running || []), ...(q.queue_pending || [])].some(it => it && it[1] === pid);
-      missing = live ? 0 : missing + 1;
-    } catch (e) { /* counted above on the next round */ }
-    if (missing >= 4) {
-      try { h = await (await fetch('/history/' + pid)).json(); } catch (e) { h = null; }
-      if (h && h[pid]) break;
-      lost = '任务被中断了。'; break;
-    }
-  }
-  if (S.run !== run) return;
-  if (lost) {
-    S.run = null;
-    await loadProject(S.project, true);
-    showError(lost + '这通常是因为 ComfyUI 被重启了（比如刚更新过）。已经完成的内容都保留着，请重新点击这一步的按钮，会接着做。');
-    return;
-  }
-  run.label = '正在整理结果…'; renderDock();
-  const c = await api('/afe/api/collect', { project: S.project, stage, part, prompt_id: r.prompt_id });
-  S.run = null;
-  await loadProject(S.project, true);
-  if (c.ok) {
-    S.open[stage] = true;
-    if (c.partial) {
-      await loadProject(S.project, true);
-      render();
-      showOk('本批分析已保存。请点击“继续分析”处理下一批。');
-      return;
-    }
-    if (stage < 5) S.open[stage + 1] = true;
-    render();
-    showOk(part === 'cast' ? '角色已重画完成，请在上面重新挑选'
-      : `「${STEPS[stage - 1].title}」完成` + (stage < 5 ? `，可以进行下一步 ${STEPS[stage].verb}` : '，成片已生成'));
-  } else if (c.cancelled) {
-    S.dock = { kind: 'ok', text: c.error }; renderDock();
-  } else {
-    showError(c.error || '运行失败', c.details);
-  }
+  return monitorPrompt(run, r.prompt_id, stage, part);
 }
 async function cancelRun() {
   const persisted = (S.view && S.view.analysis_progress && S.view.analysis_progress.batches || [])

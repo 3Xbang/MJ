@@ -885,6 +885,27 @@ class Api:
         project = safe_project_name(request.query.get("name", "afe_project"))
         return web.json_response(self.analysis_status(self.project_path(project)))
 
+    async def recover_analysis(self, request):
+        """Reconcile one persisted parser prompt after a browser/ComfyUI restart."""
+        body = await request.json()
+        project = safe_project_name(body.get("project", "afe_project"))
+        store = self.session_store(self.project_path(project))
+        state = store.load()
+        prompt_id = str(body.get("prompt_id") or "")
+        running = next((b for b in (state or {}).get("batches", [])
+                        if b.get("status") == "running"), None)
+        if not running or str(running.get("prompt_id") or "") != prompt_id:
+            return web.json_response({"ok": True, "running": False,
+                                      "session": self.analysis_status(self.project_path(project))})
+        if await self.prompt_is_known(prompt_id):
+            return web.json_response({"ok": True, "running": True,
+                                      "session": self.analysis_status(self.project_path(project))})
+        # No history or queue entry means ComfyUI lost this prompt. Release only
+        # this persisted batch; the next Continue/Retry request will claim it.
+        store.recover_orphaned_running()
+        return web.json_response({"ok": True, "recovered": True,
+                                  "session": self.analysis_status(self.project_path(project))})
+
     async def retry_analysis_batch(self, request):
         body = await request.json()
         project = safe_project_name(body.get("project", "afe_project"))
@@ -940,6 +961,7 @@ class Api:
         routes.get("/afe/api/options")(self.options)
         routes.get("/afe/api/project")(self.get_project)
         routes.get("/afe/api/analysis/status")(self.analysis_status_api)
+        routes.post("/afe/api/analysis/recover")(self.recover_analysis)
         routes.post("/afe/api/analysis/retry")(self.retry_analysis_batch)
         routes.post("/afe/api/settings")(self.save_settings)
         routes.post("/afe/api/run")(self.run)

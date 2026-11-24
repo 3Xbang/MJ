@@ -10,21 +10,13 @@ import os
 
 
 def _load_compat_full_workflow() -> dict:
-    """Load the canonical five-stage graph while keeping parser batching local."""
-    path = os.path.join(os.path.dirname(__file__), "workflow_templates", "afe_full_pipeline.json")
-    with open(path, encoding="utf-8") as f:
-        workflow = json.load(f)
-    parser = next(node for node in workflow["nodes"] if node["type"] == "AFE_ScriptFullParser")
-    values = list(parser.get("widgets_values", []))
-    values[:8] = [
-        "在这里输入剧本...",
-        "3D cartoon Pixar animation style, vibrant colors, 8k",
-        "迷你剧集 Mini Episode (5-10 min)",
-        180, 5, "auto (from script)", "auto (from style)",
-        "LLM/Qwen2.5-7B-Instruct",
-    ]
-    parser["widgets_values"] = values[:8] + [1, 4, ""]
-    return workflow
+    """Return a safe manual graph that can run one parser batch only.
+
+    A partial parser output must never have direct links to Krea, Qwen Image,
+    Wan, or movie nodes. The web UI owns the persisted session and builds
+    stages 2–5 only after all batches are complete.
+    """
+    return build_batch_workflow()
 
 
 def build_workflow() -> dict:

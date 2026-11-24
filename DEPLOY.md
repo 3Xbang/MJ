@@ -140,21 +140,12 @@ nohup python main.py --listen 0.0.0.0 --port 8188 --enable-cors-header "*" > /tm
 echo "✅ 部署完成！等30秒后访问 ComfyUI"
 ```
 
-## 加载 Workflow
+## Workflow loading
 
-重启后在 ComfyUI 里加载（本地文件）：
-- 角色卡：`D:\下载\character_card_9views.json`
-- 完整流程（含视频生产）：`D:\下载\now-03.json`（仓库里的副本：`workflow_templates/afe_full_pipeline.json`）
-- 仅剧本分析：`D:\下载\afe_script_pipeline.json`
+Customers use `/afe/` only. Do not edit JSON or connect ComfyUI nodes by hand.
+Both `workflow_templates/afe_full_pipeline.json` and `workflow_templates/afe_script_pipeline.json` are safe single-batch parser graphs. They submit only shots 1-4 and retain `show_text_party`; they have no direct Krea, Qwen Image, Wan, or movie links. Do not queue legacy `D:\download\now-02.json` or `D:\download\now-03.json`, because those graphs lack the persisted batch-session gate. The web UI creates stages 2-5 only after all batches validate and publishes `analysis.json`.
 
-## 网页界面（给你和客户用，不需要碰节点连线）
-
-部署完成后，在 ComfyUI 网址后面加 `/afe/` 即可打开，例如
-`https://<你的Pod编号>-8188.proxy.runpod.net/afe/`（建议加入浏览器书签）。
-
-按页面上的五步依次点按钮：① 分析剧本 → ② 生成素材（挑场景图和角色形象）→ ③ 生成首帧 → ④ 渲染视频 → ⑤ 合成成片。
-页面顶部的「试跑模式」默认开启，只处理前 2 个分镜，先看效果；满意后关闭它再生成完整影片。
-每一步的结果、挑选和重做都在页面里点选，不用写任何代码。项目会自动保存，刷新页面或重启后可以继续。
+The web UI keeps the five-step order: 1 script, 2 assets, 3 keyframes, 4 video, 5 movie.
 
 每个分镜现在会保存场景 ID、场景出现次序、角色表情/微表情、视线、business 微动作、道具互动、动作起始/过程/结束和运镜计划。首帧和 Wan 使用同一份事实；静止机位只有剧本明确要求锁定/静止时才会出现。第二步生成的道具图会按道具 ID 自动进入第三步首帧，上传的同名道具图优先。没有上传参考图时继续使用文字生成。
 
@@ -170,34 +161,6 @@ cd /workspace/runpod-slim/ComfyUI/custom_nodes/ai_film_editor_nodes && python3 -
 注意：这个页面没有密码，知道网址的人都能使用。不要把网址公开发布。
 
 下面的「逐步确认与挑选」是给高级用户在 ComfyUI 画布里用的。
-
-## 逐步确认与挑选（ComfyUI 画布版）
-
-工作流里有一个总开关节点「🚦 全自动模式」。
-- **关（默认）**：每个耗时步骤都停在「⏸ 等待确认」，你看完上一步的结果，把该节点的开关切到「▶ 已确认」，再点 Queue。已完成且输入没变的步骤会直接用缓存，不会重做。
-- **开**：一路跑到底，不停顿。
-
-确认顺序：场景图 → 道具图 → 角色参考图 → 分镜首帧 → 分镜视频 → 成片合成。
-
-挑选与重做（都在对应节点里填，改完再点 Queue，只会重做受影响的部分）：
-
-| 节点 | 设置 | 写法示例 | 作用 |
-|---|---|---|---|
-| 角色参考图 | `candidates_per_character` | `3` | 每个角色画 3 个版本 |
-| | `picks` | `1:2, Ann:3` | 角色 1 用 2 号版本，Ann 用 3 号 |
-| | `redo_characters` | `2` 或 `Bo:2` | 重画某角色（再重画就把数字加 1） |
-| 分镜首帧 | `variants_per_shot` | `2` | 每个分镜画 2 个版本 |
-| | `picks` | `shot_005:2, 7:1` | 指定使用的版本 |
-| | `redo_shots` | `shot_007, 12:2` | 重画某些分镜 |
-| | `scene_view_picks` | `1:2, 2:3` | 场景 1 用中景图、场景 2 用氛围图作地点参考 |
-| 分镜视频 | `redo_shots` | `shot_005` | 重新渲染某个分镜 |
-| | `long_take_overrides` | `shot_005:15` | 把某个分镜做成 15 秒长镜头 |
-| 成片合成 | `skip_shots` | `shot_007, 12` | 成片里不要这些分镜 |
-
-候选图在「角色候选」「首帧候选」两个预览框里，每张图左上角有编号（如 `C1 v2`、`shot_005 v1`），选用的带 `*`。
-换角色、场景视角或道具后，只有依赖该素材的分镜首帧和视频会失效；已完成的其他镜头、选择、过期提示和断点状态会保留。客户不需要编辑 JSON 或手工连线。
-
-视频渲染失败时会删除该镜头的旧 `clips/<shot_id>.mp4`、音视频副本和元数据，并阻止第④步完成。第⑤步合成还会核对当前首帧和结构化剧本事实签名，发现旧视频会明确要求重新渲染，不会静默拼入旧结果。无角色或无道具的有效剧本会跳过对应素材图节点，首帧继续走无人物/无道具路径。
 
 ## 分批解析与 RunPod 验收
 

@@ -41,6 +41,6 @@ def check(path, expect_full):
 
 
 if __name__ == "__main__":
-    check(os.path.join(ROOT, "workflow_templates", "afe_full_pipeline.json"), True)
+    check(os.path.join(ROOT, "workflow_templates", "afe_full_pipeline.json"), False)
     check(os.path.join(ROOT, "workflow_templates", "afe_script_pipeline.json"), False)
     print("PASS workflow graph")
