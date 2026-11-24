@@ -210,13 +210,15 @@ def _parser_result(parsed):
     }
 
 
-def _assert_phase2_isolated(prompts, current_units):
+def _assert_phase2_isolated(prompts, current_units, adjacent_units=()):
     assert len(prompts) == len(current_units)
     for prompt, current in zip(prompts, current_units):
         assert current["text"] in prompt
         for sibling in current_units:
             if sibling is not current:
                 assert sibling["text"] not in prompt
+        for adjacent in adjacent_units:
+            assert adjacent["text"] not in prompt
 
 
 def test_complete_36_shot_screenplay_batches_bind_and_publish():
@@ -225,6 +227,9 @@ def test_complete_36_shot_screenplay_batches_bind_and_publish():
     scene_map = parser_mod._build_scene_map(screenplay)
     explicit_units = _ordered_units(scene_map)
     assert len(explicit_units) == 36
+    # Batch 2/3 split this source block, so the isolation check must cover
+    # siblings on both sides of that persisted batch boundary.
+    assert explicit_units[7][1]["source_block_id"] == explicit_units[8][1]["source_block_id"]
 
     with tempfile.TemporaryDirectory() as root:
         store = AnalysisSessionStore(root, batch_size=BATCH_SIZE)
@@ -277,7 +282,16 @@ def test_complete_36_shot_screenplay_batches_bind_and_publish():
                 assert shot["source_start"] == unit["start"]
                 assert shot["source_end"] == unit["end"]
                 assert shot["scene_occurrence_id"] == source_by_key[(block_id, unit_id)][1]["scene_occurrence_id"]
-            _assert_phase2_isolated(parser.phase2_prompts[-BATCH_SIZE:], current_units)
+            adjacent_units = []
+            first_index = batch["shot_start"] - 1
+            if first_index > 0:
+                adjacent_units.append(explicit_units[first_index - 1][2])
+            after_batch = first_index + len(current_units)
+            if after_batch < len(explicit_units):
+                adjacent_units.append(explicit_units[after_batch][2])
+            _assert_phase2_isolated(
+                parser.phase2_prompts[-BATCH_SIZE:], current_units, adjacent_units
+            )
 
             # Exercise cancellation/retry without changing the source contract.
             if batch["batch_index"] == 1 and not session.get("cancelled"):
