@@ -23,8 +23,10 @@ from urllib.parse import quote
 from aiohttp import ClientSession, ClientTimeout, web
 
 from ai_film_editor_nodes.webui import graphs
-from ai_film_editor_nodes.nodes.director.script_analysis_session import AnalysisSessionStore, DEFAULT_BATCH_SIZE
-from ai_film_editor_nodes.nodes.director.script_full_parser_node import _build_scene_map
+from ai_film_editor_nodes.nodes.director.script_analysis_session import (
+    AnalysisSessionStore, DEFAULT_BATCH_SIZE, script_signature,
+)
+from ai_film_editor_nodes.nodes.director.script_full_parser_node import _build_scene_map, _source_units_with_offsets
 
 logger = logging.getLogger("AFE_WebUI")
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
@@ -298,6 +300,7 @@ class Api:
         return {
             "analysis_status": state.get("analysis_status", "partial"),
             "target_shot_count": state.get("target_shot_count", 0),
+            "script_signature": state.get("script_signature"),
             "batch_size": state.get("batch_size", DEFAULT_BATCH_SIZE),
             "total_batches": state.get("total_batches", 0),
             "current_batch": state.get("current_batch"),
@@ -308,7 +311,22 @@ class Api:
             "error": next((b.get("error") for b in state.get("batches", []) if b.get("status") == "failed"), None),
         }
 
-    # views
+    async def prompt_is_known(self, prompt_id: str) -> bool:
+        """Check history and queue before re-submitting a persisted batch."""
+        if not prompt_id:
+            return False
+        try:
+            async with ClientSession(timeout=ClientTimeout(total=5)) as sess:
+                async with sess.get(f"{self.comfy()}/history/{quote(str(prompt_id))}") as response:
+                    history = await response.json(content_type=None)
+                if isinstance(history, dict) and prompt_id in history:
+                    return True
+                async with sess.get(f"{self.comfy()}/queue") as response:
+                    queue = await response.json(content_type=None)
+                return prompt_id in json.dumps(queue, ensure_ascii=False)
+        except Exception:
+            return False
+
     def project_view(self, name: str) -> dict:
         pp = self.project_path(name)
         pname = safe_project_name(name)
@@ -509,30 +527,74 @@ class Api:
             return web.json_response({"error": "请先在上面粘贴剧本。"}, status=400)
         batch = None
         session_store = None
+        target_count = max(1, round(int(s.get("duration", 180)) / int(s.get("seconds_per_shot", 5))))
         if stage == 1:
-            target_count = max(1, round(int(s.get("duration", 180)) / int(s.get("seconds_per_shot", 5))))
             session_store = self.session_store(pp)
-            session = session_store.ensure(
-                script=s["script"], target_shot_count=target_count,
-                seconds_per_shot=int(s["seconds_per_shot"]),
-                episode_format=s.get("episode", ""), scene_map=_build_scene_map(s["script"]),
-            )
+            try:
+                session = session_store.ensure(
+                    script=s["script"], target_shot_count=target_count,
+                    seconds_per_shot=int(s["seconds_per_shot"]),
+                    episode_format=s.get("episode", ""), scene_map=_build_scene_map(s["script"]),
+                )
+            except ValueError as exc:
+                return web.json_response({"error": str(exc)}, status=400)
+            existing = next((item for item in session.get("batches", [])
+                             if item.get("status") == "running"), None)
+            if existing:
+                if await self.prompt_is_known(existing.get("prompt_id", "")):
+                    return web.json_response({"prompt_id": existing.get("prompt_id"),
+                                              "batch": existing, "session": self.analysis_status(pp),
+                                              "labels": {"1": f"分析剧本第{existing['batch_index']}批"}})
+                # A running prompt that is absent from both history and queue is
+                # conservatively retryable after a ComfyUI/browser restart.
+                session_store.recover_orphaned_running()
+                session = session_store.load()
             batch = session_store.claim_next()
             if batch.get("status") == "complete":
                 return web.json_response({"ok": True, "complete": True,
                                           "session": self.analysis_status(pp)})
-            # Send only the current contiguous source range to the parser.
-            source_ids = set(batch.get("source_block_ids", []))
+            if batch.get("status") == "failed":
+                return web.json_response({"error": f"第{batch['batch_index']}批失败，请先重试该批次。",
+                                          "session": self.analysis_status(pp)}, status=409)
+            source_ranges = {
+                str(item.get("source_block_id")): set(item.get("unit_ids", []))
+                for item in batch.get("source_unit_ranges", [])
+            }
             scene_subset = []
             for scene in session.get("scene_map", []):
-                blocks = [b for b in scene.get("source_blocks", []) if b.get("source_block_id") in source_ids]
+                blocks = []
+                for source_block in scene.get("source_blocks", []):
+                    block_id = str(source_block.get("source_block_id"))
+                    if block_id not in source_ranges:
+                        continue
+                    block = dict(source_block)
+                    block["batch_unit_ids"] = sorted(source_ranges[block_id])
+                    units = _source_units_with_offsets(block.get("source_text", ""))
+                    block["prompt_source_text"] = "\n".join(
+                        unit["text"] for unit in units if unit["unit_id"] in source_ranges[block_id]
+                    )
+                    blocks.append(block)
                 if blocks:
                     item = dict(scene); item["source_blocks"] = blocks
-                    item["source_text"] = "\n".join(b.get("source_text", "") for b in blocks)
+                    item["source_text"] = "\n".join(b.get("prompt_source_text", "") for b in blocks)
                     scene_subset.append(item)
             batch["context_json"] = json.dumps({"scene_map": scene_subset}, ensure_ascii=False)
-        if stage >= 2 and not os.path.exists(os.path.join(pp, "analysis.json")):
-            return web.json_response({"error": "请先完成第 ① 步「分析剧本」。"}, status=400)
+        if stage >= 2:
+            current_session = self.session_store(pp).load()
+            if current_session:
+                expected_signature = script_signature(
+                    s.get("script", ""), target_count,
+                    int(s.get("seconds_per_shot", 5)), s.get("episode", "")
+                )
+                if current_session.get("script_signature") != expected_signature:
+                    return web.json_response({"error": "剧本已改变，请先完成当前剧本的分批分析。"}, status=400)
+                if current_session.get("analysis_status") != "complete":
+                    return web.json_response({"error": "请先完成第 ① 步「分析剧本」的全部批次。"}, status=400)
+                published = read_json(os.path.join(pp, "analysis.json"), {}) or {}
+                if published.get("session_signature") != current_session.get("script_signature"):
+                    return web.json_response({"error": "当前剧本尚未发布匹配的完整分析结果。"}, status=400)
+            elif not os.path.exists(os.path.join(pp, "analysis.json")):
+                return web.json_response({"error": "请先完成第 ① 步「分析剧本」。"}, status=400)
         os.makedirs(pp, exist_ok=True)
         st.setdefault("run_settings", {})[str(stage)] = {**{k: s.get(k, "") for k in USED_KEYS},
                                                          "refs": self.ref_sig(pp),
@@ -596,7 +658,10 @@ class Api:
             if stage == 1:
                 session = self.session_store(pp).load()
                 if session and session.get("current_batch"):
-                    self.session_store(pp).fail_batch(session["current_batch"], message)
+                    current_batch = next((item for item in session.get("batches", [])
+                                          if item.get("batch_index") == session.get("current_batch")), None)
+                    if current_batch and current_batch.get("prompt_id") == pid:
+                        self.session_store(pp).fail_batch(session["current_batch"], message)
             return web.json_response({"ok": False, "error": message, "details": err.get("exception_message", "")[:800],
                                       "session": self.analysis_status(pp)})
         outputs = entry.get("outputs", {})
@@ -615,6 +680,10 @@ class Api:
                     batch_index = (self.state(pp).get("analysis_run") or {}).get("batch_index") or session.get("current_batch")
                     if not batch_index:
                         raise ValueError("没有可提交的当前分析批次。")
+                    current_batch = next((item for item in session.get("batches", [])
+                                          if item.get("batch_index") == int(batch_index)), None)
+                    if not current_batch or current_batch.get("prompt_id") != pid:
+                        raise ValueError("该分析任务已过期或已被取消，未保存其结果。")
                     store.commit_batch(int(batch_index), raw_analysis)
                     session = store.status()
                     if session.get("analysis_status") != "complete":
@@ -622,6 +691,7 @@ class Api:
                         return web.json_response({"ok": True, "partial": True,
                                                   "session": self.analysis_status(pp)})
                     analysis = {"schema_version": "afe-analysis-v1", "analysis_status": "complete",
+                                "session_signature": session["script_signature"],
                                 "expected_shot_count": session["target_shot_count"],
                                 "source_manifest": [{k: v for k, v in item.items() if k != "source_text"}
                                                      for item in session["source_manifest"]],
@@ -653,7 +723,10 @@ class Api:
                 session = self.session_store(pp).load()
                 batch_index = (self.state(pp).get("analysis_run") or {}).get("batch_index") or (session or {}).get("current_batch")
                 if session and batch_index:
-                    self.session_store(pp).fail_batch(int(batch_index), str(exc))
+                    current_batch = next((item for item in session.get("batches", [])
+                                          if item.get("batch_index") == int(batch_index)), None)
+                    if current_batch and current_batch.get("status") == "running" and current_batch.get("prompt_id") == pid:
+                        self.session_store(pp).fail_batch(int(batch_index), str(exc))
                 return web.json_response({"ok": False, "error": str(exc),
                                           "session": self.analysis_status(pp)})
         else:

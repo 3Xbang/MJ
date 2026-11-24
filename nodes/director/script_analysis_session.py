@@ -37,12 +37,20 @@ def _unit_manifest(scene_map: list[dict]) -> list[dict]:
             # node. Newline and sentence boundaries are sufficient for planning.
             import re
             parts = [p.strip() for p in re.split(r"\n\s*\n+|(?<=[。！？!?])\s+|(?<=[。！？!?])(?=[\u4e00-\u9fff])|(?<=[.!?])\s+", text) if p.strip()]
+            units = []
+            cursor = 0
+            for index, part in enumerate(parts):
+                start = text.find(part, cursor)
+                end = start + len(part) if start >= 0 else cursor + len(part)
+                units.append({"unit_id": f"unit_{index + 1:03d}", "start": start, "end": end, "text": part})
+                cursor = max(end, cursor)
             manifest.append({
                 "order": len(manifest), "scene_id": scene.get("scene_id"),
                 "scene_occurrence_id": block.get("scene_occurrence_id"),
                 "source_block_id": block.get("source_block_id"),
                 "section_type": block.get("section_type", scene.get("section_type")),
-                "unit_ids": [f"unit_{i + 1:03d}" for i in range(len(parts))] or ["unit_001"],
+                "unit_ids": [unit["unit_id"] for unit in units],
+                "units": units,
                 "source_text": text,
             })
     return manifest
@@ -83,14 +91,22 @@ class AnalysisSessionStore:
         total = int(target_shot_count)
         batches = []
         flat_units = [(item["source_block_id"], unit) for item in manifest for unit in item["unit_ids"]]
+        if total <= 0:
+            raise ValueError("目标镜头数必须大于零")
         for start in range(1, total + 1, self.batch_size):
             end = min(total, start + self.batch_size - 1)
             # Source ranges are ordered and deterministic. A unit is assigned to
             # one batch; no round-robin or synthetic shot is ever introduced.
-            lo = (start - 1) * len(flat_units) // total if total else 0
-            hi = end * len(flat_units) // total if total else len(flat_units)
-            if end == total: hi = len(flat_units)
-            selected_units = flat_units[lo:hi] or (flat_units[lo:lo + 1] if flat_units else [])
+            if len(flat_units) < total:
+                # Keep every real unit in screenplay order. Remaining batches
+                # stay empty and will fail validation rather than reusing text.
+                lo, hi = min(start - 1, len(flat_units)), min(end, len(flat_units))
+            else:
+                lo = (start - 1) * len(flat_units) // total
+                hi = end * len(flat_units) // total
+                if end == total:
+                    hi = len(flat_units)
+            selected_units = flat_units[lo:hi]
             ranges = []
             for block_id, unit_id in selected_units:
                 item = next(x for x in manifest if x["source_block_id"] == block_id)
@@ -98,6 +114,11 @@ class AnalysisSessionStore:
                 if current is None:
                     current = {"source_block_id": block_id, "unit_ids": []}; ranges.append(current)
                 current["unit_ids"].append(unit_id)
+                manifest_item = next(x for x in manifest if x["source_block_id"] == block_id)
+                unit_detail = next((item for item in manifest_item.get("units", [])
+                                    if item["unit_id"] == unit_id), None)
+                if unit_detail:
+                    current.setdefault("units", []).append(deepcopy(unit_detail))
             batches.append({
                 "batch_index": len(batches) + 1, "shot_start": start, "shot_end": end,
                 "source_block_ids": [x["source_block_id"] for x in ranges],
@@ -132,12 +153,18 @@ class AnalysisSessionStore:
         if not state: raise ValueError("分析会话不存在")
         running = next((b for b in state["batches"] if b["status"] == "running"), None)
         if running:
+            # The caller must inspect the persisted prompt before queueing. This
+            # method is intentionally idempotent and never creates a second claim.
             return deepcopy(running)
-        batch = next((b for b in state["batches"] if b["status"] == "pending"), None)
+        first_unfinished = next((b for b in state["batches"] if b["status"] != "completed"), None)
+        if first_unfinished and first_unfinished["status"] == "failed":
+            return deepcopy(first_unfinished)
+        batch = first_unfinished
         if not batch:
             return {"status": "complete", "batch_index": None}
         batch["status"] = "running"; batch["prompt_id"] = prompt_id
         state["current_batch"] = batch["batch_index"]; state["current_prompt_id"] = prompt_id
+        state["cancelled"] = False
         self._touch(state)
         return deepcopy(batch)
 
@@ -147,10 +174,31 @@ class AnalysisSessionStore:
         batch["prompt_id"] = prompt_id; state["current_prompt_id"] = prompt_id
         return self._touch(state)
 
+    @staticmethod
+    def _merge_cast(existing: list, incoming: list) -> list:
+        """Merge batch cast records without losing characters from prior batches."""
+        merged = []
+        positions = {}
+        for record in (existing or []) + (incoming or []):
+            if not isinstance(record, dict) or not str(record.get("name") or "").strip():
+                continue
+            key = str(record["name"]).strip().casefold()
+            if key not in positions:
+                positions[key] = len(merged)
+                merged.append(deepcopy(record))
+            else:
+                current = merged[positions[key]]
+                for field, value in record.items():
+                    if value not in (None, "", [], {}):
+                        current[field] = deepcopy(value)
+        return merged
+
     def commit_batch(self, batch_index: int, result: dict) -> dict:
         state = self.load(); index = int(batch_index)
         batch = next(b for b in state["batches"] if b["batch_index"] == index)
         if batch["status"] == "completed": return state
+        if batch["status"] != "running":
+            raise ValueError(f"第{index}批当前状态为 {batch['status']}，不能提交结果；请先继续或重试")
         shots = result.get("shots") if isinstance(result, dict) else None
         expected = batch["shot_end"] - batch["shot_start"] + 1
         if not isinstance(shots, list) or len(shots) != expected:
@@ -161,8 +209,10 @@ class AnalysisSessionStore:
             raise ValueError(f"第{index}批分镜编号或顺序错误：需要 {wanted[0]}-{wanted[-1]}")
         if not result.get("source_manifest"):
             raise ValueError(f"第{index}批缺少 source manifest，未保存不完整结果")
-        expected_units = {(r["source_block_id"], unit) for r in batch.get("source_unit_ranges", []) for unit in r.get("unit_ids", [])}
+        expected_units = [(r["source_block_id"], unit) for r in batch.get("source_unit_ranges", []) for unit in r.get("unit_ids", [])]
+        expected_unit_set = set(expected_units)
         returned_units = set()
+        returned_sequence = []
         for item in result.get("source_manifest", []):
             block_id = str(item.get("source_block_id") or "")
             for unit in item.get("unit_ids", []):
@@ -170,7 +220,10 @@ class AnalysisSessionStore:
                 if key in returned_units:
                     raise ValueError(f"第{index}批 source manifest 重复原文单元：{block_id}/{unit}")
                 returned_units.add(key)
-        if expected_units and returned_units != expected_units:
+                returned_sequence.append(key)
+        if expected_units and returned_sequence != expected_units:
+            raise ValueError(f"第{index}批 source manifest 顺序错误")
+        if expected_units and returned_units != expected_unit_set:
             missing = sorted(expected_units - returned_units)
             extra = sorted(returned_units - expected_units)
             raise ValueError(f"第{index}批 source manifest 覆盖错误：遗漏{missing[:5]}，多出{extra[:5]}")
@@ -181,8 +234,10 @@ class AnalysisSessionStore:
                 shot_units.append((block_id, str(unit)))
         if len(shot_units) != len(set(shot_units)):
             raise ValueError(f"第{index}批分镜重复覆盖原文单元")
-        if expected_units and set(shot_units) != expected_units:
-            raise ValueError(f"第{index}批分镜 source_unit_ids 未完整覆盖批次原文")
+        if expected_units and set(shot_units) != expected_unit_set:
+            missing = sorted(expected_unit_set - set(shot_units))
+            extra = sorted(set(shot_units) - expected_unit_set)
+            raise ValueError(f"第{index}批分镜 source_unit_ids 未完整覆盖批次原文：遗漏{missing[:5]}，多出{extra[:5]}")
         result_path = os.path.join(self.results_dir, f"batch_{index:03d}.json")
         os.makedirs(self.results_dir, exist_ok=True)
         fd, tmp = tempfile.mkstemp(prefix=f"batch-{index}-", suffix=".json", dir=self.results_dir, text=True)
@@ -196,7 +251,8 @@ class AnalysisSessionStore:
         state["completed_batches"] = sorted(set(state["completed_batches"] + [index]))
         state["failed_batches"] = [x for x in state["failed_batches"] if x != index]
         state["parsed_shots"] = sorted(state.get("parsed_shots", []) + deepcopy(shots), key=lambda s: s.get("shot_id", ""))
-        if result.get("cast"): state["cast"] = deepcopy(result["cast"])
+        if result.get("cast"):
+            state["cast"] = self._merge_cast(state.get("cast", []), result["cast"])
         state["current_batch"] = None; state["current_prompt_id"] = None
         if len(state["completed_batches"]) == len(state["batches"]): state["analysis_status"] = "complete"
         return self._touch(state)
@@ -212,6 +268,7 @@ class AnalysisSessionStore:
         state = self.load(); batch = next(b for b in state["batches"] if b["batch_index"] == int(batch_index))
         if batch["status"] != "failed": raise ValueError("只能重试失败批次")
         batch["status"] = "pending"; batch["error"] = None
+        state["cancelled"] = False
         state["failed_batches"] = [x for x in state["failed_batches"] if x != batch["batch_index"]]
         return self._touch(state)
 

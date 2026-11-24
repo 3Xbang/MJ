@@ -1,4 +1,5 @@
 import os
+import os
 import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -53,6 +54,7 @@ def test_completed_batch_is_idempotent_and_failed_batch_only_retries_it():
         second = store.claim_next()
         store.fail_batch(second["batch_index"], "Qwen returned only 2 shots")
         assert store.status()["failed_batches"] == [2]
+        assert store.claim_next()["status"] == "failed"
         store.retry(2)
         assert store.status()["batches"][1]["status"] == "pending"
         assert store.status()["completed_batches"] == [1]
@@ -87,6 +89,30 @@ def test_source_manifest_duplicate_is_rejected_and_empty_cast_props_are_valid():
             raise AssertionError("duplicate source unit was accepted")
         assert store.status()["batches"][0]["status"] == "running"
         assert store.status()["cast"] == []
+
+
+def test_cast_from_earlier_batches_is_retained_and_source_units_are_not_reused():
+    with tempfile.TemporaryDirectory() as root:
+        store = AnalysisSessionStore(root, batch_size=1)
+        store.create("script", 2, 5, scene_fixture(2))
+        first = store.claim_next()
+        first_result = result_for(store, first)
+        first_result["cast"] = [{"name": "Mina", "role_type": "lead"}]
+        store.commit_batch(1, first_result)
+        second = store.claim_next()
+        second_result = result_for(store, second)
+        second_result["cast"] = [{"name": "Bo", "role_type": "support"}]
+        state = store.commit_batch(2, second_result)
+        assert [item["name"] for item in state["cast"]] == ["Mina", "Bo"]
+        assert state["analysis_status"] == "complete"
+
+
+def test_create_keeps_unsafe_uncovered_batches_pending_without_reusing_source_units():
+    with tempfile.TemporaryDirectory() as root:
+        store = AnalysisSessionStore(root, batch_size=1)
+        state = store.create("script", 2, 5, scene_fixture(1))
+        assert state["batches"][0]["source_unit_ranges"]
+        assert state["batches"][1]["source_unit_ranges"] == []
 
 
 if __name__ == "__main__":

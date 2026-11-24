@@ -205,6 +205,12 @@ async function runStage(stage, part = 'all') {
   await loadProject(S.project, true);
   if (c.ok) {
     S.open[stage] = true;
+    if (c.partial) {
+      await loadProject(S.project, true);
+      render();
+      showOk('本批分析已保存。请点击“继续分析”处理下一批。');
+      return;
+    }
     if (stage < 5) S.open[stage + 1] = true;
     render();
     showOk(part === 'cast' ? '角色已重画完成，请在上面重新挑选'
@@ -223,7 +229,12 @@ async function cancelRun() {
     showError(`取消请求失败：${r.error}`, '已保留项目中已保存的结果。连接恢复后可以重新点击当前步骤继续。');
     return;
   }
-  if (S.run) { S.run.label = '正在取消…'; renderDock(); }
+  if (S.run) {
+    S.run = null;
+    await loadProject(S.project, true);
+    render();
+    showOk('已取消当前任务。已完成批次已保留，可以继续分析。');
+  }
 }
 
 /* ── what is stale? (choices changed after a step was produced) ─────────── */

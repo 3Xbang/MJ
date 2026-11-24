@@ -16,6 +16,7 @@ from ai_film_editor_nodes.lib.utils.logger import get_logger
 from ai_film_editor_nodes.nodes.video.shot_prompt_contract import normalize_shot
 
 logger = get_logger("AFE_ScriptFullParser")
+DEFAULT_DIRECT_BATCH_SIZE = 4
 
 
 # ── Scene pre-segmentation (code-level, NOT LLM-dependent) ───────────────────
@@ -379,12 +380,16 @@ def _scene_map_to_prompt_text(scene_map: list[dict]) -> str:
             f"— starts with: {s['preview'][:80]}..."
         )
         for block in s.get("source_blocks", []):
+            prompt_text = block.get("prompt_source_text", block.get("source_text", ""))
             lines.append(
                 f"    source_block_id={block['source_block_id']} "
                 f"scene_occurrence_id={block['scene_occurrence_id']} "
-                f"section_type={block['section_type']}: {block['source_text'][:120]}..."
+                f"section_type={block['section_type']}: {prompt_text[:120]}..."
             )
             for unit in _source_units_with_offsets(block.get("source_text", "")):
+                allowed = block.get("batch_unit_ids")
+                if allowed and unit["unit_id"] not in allowed:
+                    continue
                 lines.append(
                     f"      source_unit_id={unit['unit_id']} "
                     f"source_start={unit['start']} source_end={unit['end']}: "
@@ -916,6 +921,9 @@ def _phase1_source_coverage_errors(shots: list, scene_map: list[dict], target_co
             if not block_id:
                 continue
             units = _source_units_with_offsets(block.get("source_text", ""))
+            allowed_ids = {str(value) for value in (block.get("batch_unit_ids") or [])}
+            if allowed_ids:
+                units = [unit for unit in units if unit["unit_id"] in allowed_ids]
             blocks_by_id[block_id] = block
             all_units[block_id] = units
     ordered_block_ids = sorted(
@@ -1078,6 +1086,49 @@ TO_ENGLISH_SYSTEM = (
 )
 
 
+def _select_batch_scene_map(scene_map: list[dict], total_shots: int,
+                            shot_start: int, shot_end: int) -> list[dict]:
+    """Keep only the exact ordered source units assigned to this batch."""
+    flat = []
+    for scene in scene_map:
+        for block in scene.get("source_blocks", []):
+            for unit in _source_units_with_offsets(block.get("source_text", "")):
+                flat.append((scene, block, unit))
+    if len(flat) < total_shots:
+        raise ValueError(
+            f"原文只有 {len(flat)} 个可验证 source unit，无法安全生成 {total_shots} 个镜头；"
+            "不会复制原文或静默填充镜头。"
+        )
+    lo = (shot_start - 1) * len(flat) // total_shots
+    hi = shot_end * len(flat) // total_shots
+    if shot_end == total_shots:
+        hi = len(flat)
+    selected = {(id(scene), block.get("source_block_id")): set()
+                for scene, block, _ in flat[lo:hi]}
+    for scene, block, unit in flat[lo:hi]:
+        selected[(id(scene), block.get("source_block_id"))].add(unit["unit_id"])
+    result = []
+    for scene in scene_map:
+        blocks = []
+        for block in scene.get("source_blocks", []):
+            ids = selected.get((id(scene), block.get("source_block_id")))
+            if not ids:
+                continue
+            copy = dict(block)
+            copy["batch_unit_ids"] = sorted(ids, key=lambda value: int(value.rsplit("_", 1)[-1]))
+            copy["prompt_source_text"] = "\n".join(
+                unit["text"] for unit in _source_units_with_offsets(block.get("source_text", ""))
+                if unit["unit_id"] in ids
+            )
+            blocks.append(copy)
+        if blocks:
+            copy = dict(scene)
+            copy["source_blocks"] = blocks
+            copy["source_text"] = "\n".join(block.get("prompt_source_text", "") for block in blocks)
+            result.append(copy)
+    return result
+
+
 class AFE_ScriptFullParser:
     """
     全剧本深度解析器 — Two-phase LLM approach.
@@ -1235,16 +1286,22 @@ class AFE_ScriptFullParser:
         # 目标镜头数 = 总时长 / 每镜时长
         target_shot_count = max(1, round(target_duration_seconds / seconds_per_shot))
 
-        # A WebUI run supplies one inclusive global shot range.  The default
-        # keeps the legacy ComfyUI node contract for direct/manual callers.
-        batch_mode = int(batch_end_shot or 0) >= int(batch_start_shot or 1)
+        # Every parser invocation is a bounded batch. The WebUI supplies the
+        # persisted session context; direct/manual node calls use the first
+        # small batch rather than silently reverting to whole-screenplay mode.
+        requested_end = int(batch_end_shot or 0)
+        batch_mode = requested_end > 0
         if batch_mode:
             batch_start_shot = max(1, int(batch_start_shot))
-            batch_end_shot = int(batch_end_shot)
-            target_shot_count = batch_end_shot - batch_start_shot + 1
+            batch_end_shot = requested_end
         else:
             batch_start_shot = 1
-            batch_end_shot = target_shot_count
+            batch_end_shot = min(DEFAULT_DIRECT_BATCH_SIZE, target_shot_count)
+        total_shot_count = target_shot_count
+        target_batch_count = batch_end_shot - batch_start_shot + 1
+        target_shot_count = target_batch_count
+        if batch_end_shot > total_shot_count:
+            raise ValueError("批次镜头范围超过剧本目标镜头数")
 
         # 1. Resolve model_path to absolute
         if not os.path.isabs(model_path):
@@ -1263,8 +1320,14 @@ class AFE_ScriptFullParser:
                 supplied = context.get("scene_map", context) if isinstance(context, dict) else context
                 if isinstance(supplied, list) and supplied:
                     scene_map = supplied
+                else:
+                    raise ValueError("批次上下文缺少精确 scene_map")
             except (TypeError, ValueError) as exc:
                 raise ValueError(f"批次上下文不是有效 JSON：{exc}") from exc
+        else:
+            scene_map = _select_batch_scene_map(
+                scene_map, total_shot_count, batch_start_shot, batch_end_shot
+            )
         scene_map_text = _scene_map_to_prompt_text(scene_map)
         logger.info("[AFE_ScriptFullParser] Pre-segmented %d unique scene(s) from screenplay",
                     len(scene_map))
@@ -1695,12 +1758,16 @@ class AFE_ScriptFullParser:
         source_manifest = []
         for scene in scene_map:
             for block in scene.get("source_blocks", []):
+                units = _source_units_with_offsets(block.get("source_text", ""))
+                allowed = {str(value) for value in (block.get("batch_unit_ids") or [])}
+                if allowed:
+                    units = [unit for unit in units if unit["unit_id"] in allowed]
                 source_manifest.append({
                     "scene_id": scene.get("scene_id"),
                     "scene_occurrence_id": block.get("scene_occurrence_id"),
                     "source_block_id": block.get("source_block_id"),
                     "section_type": block.get("section_type", scene.get("section_type")),
-                    "unit_ids": [unit["unit_id"] for unit in _source_units_with_offsets(block.get("source_text", ""))],
+                    "unit_ids": [unit["unit_id"] for unit in units],
                 })
         source_manifest.sort(key=lambda item: int(re.search(r"(\d+)$", item["source_block_id"]).group(1)))
         for order, item in enumerate(source_manifest):
