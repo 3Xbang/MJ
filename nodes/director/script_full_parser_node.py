@@ -36,6 +36,11 @@ _SCENE_HEADER_PATTERNS = [
     r'【场景\s*[A-Za-z0-9]+[：:].*?】',          # 【场景 A：XXX - YYY】
     r'场景[一二三四五六七八九十\d]+[：:][^\n]{0,40}',  # 场景一：XXX
     r'第[一二三四五六七八九十\d]+场[：:]?[^\n]{0,40}', # 第一场：XXX
+    # Cue prefixes and a physical INT/EXT heading may share one line. Keep the
+    # cue in the source block, but classify the embedded place as a location.
+    r'^[ \t]*(?:(?:OPEN\s+ON|OPENING\s+IMAGE|SMASH\s+CUT\s+TO|MATCH\s+CUT\s+TO|'
+    r'JUMP\s+CUT\s+TO|CUT\s+TO|INTERCUT(?:\s+WITH)?|FLASHBACK|FLASHFORWARD|'
+    r'DISSOLVE\s+TO|WIPE\s+TO)[ \t]*(?:[:\-—])?[ \t]*(?:INT|EXT|INT/EXT)[./][ \t]*[^\n]{0,100})$',
     r'^[ \t]*(?:(?:OPEN\s+ON|SMASH\s+CUT\s+TO|CUT\s+TO)[ \t]*:[ \t]*)?(?:INT|EXT|INT/EXT)[./][ \t]*[^\n]{0,100}$',
     r'^[ \t]*(?:INT|EXT|INT/EXT)[./][ \t]*[^\n]{0,100}$',           # INT. XXX - DAY
     r'Scene\s*[A-Za-z0-9]+[：:.][^\n]{0,40}',    # Scene 1: XXX
@@ -169,7 +174,8 @@ def _normalize_scene_key(header: str) -> str:
     cleaned = re.sub(r'[【】\[\]]', '', header).strip()
     cleaned = re.sub(
         r'^(?:OPEN\s+ON|OPENING\s+IMAGE|SMASH\s+CUT\s+TO|MATCH\s+CUT\s+TO|'
-        r'JUMP\s+CUT\s+TO|CUT\s+TO|INTERCUT(?:\s+WITH)?|DISSOLVE\s+TO|WIPE\s+TO)'
+        r'JUMP\s+CUT\s+TO|CUT\s+TO|INTERCUT(?:\s+WITH)?|FLASHBACK|FLASHFORWARD|'
+        r'DISSOLVE\s+TO|WIPE\s+TO)'
         r'\s*:?\s*', '', cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r'^(?:INT|EXT|INT/EXT)\.?\s*', '', cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(
@@ -183,6 +189,12 @@ def _normalize_scene_key(header: str) -> str:
 
 def _section_type(header: str) -> str:
     text = (header or "").lower()
+    # A cue prefix can carry a real physical heading on the same line, for
+    # example ``INTERCUT WITH EXT. HARBOR - NIGHT`` or ``FLASHBACK - INT.
+    # WAREHOUSE - DAY``. The cue is retained separately in the source block,
+    # while the physical place remains a location scene.
+    if re.search(r'\b(?:int|ext|int/ext)(?:\.|\s)', text):
+        return "location_scene"
     if re.search(r"片头|片尾|opening|title|credits", text):
         return "title_sequence"
     if re.search(r"序幕|序章|引子|prologue|teaser", text):
@@ -288,6 +300,8 @@ def _build_scene_map(raw_script: str) -> list[dict]:
         g["occurrences"].append(occurrence_id)
         g["source_blocks"].append({"source_block_id": source_block_id,
                                     "scene_occurrence_id": occurrence_id, "header": header,
+                                    "cue_prefix": _extract_cue_prefix(header),
+                                    "physical_header": _physical_location_header(header),
                                     "section_type": section, "source_text": block_text})
 
     scene_map = []
@@ -314,13 +328,38 @@ def _header_to_scene_name(header: str) -> str:
     has keyword-based CN→EN translation for display; what matters here is that
     the SAME header always produces the SAME scene_name (code-guaranteed).
     """
-    # Strip bracket/punctuation wrapper, keep the descriptive text
-    cleaned = re.sub(r'[\[\]【】]', '', header).strip()
+    # Display and downstream asset identity use the physical heading, not the
+    # cue prefix, while the source block retains the cue for editing/order.
+    cleaned = _physical_location_header(header)
+    cleaned = re.sub(r'[\[\]【】]', '', cleaned).strip()
     cleaned = re.sub(r'^[# \t]+', '', cleaned).strip()
     # Drop leading "场景 X" / "Scene X" prefixes, with either a colon,
     # dash, dot, or no delimiter (all are common customer heading forms).
     cleaned = re.sub(r'^(场景\s*[A-Za-z0-9一二三四五六七八九十\d]+|Scene\s*[A-Za-z0-9]+)\s*(?:[：:.-]|[-—])?\s*', '', cleaned, flags=re.IGNORECASE)
     return cleaned.strip() or header.strip()
+
+
+def _extract_cue_prefix(header: str) -> str:
+    """Return a screenplay cue that prefixes an embedded physical heading."""
+    cleaned = re.sub(r'[【】\[\]]', '', str(header or '')).strip()
+    match = re.match(
+        r'^(?P<cue>(?:OPEN\s+ON|OPENING\s+IMAGE|SMASH\s+CUT\s+TO|MATCH\s+CUT\s+TO|'
+        r'JUMP\s+CUT\s+TO|CUT\s+TO|INTERCUT(?:\s+WITH)?|FLASHBACK|FLASHFORWARD|'
+        r'DISSOLVE\s+TO|WIPE\s+TO))\s*(?:[:\-—])?[ \t]*(?=(?:INT|EXT|INT/EXT)\.)',
+        cleaned, re.IGNORECASE,
+    )
+    return match.group('cue') if match else ''
+
+
+def _physical_location_header(header: str) -> str:
+    """Remove a cue prefix while retaining the embedded INT/EXT heading."""
+    cleaned = re.sub(r'[【】\[\]]', '', str(header or '')).strip()
+    return re.sub(
+        r'^(?:OPEN\s+ON|OPENING\s+IMAGE|SMASH\s+CUT\s+TO|MATCH\s+CUT\s+TO|'
+        r'JUMP\s+CUT\s+TO|CUT\s+TO|INTERCUT(?:\s+WITH)?|FLASHBACK|FLASHFORWARD|'
+        r'DISSOLVE\s+TO|WIPE\s+TO)[ \t]*(?:[:\-—])?[ \t]*(?=(?:INT|EXT|INT/EXT)\.)',
+        '', cleaned, flags=re.IGNORECASE,
+    ).strip()
 
 
 def _scene_map_to_prompt_text(scene_map: list[dict]) -> str:
@@ -626,15 +665,18 @@ def _fact_tokens(value: str) -> set[str]:
 
 
 def _fact_is_supported(value: object, source_text: str) -> bool:
+    """Require a fact to occur as one contiguous source span.
+
+    Token-set overlap is unsafe: it accepts a different subject/verb/object
+    relation when the words happen to occur elsewhere in the same fragment.
+    Structured fields are therefore evidence only when their normalized text is
+    an exact contiguous span of the verified screenplay fragment.
+    """
     text = _compact_source(str(value or ""))
     if not text:
         return True
     source = _compact_source(source_text).lower()
-    if text.lower() in source:
-        return True
-    candidate = _fact_tokens(text)
-    available = _fact_tokens(source)
-    return bool(candidate) and candidate.issubset(available)
+    return text.lower() in source
 
 
 # These are screenplay facts, not free-form visual decoration.  A missing
@@ -646,6 +688,10 @@ _FACT_FIELDS = (
     "gaze", "body_language", "action_start", "action_process", "action_end", "props_list",
     "prop_interactions", "dialogue", "location", "time_of_day", "weather", "lighting",
     "color_temperature", "camera_path", "costume_en", "costume_description",
+    # These values reach both image and video prompts too. They are accepted
+    # only when the exact source span supports them, so Phase 2 cannot inject a
+    # contradictory framing, pace, lighting direction, or director note.
+    "shot_type", "camera_angle", "pace", "lighting_style", "director_notes",
 )
 
 
@@ -1193,12 +1239,16 @@ class AFE_ScriptFullParser:
                 scene_name_en = (env_data.get("scene_name_en", "")
                                  if isinstance(env_data, dict) else "")
                 scope = env_data.get("subject_scope") if isinstance(env_data, dict) else None
-                people = env_data.get("people") if isinstance(env_data, dict) else None
-                props = env_data.get("props") if isinstance(env_data, dict) else None
+                people_present = isinstance(env_data, dict) and "people" in env_data
+                props_present = isinstance(env_data, dict) and "props" in env_data
+                people = env_data.get("people") if people_present else None
+                props = env_data.get("props") if props_present else None
                 if (not str(environment_prompt).strip() or not str(scene_name_en).strip()
-                        or scope != "place_only" or people not in ([], None) or props not in ([], None)):
+                        or scope != "place_only" or not people_present or not props_present
+                        or not isinstance(people, list) or not isinstance(props, list)
+                        or people != [] or props != []):
                     raise ValueError(
-                        "返回内容不是可证明的 place-only 结构化环境（必须 subject_scope=place_only 且 people/props 为空）"
+                        "返回内容不是可证明的 place-only 结构化环境（必须 subject_scope=place_only 且 people/props 必须存在并且是空数组）"
                     )
                 scene_env[idx] = {
                     "scene_name_en": str(scene_name_en).strip(),

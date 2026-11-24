@@ -142,12 +142,13 @@ def test_generic_unlisted_cues_and_canonical_location_identity():
         "FLASHBACK - INT. WAREHOUSE - DAY\nA lever turns.\n"
     )
     assert [scene["section_type"] for scene in sm] == [
-        "title_sequence", "location_scene", "transition", "transition"
+        "title_sequence", "location_scene", "transition", "location_scene"
     ], [scene["sample_header"] for scene in sm]
-    harbor = [scene for scene in sm if scene["section_type"] == "location_scene"]
+    harbor = [scene for scene in sm if "HARBOR" in scene["sample_header"]]
     assert len(harbor) == 1
     assert len(harbor[0]["source_blocks"]) == 2
     assert "HARBOR" in harbor[0]["sample_header"]
+    assert any("WAREHOUSE" in scene["sample_header"] for scene in sm)
 
 
 def test_phase1_fact_conflict_and_phase2_hallucination_are_rejected():
@@ -223,6 +224,49 @@ def test_scene_environment_rejects_generic_worker_contamination():
     from ai_film_editor_nodes.nodes.analyzer.scene_analyzer_node import validate_empty_scene_prompt
     assert validate_empty_scene_prompt("a worker holding a cup in a kitchen")
     assert validate_empty_scene_prompt("a mechanic with a wrench in a garage")
+    assert validate_empty_scene_prompt("a technician with toolbox in workshop")
+    assert validate_empty_scene_prompt("a mechanic uses wrench in a garage")
+
+
+def test_embedded_intercut_and_flashback_locations_keep_physical_identity():
+    sm = m._build_scene_map(
+        "INTERCUT WITH EXT. HARBOR - NIGHT\nA boat waits.\n"
+        "FLASHBACK - INT. WAREHOUSE - DAY\nA lever turns.\n"
+        "EXT. HARBOR - CONTINUOUS\nThe boat moves.\n"
+    )
+    assert [scene["section_type"] for scene in sm] == ["location_scene", "location_scene"], sm
+    harbor = next(scene for scene in sm if "HARBOR" in scene["sample_header"])
+    warehouse = next(scene for scene in sm if "WAREHOUSE" in scene["sample_header"])
+    assert len(harbor["source_blocks"]) == 2
+    assert harbor["source_blocks"][0]["cue_prefix"].upper() == "INTERCUT WITH"
+    assert warehouse["source_blocks"][0]["cue_prefix"].upper() == "FLASHBACK"
+    assert warehouse["source_blocks"][0]["physical_header"].startswith("INT.")
+
+
+def test_fact_validation_requires_contiguous_relation_and_checks_directions():
+    source = "Mina reaches for the brass lever while Bo runs away."
+    errors = m._fact_validation_errors(
+        {"action": "Mina runs away", "shot_type": "wide", "camera_angle": "low_angle",
+         "pace": "slow", "lighting_style": "neon", "director_notes": "dramatic"},
+        source, source, "Phase 2",
+    )
+    fields = {error.split(" fact ", 1)[0].split()[-1] for error in errors}
+    assert {"action", "shot_type", "camera_angle", "pace", "lighting_style", "director_notes"}.issubset(fields)
+    assert not m._fact_validation_errors({"action": "Mina reaches for the brass lever"}, source, source)
+
+
+def test_place_only_requires_explicit_empty_people_and_props_arrays():
+    from ai_film_editor_nodes.nodes.analyzer.scene_analyzer_node import AFE_SceneAnalyzer
+    try:
+        AFE_SceneAnalyzer.analyze_scenes(AFE_SceneAnalyzer, [{
+            "shot_id": "shot_missing_env_sets", "scene_name": "Warehouse",
+            "scene_environment_en": "empty warehouse, steel shelves",
+            "environment_scope": "place_only", "environment_people": [],
+        }])
+    except ValueError as exc:
+        assert "people and props" in str(exc)
+    else:
+        raise AssertionError("missing environment props must block place-only generation")
 
 
 if __name__ == "__main__":

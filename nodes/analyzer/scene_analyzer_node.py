@@ -13,7 +13,8 @@ SCENE_PREFIX = "empty scene, no people, no characters, no humans, background onl
 # an action or a person in the generated reference.
 _ENV_HUMAN_RE = re.compile(
     r"\b(?:person|people|human|character|man|woman|boy|girl|worker|employee|customer|chef|driver|child|"
-    r"he|she|they|him|her|them|someone|somebody|figure|silhouette|"
+    r"mechanic|technician|operator|guard|teacher|doctor|he|she|they|him|her|them|"
+    r"someone|somebody|figure|silhouette|"
     r"reaches?|grabs?|holds?|holding|carries?|carrying|walks?|runs?|looks?|speaks?|talks?|"
     r"opens?|closes?|turns?|picks?|puts?|places?|stands?|sits?|smiles?|frowns?|touches?|"
     r"drinks?|eats?|writes?|waits?|moves?|gestures?|working|"
@@ -25,7 +26,17 @@ _ENV_HUMAN_RE = re.compile(
 
 _ENV_UNPROVEN_RELATION_RE = re.compile(
     r"\b(?:a|an|the)\s+[a-z][a-z-]*(?:\s+[a-z][a-z-]*){0,2}\s+"
-    r"(?:with|holding|carrying|using|gripping|wearing)\s+(?:a|an|the)\b",
+    r"(?:with|holding|carrying|using|gripping|wearing)\s+(?:(?:a|an|the)\s+)?[a-z][a-z-]*\b",
+    re.IGNORECASE,
+)
+# A place-only description may contain nouns such as "door" or "counter",
+# but it must not introduce an unlisted actor, action, or object relation. This
+# structural boundary catches arbitrary occupations and props rather than
+# relying on a finite blacklist.
+_ENV_SUBJECT_ACTION_RE = re.compile(
+    r"\b(?:a|an|the)\s+[a-z][a-z-]*(?:\s+[a-z][a-z-]*){0,2}\s+"
+    r"(?:uses?|grabs?|holds?|carries?|opens?|closes?|turns?|moves?|walks?|runs?|"
+    r"reaches?|looks?|speaks?|talks?|writes?|waits?|gestures?|works?)\b",
     re.IGNORECASE,
 )
 
@@ -53,6 +64,9 @@ def validate_empty_scene_prompt(prompt: str, characters=(), forbidden_facts=()) 
     match = _ENV_UNPROVEN_RELATION_RE.search(text)
     if match:
         return f"contains an unverified subject/object relation: {match.group(0)}"
+    match = _ENV_SUBJECT_ACTION_RE.search(text)
+    if match:
+        return f"contains an unverified subject/action relation: {match.group(0)}"
     match = _ENV_HUMAN_RE.search(text)
     if match:
         return f"contains human/action fact: {match.group(0)}"
@@ -156,9 +170,22 @@ class AFE_SceneAnalyzer:
             location = shot.get("location", "").strip()
             name_en = (shot.get("scene_name_en") or "").strip()
             env_en = (shot.get("scene_environment_en") or "").strip()
-            env_scope = shot.get("environment_scope") or (shot.get("environment") or {}).get("scope") or ""
-            env_people = shot.get("environment_people") or (shot.get("environment") or {}).get("people") or []
-            env_props = shot.get("environment_props") or (shot.get("environment") or {}).get("props") or []
+            env_payload = shot.get("environment") if isinstance(shot.get("environment"), dict) else {}
+            env_scope = (shot.get("environment_scope") if "environment_scope" in shot
+                         else env_payload.get("scope", env_payload.get("subject_scope")))
+            people_present = "environment_people" in shot or "people" in env_payload
+            props_present = "environment_props" in shot or "props" in env_payload
+            env_people = (shot.get("environment_people") if "environment_people" in shot
+                          else env_payload.get("people"))
+            env_props = (shot.get("environment_props") if "environment_props" in shot
+                         else env_payload.get("props"))
+            if env_scope == "place_only" and (
+                    not people_present or not props_present
+                    or not isinstance(env_people, list) or not isinstance(env_props, list)
+                    or env_people != [] or env_props != []):
+                raise ValueError(
+                    f"scene {shot_id or scene_name or 'unknown'} place_only requires people and props fields as empty arrays"
+                )
             scene_id = str(shot.get("scene_id") or scene_name or "scene_unknown")
             scene_occurrence_id = str(shot.get("scene_occurrence_id") or "")
             section_type = shot.get("section_type") or "location_scene"
