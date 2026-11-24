@@ -8,40 +8,31 @@ logger = get_logger("AFE_SceneAnalyzer")
 DEFAULT_NEGATIVE = "dark, dirty, crowded, blurry, low quality, people, person, human, character, man, woman, figure"
 DEFAULT_STYLE = "3D CG animation, CGI rendering, cinematic"
 SCENE_PREFIX = "empty scene, no people, no characters, no humans, background only"
-# These checks are intentionally conservative: an empty-scene prompt must be
-# rejected rather than repaired by deleting a few words and possibly retaining
-# an action or a person in the generated reference.
-_ENV_HUMAN_RE = re.compile(
-    r"\b(?:person|people|human|character|man|woman|boy|girl|worker|employee|customer|chef|driver|child|"
-    r"mechanic|technician|operator|guard|teacher|doctor|he|she|they|him|her|them|"
-    r"someone|somebody|figure|silhouette|"
-    r"reaches?|grabs?|holds?|holding|carries?|carrying|walks?|runs?|looks?|speaks?|talks?|"
-    r"opens?|closes?|turns?|picks?|puts?|places?|stands?|sits?|smiles?|frowns?|touches?|"
-    r"drinks?|eats?|writes?|waits?|moves?|gestures?|working|"
-    r"cup|mug|phone|smartphone|box|bag|tool|object|prop)\b|"
-    r"人物|男人|女人|男孩|女孩|工人|员工|顾客|厨师|司机|孩子|他|她|他们|拿起|放下|走向|奔跑|"
-    r"看向|说话|打开|关闭|转身|坐下|站立|微笑|皱眉|拿着|握着|杯子|手机|箱子|道具",
-    re.IGNORECASE,
-)
-
+# Empty-set validation is structural rather than an occupation/verb/prop
+# blacklist. A free-form phrase that asserts a subject/action or a subject/
+# object relation cannot be proven to be place-only, regardless of the words it
+# uses. The structured fields below provide the stronger boundary for node use.
 _ENV_UNPROVEN_RELATION_RE = re.compile(
-    r"\b(?:a|an|the)\s+[a-z][a-z-]*(?:\s+[a-z][a-z-]*){0,2}\s+"
-    r"(?:with|holding|carrying|using|gripping|wearing)\s+(?:(?:a|an|the)\s+)?[a-z][a-z-]*\b",
+    r"\b(?:a|an|the)\s+(?:[a-z][a-z-]*\s+){0,3}[a-z][a-z-]*\s+"
+    r"(?:with|holding|carrying|using|gripping|wearing)\s+"
+    r"(?:(?:a|an|the)\s+)?[a-z][a-z-]*\b",
     re.IGNORECASE,
 )
-# A place-only description may contain nouns such as "door" or "counter",
-# but it must not introduce an unlisted actor, action, or object relation. This
-# structural boundary catches arbitrary occupations and props rather than
-# relying on a finite blacklist.
 _ENV_SUBJECT_ACTION_RE = re.compile(
-    r"\b(?:a|an|the)\s+[a-z][a-z-]*(?:\s+[a-z][a-z-]*){0,2}\s+"
-    r"(?:uses?|grabs?|holds?|carries?|opens?|closes?|turns?|moves?|walks?|runs?|"
-    r"reaches?|looks?|speaks?|talks?|writes?|waits?|gestures?|works?)\b",
+    r"\b(?:a|an|the)\s+(?:[a-z][a-z-]*\s+){0,3}[a-z][a-z-]*\s+"
+    r"(?:[a-z][a-z-]*(?:ing|ed|s)|is\s+[a-z][a-z-]*ing)\b",
+    re.IGNORECASE,
+)
+_ENV_EXPLICIT_HUMAN_RE = re.compile(
+    r"\b(?:person|people|human|character|man|woman|boy|girl|someone|somebody|figure|silhouette)\b|"
+    r"人物|男人|女人|男孩|女孩|他|她|他们|人影",
     re.IGNORECASE,
 )
 
 
-def validate_empty_scene_prompt(prompt: str, characters=(), forbidden_facts=()) -> str:
+def validate_empty_scene_prompt(prompt: str, characters=(), forbidden_facts=(), *,
+                                environment_scope=None, environment_people=None,
+                                environment_props=None) -> str:
     """Return a reason when an environment response is not provably place-only.
 
     The structured ``subject_scope``/people/props contract is enforced by
@@ -52,6 +43,12 @@ def validate_empty_scene_prompt(prompt: str, characters=(), forbidden_facts=()) 
     text = str(prompt or "").strip()
     if not text:
         return "environment prompt is empty"
+    if environment_scope is not None and environment_scope != "place_only":
+        return "environment scope is not place_only"
+    if environment_scope is not None and environment_people != []:
+        return "place_only environment must contain an explicit empty people array"
+    if environment_scope is not None and environment_props != []:
+        return "place_only environment must contain an explicit empty props array"
     lowered = text.lower()
     for character in characters or ():
         name = str(character or "").strip()
@@ -61,15 +58,15 @@ def validate_empty_scene_prompt(prompt: str, characters=(), forbidden_facts=()) 
         fact_text = str(fact or "").strip()
         if fact_text and fact_text.lower() in lowered:
             return f"contains screenplay fact: {fact_text}"
+    match = _ENV_EXPLICIT_HUMAN_RE.search(text)
+    if match:
+        return f"contains an unverified human fact: {match.group(0)}"
     match = _ENV_UNPROVEN_RELATION_RE.search(text)
     if match:
         return f"contains an unverified subject/object relation: {match.group(0)}"
     match = _ENV_SUBJECT_ACTION_RE.search(text)
     if match:
         return f"contains an unverified subject/action relation: {match.group(0)}"
-    match = _ENV_HUMAN_RE.search(text)
-    if match:
-        return f"contains human/action fact: {match.group(0)}"
     return ""
 
 
@@ -295,7 +292,10 @@ class AFE_SceneAnalyzer:
                     f"场景 {info.get('scene_id', key)} 的环境结构包含人物或道具，已阻止空场景生成。"
                 )
             contamination = validate_empty_scene_prompt(
-                environment_prompt_en, info.get("characters", []), info.get("forbidden_facts", [])
+                environment_prompt_en, info.get("characters", []), info.get("forbidden_facts", []),
+                environment_scope=info.get("environment_scope"),
+                environment_people=info.get("environment_people"),
+                environment_props=info.get("environment_props"),
             )
             if contamination:
                 raise ValueError(

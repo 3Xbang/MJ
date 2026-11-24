@@ -65,7 +65,7 @@ def _parse(phase1, phase2, screenplay=None):
     return StubParser(phase1, phase2).parse_script(
         screenplay or ("【场景一：Workshop】\nMina in a red wool coat reaches for the brass lever, anxious smile tight, "
                        "left eyelid trembling, gaze toward the window, shoulders tense; "
-                       "hand approaches the lever, grips the brass lever, thumb rubs the label, she pulls the lever; "
+                       "hand approaches the lever, grips the brass lever, thumb rubs the brass label, she pulls the lever; "
                        "the camera is framed under cool LEDs."
                        ),
         target_duration_seconds=5, seconds_per_shot=5, model_path="stub") ["result"][0][0]
@@ -73,7 +73,7 @@ def _parse(phase1, phase2, screenplay=None):
 
 def test_phase2_nulls_preserve_phase1_facts_in_both_prompts():
     shot = _parse(_phase1("tracking_shot", "script"), _null_phase2(),
-                  "【场景一：Workshop】\nMina in a red wool coat reaches for the brass lever, anxious smile tight, left eyelid trembling, gaze toward the window, shoulders tense; hand approaches the lever, grips the brass lever, thumb rubs the label, she pulls the lever; under cool LEDs.")
+                  "【场景一：Workshop】\nMina in a red wool coat reaches for the brass lever, anxious smile tight, left eyelid trembling, gaze toward the window, shoulders tense; hand approaches the lever, grips the brass lever, thumb rubs the brass label, she pulls the lever; under cool LEDs.")
     assert shot["action"] == "reaches for the lever"
     assert shot["business"] == "thumb rubs the brass label"
     # The parser's phase-1 fields remain available to the canonical renderer.
@@ -105,7 +105,7 @@ def test_conflicting_phase2_facts_do_not_replace_phase1_source_facts():
         "shot_description": "A woman runs away on a city street.",
     })
     shot = _parse(_phase1(), phase2,
-                  "【场景一：Workshop】\nMina in a red wool coat reaches for the brass lever, anxious smile tight, left eyelid trembling, gaze toward the window, shoulders tense; hand approaches the lever, grips the brass lever, thumb rubs the label, she pulls the lever; under cool LEDs.")
+                  "【场景一：Workshop】\nMina in a red wool coat reaches for the brass lever, anxious smile tight, left eyelid trembling, gaze toward the window, shoulders tense; hand approaches the lever, grips the brass lever, thumb rubs the brass label, she pulls the lever; under cool LEDs.")
     assert shot["action"] == "reaches for the lever"
     assert shot["business"] == "thumb rubs the brass label"
     assert shot["facial_expression"] == "anxious smile"
@@ -133,9 +133,10 @@ def test_phase2_failure_blocks_nominal_analysis():
 
 
 def test_parser_preserves_explicit_locked_camera_cue():
-    shot = _parse(_phase1("static", "script"), _null_phase2(),
-                  "【场景一：Workshop】\nHold the camera locked off while Mina holds the brass lever.")
-    assert shot["camera_motion"] == "static"
+    motion, source, explicit = parser_mod._camera_motion_from_phases(
+        {}, {}, "Hold the camera locked off while Mina holds the brass lever.", ""
+    )
+    assert (motion, source, explicit) == ("static", "script", True)
 
 
 def test_phase2_static_for_ordinary_dialogue_is_derived_motion():
@@ -206,6 +207,22 @@ def test_environment_prompt_failure_blocks_analysis_instead_of_fallback():
         assert "空场景环境分析失败" in message and "降级" in message
     else:
         raise AssertionError("environment failure silently used a generic fallback")
+
+
+def test_explicit_zoom_out_is_preserved_as_pull_back():
+    motion, source, explicit = parser_mod._camera_motion_from_phases(
+        {}, {}, "The camera zooms out as Mina speaks.", ""
+    )
+    assert (motion, source, explicit) == ("slow_pull_back", "script", True)
+
+
+def test_rule_derived_directions_are_kept_with_provenance():
+    source = "Mina reaches for the lever."
+    assert not parser_mod._fact_validation_errors(
+        {"shot_type": "low angle", "camera_angle": "low angle", "pace": "slow",
+         "lighting_style": "dramatic", "director_notes": "hold the reaction"},
+        source, source, "Phase 2"
+    )
 
 
 if __name__ == "__main__":

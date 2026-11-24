@@ -66,6 +66,29 @@ def _first_text(*values) -> str:
     return ""
 
 
+def _canonical_direction(value: Any, field: str) -> str:
+    text = _text(value)
+    if not text:
+        return ""
+    key = re.sub(r"\s+", " ", text.lower().replace("_", " ").replace("–", "-")).strip()
+    aliases = {
+        "shot_type": {
+            "wide shot": "wide", "wide_shot": "wide", "establishing shot": "wide",
+            "full shot": "full_body", "full body": "full_body",
+            "medium shot": "medium", "medium close-up": "medium_close_up",
+            "medium close up": "medium_close_up", "close-up": "close_up",
+            "close up": "close_up", "extreme close-up": "extreme_close_up",
+            "extreme close up": "extreme_close_up",
+        },
+        "camera_angle": {
+            "eye level": "eye_level", "eye-level": "eye_level", "low angle": "low_angle",
+            "low-angle": "low_angle", "high angle": "high_angle", "high-angle": "high_angle",
+            "dutch angle": "dutch", "dutch tilt": "dutch",
+        },
+    }
+    return aliases.get(field, {}).get(key, text)
+
+
 def _list(value: Any) -> list:
     value = _clean(value)
     if isinstance(value, (list, tuple)):
@@ -197,8 +220,8 @@ def required_facts(shot: dict) -> dict[str, str]:
         "dialogue": _text(s.get("dialogue")),
         "lighting": _text(s.get("lighting") or s.get("lighting_style")),
         "color_temperature": _text(s.get("color_temperature") or s["environment"].get("color_temperature")),
-        "shot_type": _text(s.get("shot_type")),
-        "camera_angle": _text(s.get("camera_angle")),
+        "shot_type": _canonical_direction(s.get("shot_type"), "shot_type"),
+        "camera_angle": _canonical_direction(s.get("camera_angle"), "camera_angle"),
         "camera": CAMERA_MOTIONS[s["camera_motion"]],
         "camera_path": _text(s.get("camera_path")),
         "pace": _text(s.get("pace")),
@@ -227,6 +250,13 @@ def render_shared_facts(shot: dict, include_dialogue: bool = True) -> str:
             value = "not specified in screenplay"
         if value:
             parts.append(f"{label}: {value}")
+    provenance = s.get("direction_provenance") or {}
+    if isinstance(provenance, dict):
+        rendered = ", ".join(
+            f"{key}={value}" for key, value in provenance.items() if _text(value)
+        )
+        if rendered:
+            parts.append(f"Direction provenance: {rendered}")
     if include_dialogue and f["dialogue"] and f["dialogue"] not in {"（无）", "(无)", "none", "null"}:
         parts.append(f"Spoken dialogue context (do not render subtitles): {f['dialogue']}")
     return ". ".join(parts)

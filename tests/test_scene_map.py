@@ -226,6 +226,9 @@ def test_scene_environment_rejects_generic_worker_contamination():
     assert validate_empty_scene_prompt("a mechanic with a wrench in a garage")
     assert validate_empty_scene_prompt("a technician with toolbox in workshop")
     assert validate_empty_scene_prompt("a mechanic uses wrench in a garage")
+    assert validate_empty_scene_prompt("a locksmith manipulating a device in a workshop")
+    assert validate_empty_scene_prompt("a locksmith calibrates a device in a workshop")
+    assert validate_empty_scene_prompt("a workshop with an unlisted device")
 
 
 def test_embedded_intercut_and_flashback_locations_keep_physical_identity():
@@ -251,8 +254,13 @@ def test_fact_validation_requires_contiguous_relation_and_checks_directions():
         source, source, "Phase 2",
     )
     fields = {error.split(" fact ", 1)[0].split()[-1] for error in errors}
-    assert {"action", "shot_type", "camera_angle", "pace", "lighting_style", "director_notes"}.issubset(fields)
-    assert not m._fact_validation_errors({"action": "Mina reaches for the brass lever"}, source, source)
+    assert "action" in fields
+    assert not ({"shot_type", "camera_angle", "pace", "lighting_style", "director_notes"} & fields)
+    assert not m._fact_validation_errors(
+        {"shot_type": "low angle", "camera_angle": "low angle", "pace": "slow",
+         "lighting_style": "neon", "director_notes": "dramatic"},
+        source, source, "Phase 2"
+    )
 
 
 def test_place_only_requires_explicit_empty_people_and_props_arrays():

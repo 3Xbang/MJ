@@ -167,16 +167,14 @@ def _normalize_scene_key(header: str) -> str:
     m = re.search(r'第([一二三四五六七八九十\d]+)场', header)
     if m:
         return f"scene_{m.group(1)}"
-    # Fallback: canonicalize screenplay cue prefixes and INT/EXT/time markers
-    # before deriving a physical-location key.  OPEN ON: EXT. HARBOR - NIGHT,
-    # INTERCUT WITH EXT. HARBOR - CONTINUOUS, and EXT. HARBOR - NIGHT must
-    # share one scene asset while their source occurrences remain separate.
-    cleaned = re.sub(r'[【】\[\]]', '', header).strip()
-    cleaned = re.sub(
-        r'^(?:OPEN\s+ON|OPENING\s+IMAGE|SMASH\s+CUT\s+TO|MATCH\s+CUT\s+TO|'
-        r'JUMP\s+CUT\s+TO|CUT\s+TO|INTERCUT(?:\s+WITH)?|FLASHBACK|FLASHFORWARD|'
-        r'DISSOLVE\s+TO|WIPE\s+TO)'
-        r'\s*:?\s*', '', cleaned, flags=re.IGNORECASE)
+    # Fallback: reuse the same cue-stripping routine used for source metadata.
+    # The separator is part of the cue in forms such as
+    # ``FLASHBACK - INT. WAREHOUSE - DAY``; removing only whitespace/colon
+    # leaves a leading hyphen and creates a second physical-scene key.
+    # OPEN ON: EXT. HARBOR - NIGHT, INTERCUT WITH EXT. HARBOR - CONTINUOUS,
+    # and EXT. HARBOR - NIGHT must share one scene asset while occurrences
+    # remain separate.
+    cleaned = _physical_location_header(header)
     cleaned = re.sub(r'^(?:INT|EXT|INT/EXT)\.?\s*', '', cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(
         r'\s*[-—]\s*(?:DAY|NIGHT|MORNING|EVENING|AFTERNOON|DAWN|DUSK|CONTINUOUS|LATER|'
@@ -665,18 +663,46 @@ def _fact_tokens(value: str) -> set[str]:
 
 
 def _fact_is_supported(value: object, source_text: str) -> bool:
-    """Require a fact to occur as one contiguous source span.
+    """Require a fact to occur in one local source span.
 
-    Token-set overlap is unsafe: it accepts a different subject/verb/object
-    relation when the words happen to occur elsewhere in the same fragment.
-    Structured fields are therefore evidence only when their normalized text is
-    an exact contiguous span of the verified screenplay fragment.
+    Exact prose is preferred. A short structured paraphrase may omit a source
+    adjective or inflect a verb, but words may not be gathered from distant
+    actions or subjects.
     """
     text = _compact_source(str(value or ""))
     if not text:
         return True
     source = _compact_source(source_text).lower()
-    return text.lower() in source
+    if text.lower() in source:
+        return True
+    def token_key(token: str) -> str:
+        stem = token
+        for suffix in ("ing", "ed", "es", "s"):
+            if len(stem) > 4 and stem.endswith(suffix):
+                return stem[:-len(suffix)]
+        return stem
+
+    fact_tokens = [token_key(token) for token in re.findall(r"[a-z0-9]+|[\u4e00-\u9fff]+", text.lower())]
+    source_tokens = [token_key(token) for token in re.findall(r"[a-z0-9]+|[\u4e00-\u9fff]+", source)]
+    if not fact_tokens or not source_tokens:
+        return False
+    for start, token in enumerate(source_tokens):
+        if token != fact_tokens[0]:
+            continue
+        position = start
+        matched = True
+        for wanted in fact_tokens[1:]:
+            next_positions = [
+                index for index in range(position + 1, min(len(source_tokens), position + 4))
+                if source_tokens[index] == wanted
+            ]
+            if not next_positions:
+                matched = False
+                break
+            position = next_positions[0]
+        if matched and position - start <= len(fact_tokens) + 2:
+            return True
+    return False
 
 
 # These are screenplay facts, not free-form visual decoration.  A missing
@@ -688,11 +714,44 @@ _FACT_FIELDS = (
     "gaze", "body_language", "action_start", "action_process", "action_end", "props_list",
     "prop_interactions", "dialogue", "location", "time_of_day", "weather", "lighting",
     "color_temperature", "camera_path", "costume_en", "costume_description",
-    # These values reach both image and video prompts too. They are accepted
-    # only when the exact source span supports them, so Phase 2 cannot inject a
-    # contradictory framing, pace, lighting direction, or director note.
-    "shot_type", "camera_angle", "pace", "lighting_style", "director_notes",
 )
+
+# These fields are production directions. The phase-2 prompt is explicitly
+# allowed to derive them from the shot semantics, so they must not be treated
+# as screenplay quotations. Keep their provenance separately instead.
+_DIRECTION_FIELDS = ("shot_type", "camera_angle", "pace", "lighting_style", "director_notes")
+_DIRECTION_ALIASES = {
+    "shot_type": {
+        "wide shot": "wide", "wide_shot": "wide", "establishing shot": "wide",
+        "full shot": "full_body", "full body": "full_body", "full_body shot": "full_body",
+        "medium shot": "medium", "medium close-up": "medium_close_up",
+        "medium close up": "medium_close_up", "medium_close_up shot": "medium_close_up",
+        "close-up": "close_up", "close up": "close_up", "close_up shot": "close_up",
+        "extreme close-up": "extreme_close_up", "extreme close up": "extreme_close_up",
+    },
+    "camera_angle": {
+        "eye level": "eye_level", "eye-level": "eye_level", "low angle": "low_angle",
+        "low-angle": "low_angle", "high angle": "high_angle", "high-angle": "high_angle",
+        "dutch angle": "dutch", "dutch tilt": "dutch",
+    },
+}
+
+
+def _canonical_direction(field: str, value):
+    """Canonicalize enum-like directions while preserving free-form direction text."""
+    if not _present(value):
+        return value
+    if isinstance(value, (list, tuple, dict)):
+        return value
+    text = str(value).strip()
+    key = re.sub(r"\s+", " ", text.lower().replace("_", " ").replace("–", "-")).strip()
+    return _DIRECTION_ALIASES.get(field, {}).get(key, text)
+
+
+def _direction_provenance(field: str, value, source_fragment: str) -> str:
+    """Mark exact screenplay directions as script facts and all others derived."""
+    return "script" if _present(value) and _fact_is_supported(value, source_fragment) else "derived"
+
 
 
 def _fact_validation_errors(data: dict, source_fragment: str, source_block_text: str,
@@ -937,9 +996,9 @@ _CAMERA_STATIC_CUE_RE = re.compile(
     r"(?:保持不动|静止|固定)(?:镜头|机位|画面))", re.IGNORECASE,
 )
 _CAMERA_MOTION_CUE_RE = re.compile(
-    r"\b(?:camera|shot|frame)\s+(?:slowly\s+)?(?:push(?:es)? in|dolly|pull(?:s)? back|zoom|pan(?:s)?|"
+    r"\b(?:camera|shot|frame)\s+(?:slowly\s+)?(?:push(?:es)? in|dolly|pull(?:s)? back|zoom(?:s)?|pan(?:s)?|"
     r"track(?:s)?|crane|handheld|orbit(?:s)?)\b|"
-    r"\b(?:push(?:es)? in|dolly|pull(?:s)? back|zoom|pan(?:s)?|tracking|track(?:s)?|"
+    r"\b(?:push(?:es)? in|dolly|pull(?:s)? back|zoom(?:s)?|pan(?:s)?|tracking|track(?:s)?|"
     r"crane|handheld|orbit(?:s)?|camera movement|camera moves?)\b|"
     r"(?:镜头|机位|运镜).{0,16}(?:推近|推进|拉远|拉镜|变焦|摇镜|跟拍|升镜|降镜|手持|环绕|"
     r"向左(?:移动|横移|平移)?|向右(?:移动|横移|平移)?|左移|右移|横移|平移)|"
@@ -962,10 +1021,14 @@ def _camera_motion_from_text(text: str) -> str:
         return "pan_right"
     if re.search(r"(?:横移|平移|horizontal\s+pan)", text, re.IGNORECASE):
         return "pan_horizontal"
-    if re.search(r"(?:push(?:es)? in|dolly in|推进|推近)", low if not any(ord(c) > 127 for c in text) else text):
+    if re.search(r"(?:zoom|dolly)[^.!?\n]{0,16}(?:out|back)|(?:zoom|dolly)\s+out", low):
+        return "slow_pull_back"
+    if re.search(r"(?:zoom|dolly)[^.!?\n]{0,16}(?:in|closer)|(?:zoom|dolly)\s+in", low):
         return "slow_push_in"
     if re.search(r"(?:pull(?:s)? back|dolly out|拉远|拉镜)", low if not any(ord(c) > 127 for c in text) else text):
         return "slow_pull_back"
+    if re.search(r"(?:push(?:es)? in|dolly in|推进|推近)", low if not any(ord(c) > 127 for c in text) else text):
+        return "slow_push_in"
     if re.search(r"(?:track(?:s)?|tracking|跟拍)", low if not any(ord(c) > 127 for c in text) else text):
         return "tracking_shot"
     if re.search(r"(?:crane).{0,8}(?:up|升)|升镜", low if not any(ord(c) > 127 for c in text) else text):
@@ -1437,10 +1500,21 @@ class AFE_ScriptFullParser:
             prop_interactions = _first_present(
                 shot.get("prop_interactions"), p2_data.get("prop_interactions"), default=[]
             )
-            camera_angle = get_fact("camera_angle")
-            shot_type = get_fact("shot_type")
+            camera_angle = _canonical_direction(
+                "camera_angle", get_fact("camera_angle")
+            )
+            shot_type = _canonical_direction(
+                "shot_type", get_fact("shot_type")
+            )
             lighting_style = get_fact("lighting_style")
             director_notes = get_fact("director_notes")
+            direction_provenance = {
+                field: _direction_provenance(field, value, source_shot_text)
+                for field, value in (("shot_type", shot_type), ("camera_angle", camera_angle),
+                                     ("pace", get_fact("pace", "rhythm")),
+                                     ("lighting_style", lighting_style),
+                                     ("director_notes", director_notes))
+            }
             location = _first_present(
                 shot.get("location"), shot.get("scene_name"), default=scene_name
             )
@@ -1488,13 +1562,17 @@ class AFE_ScriptFullParser:
                 "scene_name":          scene_name,
                 "scene_name_en":       scene_env.get(scene_idx, {}).get("scene_name_en", ""),
                 "scene_environment_en": scene_env.get(scene_idx, {}).get("environment_prompt_en", ""),
+                "shot_type":           shot_type,
+                "shot_type_source":    direction_provenance["shot_type"],
                 "camera_angle":        camera_angle,
+                "camera_angle_source": direction_provenance["camera_angle"],
                 "camera_motion":       camera_motion,
                 "camera_motion_source": camera_motion_source,
                 "camera_motion_explicit": camera_motion_explicit,
-                "shot_type":           shot_type,
                 "lighting_style":      lighting_style,
+                "lighting_style_source": direction_provenance["lighting_style"],
                 "director_notes":      director_notes,
+                "director_notes_source": direction_provenance["director_notes"],
                 "shot_description":    sd,
                 "negative_prompt":     _first_present(p2_data.get("negative_prompt"), shot.get("negative_prompt"), default="ugly, blurry, low quality, distorted"),
                 "dialogue":            dialogue if dialogue else "（无）",
@@ -1514,6 +1592,8 @@ class AFE_ScriptFullParser:
                 "prop_interactions":   prop_interactions,
                 "camera_path":         camera_path,
                 "pace":                pace,
+                "pace_source":         direction_provenance["pace"],
+                "direction_provenance": direction_provenance,
                 "color_temperature":   color_temperature,
             }
             full_shots.append(normalize_shot(full_shot, i))
