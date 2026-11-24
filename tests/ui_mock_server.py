@@ -170,7 +170,7 @@ CLASSES = dict(pkg.NODE_CLASS_MAPPINGS, SaveImage=SaveImage)
 
 class Mock:
     def __init__(self):
-        self.history, self.clients, self.interrupt, self.counter = {}, {}, False, 0
+        self.history, self.clients, self.interrupt, self.interrupt_prompt, self.counter = {}, {}, False, None, 0
         self.running = set()
         self.queue = asyncio.Queue()
 
@@ -206,10 +206,11 @@ class Mock:
         outs, uis, messages = {}, {}, []
         status = "success"
         self.interrupt = False
+        self.interrupt_prompt = None
         self.running.add(pid)
         try:
             for nid in self.order(prompt):
-                if self.interrupt:
+                if self.interrupt or self.interrupt_prompt == pid:
                     raise KeyboardInterrupt
                 node = prompt[nid]
                 ct = node["class_type"]
@@ -219,7 +220,7 @@ class Mock:
                 for tick in range(4):
                     await self.send(client, "progress", {"value": tick + 1, "max": 4, "node": nid, "prompt_id": pid})
                     await asyncio.sleep(STEP_DELAY / 4)
-                    if self.interrupt:
+                    if self.interrupt or self.interrupt_prompt == pid:
                         raise KeyboardInterrupt
                 if ct == "SaveImage":
                     res = await asyncio.to_thread(self.save_image, **kwargs)
@@ -299,6 +300,16 @@ def make_app(port: int):
         return web.json_response({"queue_running": [[0, pid, {}] for pid in mock.running],
                                   "queue_pending": [[1, item[0], {}] for item in list(mock.queue._queue)]})
 
+    @routes.post("/queue")
+    async def delete_queue(request):
+        body = await request.json()
+        wanted = {str(pid) for pid in (body.get("delete") or [])}
+        kept = [item for item in list(mock.queue._queue) if str(item[0]) not in wanted]
+        mock.queue._queue.clear()
+        for item in kept:
+            mock.queue.put_nowait(item)
+        return web.json_response({})
+
     @routes.get("/mock/lose_next")
     async def lose_next(request):
         mock.lose_next = True
@@ -310,7 +321,12 @@ def make_app(port: int):
 
     @routes.post("/interrupt")
     async def interrupt(request):
-        mock.interrupt = True
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        mock.interrupt_prompt = str(body.get("prompt_id")) if body.get("prompt_id") else None
+        mock.interrupt = not mock.interrupt_prompt
         return web.json_response({})
 
     @routes.get("/ws")

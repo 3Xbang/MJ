@@ -27,6 +27,50 @@ def result_for(store, batch):
     return {"shots": shots, "cast": [], "source_manifest": ranges}
 
 
+def test_ab_a_source_blocks_are_batched_in_screenplay_order():
+    with tempfile.TemporaryDirectory() as root:
+        scene_map = [{"scene_id": "scene_A", "source_blocks": [
+            {"source_block_id": "block_001", "scene_occurrence_id": "a1", "source_text": "A first."},
+            {"source_block_id": "block_003", "scene_occurrence_id": "a2", "source_text": "A again."},
+        ]}, {"scene_id": "scene_B", "source_blocks": [
+            {"source_block_id": "block_002", "scene_occurrence_id": "b1", "source_text": "B between."},
+        ]}]
+        state = AnalysisSessionStore(root, batch_size=1).create("A/B/A", 3, 5, scene_map)
+        assert [b["source_block_ids"] for b in state["batches"]] == [["block_001"], ["block_002"], ["block_003"]]
+        assert [m["source_block_id"] for m in state["source_manifest"]] == ["block_001", "block_002", "block_003"]
+
+
+def test_unverified_batch_is_failed_and_retryable():
+    with tempfile.TemporaryDirectory() as root:
+        store = AnalysisSessionStore(root, batch_size=4)
+        store.create("script", 4, 5, scene_fixture(4))
+        batch = store.claim_next()
+        result = result_for(store, batch)
+        result["shots"][0]["source_validation_error"] = "bad source"
+        try:
+            store.commit_batch(1, result)
+        except ValueError as exc:
+            assert "未验证" in str(exc)
+        else:
+            raise AssertionError("unverified source was accepted")
+        assert store.status()["batches"][0]["status"] == "failed"
+        store.retry(1)
+        assert store.status()["batches"][0]["status"] == "pending"
+
+
+def test_valid_script_without_characters_or_props_keeps_empty_paths():
+    with tempfile.TemporaryDirectory() as root:
+        store = AnalysisSessionStore(root, batch_size=4)
+        store.create("TITLE CARD\nA room with light.", 1, 5, scene_fixture(1), cast=[])
+        batch = store.claim_next()
+        result = result_for(store, batch)
+        result["cast"] = []
+        result["shots"][0].pop("source_unit_ids", None)
+        result["shots"][0]["source_unit_ids"] = ["unit_001"]
+        state = store.commit_batch(1, result)
+        assert state["cast"] == [] and state["analysis_status"] == "complete"
+
+
 def test_36_shots_make_nine_contiguous_batches_and_resume():
     with tempfile.TemporaryDirectory() as root:
         store = AnalysisSessionStore(root, batch_size=4)
@@ -87,7 +131,7 @@ def test_source_manifest_duplicate_is_rejected_and_empty_cast_props_are_valid():
             assert "重复" in str(exc) or "覆盖错误" in str(exc)
         else:
             raise AssertionError("duplicate source unit was accepted")
-        assert store.status()["batches"][0]["status"] == "running"
+        assert store.status()["batches"][0]["status"] == "failed"
         assert store.status()["cast"] == []
 
 

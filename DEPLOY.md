@@ -160,9 +160,9 @@ echo "✅ 部署完成！等30秒后访问 ComfyUI"
 
 若场景或道具生成失败，网页会显示资产 ID、失败节点和重试建议，不会用白图或其他场景顶替。更换角色、场景视角或道具只会让使用该素材的镜头失效；已完成的其他镜头、选择、过期提示和断点状态会保留。客户不需要编辑 JSON 或手工连线。
 
-每次更新后可在 RunPod 执行 CPU 图校验：
+每次更新后可在 RunPod 执行 CPU 图和批次校验：
 ```bash
-cd /workspace/runpod-slim/ComfyUI/custom_nodes/ai_film_editor_nodes && python3 -m py_compile nodes/director/script_full_parser_node.py nodes/video/shot_prompt_contract.py nodes/video/shot_keyframe_node.py nodes/video/wan_shot_renderer_node.py && python3 tests/test_scene_map.py && python3 tests/test_prompt_fidelity.py && python3 tests/test_reference_dependencies.py && python3 tests/test_workflow_graph.py && python3 tests/check_graphs.py
+cd /workspace/runpod-slim/ComfyUI/custom_nodes/ai_film_editor_nodes && python3 -m compileall -q nodes webui tests && python3 tests/test_analysis_session.py && python3 tests/test_scene_map.py && python3 tests/test_parser_merge.py && python3 tests/test_prompt_fidelity.py && python3 tests/test_reference_dependencies.py && python3 tests/test_shot_contract.py && python3 tests/test_webui_validation.py && python3 tests/test_workflow_graph.py && python3 tests/check_graphs.py && python3 tests/ui_e2e.py
 ```
 
 这些 CPU 检查不能证明真实模型的视觉效果。部署后必须确认 ComfyUI 日志没有 `IMPORT FAILED`，在 `/afe/` 先用试跑模式生成两个镜头，再检查实际首帧和 Wan 片段是否保留表情、微表情、动作三阶段、场景切换和非静止运镜。确认无误后再关闭试跑模式生成完整影片。取消、重启后重新排队和素材重做也应检查已完成文件被复用、失败镜头被明确阻止，而不是生成白图或拼接缺片。

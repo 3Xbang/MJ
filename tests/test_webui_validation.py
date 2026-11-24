@@ -1,5 +1,4 @@
 import asyncio
-import os
 import json
 import os
 import sys
@@ -10,6 +9,24 @@ sys.path.insert(0, os.path.dirname(ROOT))
 from ai_film_editor_nodes.webui.server import (
     _validate_analysis_payload, Api, MAX_REF_UPLOAD_BYTES,
 )
+
+
+from ai_film_editor_nodes.webui import graphs
+from ai_film_editor_nodes.nodes.video.cast_ref_generator_node import AFE_CastRefGenerator
+from ai_film_editor_nodes.nodes.analyzer.props_image_generator_node import AFE_PropsImageGenerator
+
+
+def test_valid_no_character_no_prop_analysis_keeps_asset_skip_paths():
+    payload = _complete_analysis()
+    payload["cast"] = []
+    _validate_analysis_payload(payload)
+    prompt, _ = graphs.build_prompt(2, "empty-cast-props", graphs.DEFAULTS, "test-output")
+    assert prompt["6"]["class_type"] == "AFE_CastRefGenerator"
+    assert prompt["5"]["class_type"] == "AFE_PropsImageGenerator"
+    cast = AFE_CastRefGenerator().generate([], "style", approved=True)
+    props = AFE_PropsImageGenerator().generate("", "[]", approved=True)
+    assert "跳过角色参考图" in cast["ui"]["text"][0]
+    assert "跳过道具参考图" in props["ui"]["text"][0]
 
 
 def test_webui_rejects_truncated_structured_analysis():

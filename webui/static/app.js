@@ -222,7 +222,7 @@ async function runStage(stage, part = 'all') {
   }
 }
 async function cancelRun() {
-  const r = await api('/afe/api/cancel', { project: S.project });
+  const r = await api('/afe/api/cancel', { project: S.project, prompt_id: S.run && S.run.promptId });
   if (r.error) {
     S.run = null;
     render();

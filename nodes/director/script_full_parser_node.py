@@ -307,7 +307,7 @@ def _build_scene_map(raw_script: str) -> list[dict]:
         g["source_block_ids"].append(source_block_id)
         g["occurrences"].append(occurrence_id)
         g["source_blocks"].append({"source_block_id": source_block_id,
-                                    "scene_occurrence_id": occurrence_id, "header": header,
+                                    "source_order": i, "scene_occurrence_id": occurrence_id, "header": header,
                                     "cue_prefix": _extract_cue_prefix(header),
                                     "physical_header": _physical_location_header(header),
                                     "section_type": section, "source_text": block_text})
@@ -1094,6 +1094,13 @@ def _select_batch_scene_map(scene_map: list[dict], total_shots: int,
         for block in scene.get("source_blocks", []):
             for unit in _source_units_with_offsets(block.get("source_text", "")):
                 flat.append((scene, block, unit))
+    def source_order(item):
+        block = item[1]
+        if block.get("source_order") is not None:
+            return int(block["source_order"])
+        match = re.search(r"(\d+)$", str(block.get("source_block_id") or ""))
+        return int(match.group(1)) if match else len(flat)
+    flat.sort(key=source_order)
     if len(flat) < total_shots:
         raise ValueError(
             f"原文只有 {len(flat)} 个可验证 source unit，无法安全生成 {total_shots} 个镜头；"

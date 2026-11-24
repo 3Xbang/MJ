@@ -327,6 +327,26 @@ class Api:
         except Exception:
             return False
 
+    async def cancel_prompt(self, prompt_id: str) -> None:
+        """Cancel only the persisted analysis prompt, never another project job."""
+        if not prompt_id:
+            return
+        async with ClientSession(timeout=ClientTimeout(total=10)) as sess:
+            async with sess.get(f"{self.comfy()}/queue") as response:
+                queue = await response.json(content_type=None)
+            pending = {str(item[1]) for item in (queue.get("queue_pending") or [])
+                       if isinstance(item, (list, tuple)) and len(item) > 1}
+            running = {str(item[1]) for item in (queue.get("queue_running") or [])
+                       if isinstance(item, (list, tuple)) and len(item) > 1}
+            if str(prompt_id) in pending:
+                async with sess.post(f"{self.comfy()}/queue", json={"delete": [prompt_id]}) as response:
+                    if response.status >= 400:
+                        raise RuntimeError(f"删除排队任务失败（HTTP {response.status}）")
+            elif str(prompt_id) in running:
+                async with sess.post(f"{self.comfy()}/interrupt", json={"prompt_id": prompt_id}) as response:
+                    if response.status >= 400:
+                        raise RuntimeError(f"中断当前分析任务失败（HTTP {response.status}）")
+
     def project_view(self, name: str) -> dict:
         pp = self.project_path(name)
         pname = safe_project_name(name)
@@ -776,13 +796,23 @@ class Api:
     async def cancel(self, request):
         body = await request.json() if request.can_read_body else {}
         project = safe_project_name(body.get("project", "afe_project"))
-        try:
-            async with ClientSession(timeout=ClientTimeout(total=10)) as sess:
-                await sess.post(f"{self.comfy()}/interrupt")
-        except Exception as e:
-            return web.json_response({"ok": False, "error": str(e)}, status=502)
         store = self.session_store(self.project_path(project))
-        if store.load(): store.cancel()
+        state = store.load()
+        active = next((b for b in (state or {}).get("batches", []) if b.get("status") == "running"), None)
+        prompt_id = str(body.get("prompt_id") or (active or {}).get("prompt_id") or "")
+        if active and prompt_id != str(active.get("prompt_id") or ""):
+            return web.json_response({"ok": False, "error": "当前分析任务已变化，未取消其他任务。",
+                                      "session": self.analysis_status(self.project_path(project))}, status=409)
+        try:
+            await self.cancel_prompt(prompt_id)
+            if state:
+                store.cancel(batch_index=active.get("batch_index") if active else None,
+                             prompt_id=prompt_id or None)
+        except (ValueError, RuntimeError) as exc:
+            return web.json_response({"ok": False, "error": str(exc),
+                                      "session": self.analysis_status(self.project_path(project))}, status=409)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": f"取消任务失败：{exc}"}, status=502)
         return web.json_response({"ok": True, "session": self.analysis_status(self.project_path(project))})
 
     async def file(self, request):

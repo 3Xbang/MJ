@@ -30,29 +30,42 @@ def script_signature(script: str, target_shot_count: int, seconds_per_shot: int,
 def _unit_manifest(scene_map: list[dict]) -> list[dict]:
     """Convert a parser scene map into an ordered, serialisable manifest."""
     manifest = []
+    # ``scene_map`` groups repeated physical locations for asset reuse.  That
+    # grouping is not screenplay order: an A/B/A script has A's second
+    # occurrence inside the first grouped scene.  Flatten by the parser's
+    # source block position before assigning any batch ranges.
+    blocks = []
     for scene in scene_map or []:
         for block in scene.get("source_blocks", []):
-            text = str(block.get("source_text") or "")
-            # Keep the same stable unit algorithm without importing the model
-            # node. Newline and sentence boundaries are sufficient for planning.
-            import re
-            parts = [p.strip() for p in re.split(r"\n\s*\n+|(?<=[。！？!?])\s+|(?<=[。！？!?])(?=[\u4e00-\u9fff])|(?<=[.!?])\s+", text) if p.strip()]
-            units = []
-            cursor = 0
-            for index, part in enumerate(parts):
-                start = text.find(part, cursor)
-                end = start + len(part) if start >= 0 else cursor + len(part)
-                units.append({"unit_id": f"unit_{index + 1:03d}", "start": start, "end": end, "text": part})
-                cursor = max(end, cursor)
-            manifest.append({
-                "order": len(manifest), "scene_id": scene.get("scene_id"),
-                "scene_occurrence_id": block.get("scene_occurrence_id"),
-                "source_block_id": block.get("source_block_id"),
-                "section_type": block.get("section_type", scene.get("section_type")),
-                "unit_ids": [unit["unit_id"] for unit in units],
-                "units": units,
-                "source_text": text,
-            })
+            blocks.append((block, scene))
+    def source_order(item):
+        block = item[0]
+        if block.get("source_order") is not None:
+            return int(block["source_order"])
+        match = __import__("re").search(r"(\d+)$", str(block.get("source_block_id") or ""))
+        return int(match.group(1)) if match else len(blocks)
+    for block, scene in sorted(blocks, key=source_order):
+        text = str(block.get("source_text") or "")
+        # Keep the same stable unit algorithm without importing the model
+        # node. Newline and sentence boundaries are sufficient for planning.
+        import re
+        parts = [p.strip() for p in re.split(r"\n\s*\n+|(?<=[。！？!?])\s+|(?<=[。！？!?])(?=[\u4e00-\u9fff])|(?<=[.!?])\s+", text) if p.strip()]
+        units = []
+        cursor = 0
+        for index, part in enumerate(parts):
+            start = text.find(part, cursor)
+            end = start + len(part) if start >= 0 else cursor + len(part)
+            units.append({"unit_id": f"unit_{index + 1:03d}", "start": start, "end": end, "text": part})
+            cursor = max(end, cursor)
+        manifest.append({
+            "order": len(manifest), "scene_id": scene.get("scene_id"),
+            "scene_occurrence_id": block.get("scene_occurrence_id"),
+            "source_block_id": block.get("source_block_id"),
+            "section_type": block.get("section_type", scene.get("section_type")),
+            "unit_ids": [unit["unit_id"] for unit in units],
+            "units": units,
+            "source_text": text,
+        })
     return manifest
 
 
@@ -199,16 +212,35 @@ class AnalysisSessionStore:
         if batch["status"] == "completed": return state
         if batch["status"] != "running":
             raise ValueError(f"第{index}批当前状态为 {batch['status']}，不能提交结果；请先继续或重试")
+        def reject(message: str):
+            batch["status"] = "failed"
+            batch["retry_count"] += 1
+            batch["error"] = str(message)[:2000]
+            if index not in state["failed_batches"]:
+                state["failed_batches"].append(index)
+            state["current_batch"] = None
+            state["current_prompt_id"] = None
+            self._touch(state)
+            raise ValueError(str(message))
         shots = result.get("shots") if isinstance(result, dict) else None
         expected = batch["shot_end"] - batch["shot_start"] + 1
         if not isinstance(shots, list) or len(shots) != expected:
-            raise ValueError(f"第{index}批分镜不完整：需要{expected}个，实际返回{len(shots) if isinstance(shots, list) else 0}个")
+            reject(f"第{index}批分镜不完整：需要{expected}个，实际返回{len(shots) if isinstance(shots, list) else 0}个")
         ids = [str(s.get("shot_id") or "") for s in shots]
         wanted = [f"shot_{n:03d}" for n in range(batch["shot_start"], batch["shot_end"] + 1)]
         if ids != wanted:
-            raise ValueError(f"第{index}批分镜编号或顺序错误：需要 {wanted[0]}-{wanted[-1]}")
+            reject(f"第{index}批分镜编号或顺序错误：需要 {wanted[0]}-{wanted[-1]}")
+        unverified = []
+        for shot in shots:
+            for field in ("scene_assignment_error", "source_validation_error"):
+                value = shot.get(field)
+                if value not in (None, "", [], {}):
+                    unverified.append(f"{shot.get('shot_id', '?')} {field}: {value}")
+        if unverified:
+            reason = "；".join(str(item) for item in unverified[:8])
+            reject(f"第{index}批原文来源未验证，未保存结果：{reason}")
         if not result.get("source_manifest"):
-            raise ValueError(f"第{index}批缺少 source manifest，未保存不完整结果")
+            reject(f"第{index}批缺少 source manifest，未保存不完整结果")
         expected_units = [(r["source_block_id"], unit) for r in batch.get("source_unit_ranges", []) for unit in r.get("unit_ids", [])]
         expected_unit_set = set(expected_units)
         returned_units = set()
@@ -218,26 +250,26 @@ class AnalysisSessionStore:
             for unit in item.get("unit_ids", []):
                 key = (block_id, str(unit))
                 if key in returned_units:
-                    raise ValueError(f"第{index}批 source manifest 重复原文单元：{block_id}/{unit}")
+                    reject(f"第{index}批 source manifest 重复原文单元：{block_id}/{unit}")
                 returned_units.add(key)
                 returned_sequence.append(key)
         if expected_units and returned_sequence != expected_units:
-            raise ValueError(f"第{index}批 source manifest 顺序错误")
+            reject(f"第{index}批 source manifest 顺序错误")
         if expected_units and returned_units != expected_unit_set:
             missing = sorted(expected_units - returned_units)
             extra = sorted(returned_units - expected_units)
-            raise ValueError(f"第{index}批 source manifest 覆盖错误：遗漏{missing[:5]}，多出{extra[:5]}")
+            reject(f"第{index}批 source manifest 覆盖错误：遗漏{missing[:5]}，多出{extra[:5]}")
         shot_units = []
         for shot in shots:
             block_id = str(shot.get("source_block_id") or "")
             for unit in shot.get("source_unit_ids") or []:
                 shot_units.append((block_id, str(unit)))
         if len(shot_units) != len(set(shot_units)):
-            raise ValueError(f"第{index}批分镜重复覆盖原文单元")
+            reject(f"第{index}批分镜重复覆盖原文单元")
         if expected_units and set(shot_units) != expected_unit_set:
             missing = sorted(expected_unit_set - set(shot_units))
             extra = sorted(set(shot_units) - expected_unit_set)
-            raise ValueError(f"第{index}批分镜 source_unit_ids 未完整覆盖批次原文：遗漏{missing[:5]}，多出{extra[:5]}")
+            reject(f"第{index}批分镜 source_unit_ids 未完整覆盖批次原文：遗漏{missing[:5]}，多出{extra[:5]}")
         result_path = os.path.join(self.results_dir, f"batch_{index:03d}.json")
         os.makedirs(self.results_dir, exist_ok=True)
         fd, tmp = tempfile.mkstemp(prefix=f"batch-{index}-", suffix=".json", dir=self.results_dir, text=True)
@@ -272,12 +304,22 @@ class AnalysisSessionStore:
         state["failed_batches"] = [x for x in state["failed_batches"] if x != batch["batch_index"]]
         return self._touch(state)
 
-    def cancel(self) -> dict:
-        state = self.load();
-        if not state: return {}
-        for batch in state["batches"]:
-            if batch["status"] == "running": batch["status"] = "pending"; batch["error"] = "已取消，可继续或重试"
-        state["cancelled"] = True; state["current_batch"] = None; state["current_prompt_id"] = None
+    def cancel(self, batch_index: int | None = None, prompt_id: str | None = None) -> dict:
+        state = self.load()
+        if not state:
+            return {}
+        running = next((b for b in state["batches"] if b["status"] == "running"), None)
+        if running and batch_index is not None and running["batch_index"] != int(batch_index):
+            raise ValueError("当前运行批次已变化，未取消其他任务")
+        if running and prompt_id and running.get("prompt_id") != prompt_id:
+            raise ValueError("取消请求不是当前分析 prompt，未取消其他任务")
+        if running:
+            running["status"] = "pending"
+            running["error"] = "已取消，可继续或重试"
+            running["prompt_id"] = None
+        state["cancelled"] = True
+        state["current_batch"] = None
+        state["current_prompt_id"] = None
         return self._touch(state)
 
     def recover_orphaned_running(self) -> dict:
