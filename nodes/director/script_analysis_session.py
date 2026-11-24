@@ -48,26 +48,52 @@ def _unit_manifest(scene_map: list[dict]) -> list[dict]:
             return int(block["source_order"])
         match = __import__("re").search(r"(\d+)$", str(block.get("source_block_id") or ""))
         return int(match.group(1)) if match else len(blocks)
-    for block, scene in sorted(blocks, key=source_order):
+
+    ordered_blocks = sorted(blocks, key=source_order)
+    parsed = []
+    explicit_mode = False
+    for block, scene in ordered_blocks:
         text = str(block.get("source_text") or "")
         units = source_units_with_offsets(text)
-        # Context before the first explicit heading remains persisted with the
-        # session and is sent to Qwen, but it is not a shot-consumable source
-        # unit.  Keep it in ``context_units`` rather than making final coverage
-        # require a fake shot for environment/title text.
-        consumable = [unit for unit in units if not unit.get("is_context")]
-        context_units = [unit for unit in units if unit.get("is_context")]
+        explicit_mode = explicit_mode or any(unit.get("is_explicit_shot") for unit in units)
+        parsed.append((block, scene, text, units))
+    for block, scene, text, units in parsed:
+        has_explicit_shot = any(unit.get("is_explicit_shot") for unit in units)
+        # In a mixed script, a title card, environment paragraph, or ordinary
+        # structure block without an explicit shot heading is context-only.
+        # Preserve it verbatim and in screenplay order, but never require a
+        # fabricated shot to cover it at publication time.
+        context_only = explicit_mode and not has_explicit_shot
+        consumable = [unit for unit in units
+                      if not unit.get("is_context") and not context_only]
+        context_units = [unit for unit in units
+                         if unit.get("is_context") or context_only]
         manifest.append({
             "order": len(manifest), "scene_id": scene.get("scene_id"),
             "scene_occurrence_id": block.get("scene_occurrence_id"),
             "source_block_id": block.get("source_block_id"),
             "section_type": block.get("section_type", scene.get("section_type")),
             "unit_ids": [unit["unit_id"] for unit in consumable],
+            "context_only": context_only,
             "context_units": context_units,
             "units": units,
             "source_text": text,
         })
     return manifest
+
+
+def _source_manifest_hash(items: list[dict]) -> str:
+    payload = [{
+        "source_block_id": item.get("source_block_id"),
+        "unit_ids": list(item.get("unit_ids") or []),
+        "context_only": bool(item.get("context_only")),
+    } for item in items]
+    return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True,
+                                     separators=(",", ":")).encode()).hexdigest()
+
+
+def _batch_source_hash(ranges: list[dict]) -> str:
+    return _source_manifest_hash(ranges)
 
 
 class AnalysisSessionStore:
@@ -77,7 +103,23 @@ class AnalysisSessionStore:
         self.root = os.path.abspath(root)
         self.batch_size = max(1, int(batch_size))
         self.path = os.path.join(self.root, "session.json")
+        # Keep legacy batches/ untouched, but never use its index-only files as
+        # recovery markers for a new script session.
         self.results_dir = os.path.join(self.root, "batches")
+
+    def _results_dir(self, state: dict) -> str:
+        signature = str(state.get("script_signature") or "").strip()
+        if not signature:
+            raise ValueError("分析会话缺少脚本签名，拒绝恢复批次结果")
+        return os.path.join(self.root, "batches", signature)
+
+    @staticmethod
+    def _batch_metadata(state: dict, batch: dict) -> dict:
+        return {
+            "session_signature": state.get("script_signature"),
+            "source_manifest_hash": batch.get("source_manifest_hash"),
+            "batch_index": int(batch.get("batch_index")),
+        }
 
     def load(self) -> dict | None:
         try:
@@ -103,10 +145,15 @@ class AnalysisSessionStore:
                scene_map: list[dict], episode_format: str = "", cast: list | None = None) -> dict:
         manifest = _unit_manifest(scene_map)
         total = int(target_shot_count)
+        if total <= 0:
+            raise ValueError("目标镜头数必须大于零")
+        session_script_signature = script_signature(script, total, seconds_per_shot, episode_format)
         batches = []
         all_units = [
             (item["source_block_id"], unit)
-            for item in manifest for unit in item.get("units", [])
+            for item in manifest
+            for unit in item.get("units", [])
+            if unit.get("unit_id") in set(item.get("unit_ids") or [])
         ]
         explicit_units = [entry for entry in all_units if entry[1].get("is_explicit_shot")]
         if explicit_units:
@@ -117,9 +164,7 @@ class AnalysisSessionStore:
                 )
             flat_units = explicit_units
         else:
-            flat_units = [entry for entry in all_units if not entry[1].get("is_context")]
-        if total <= 0:
-            raise ValueError("目标镜头数必须大于零")
+            flat_units = all_units
         for start in range(1, total + 1, self.batch_size):
             end = min(total, start + self.batch_size - 1)
             # Source ranges are ordered and deterministic. Explicit shot units
@@ -145,18 +190,25 @@ class AnalysisSessionStore:
                     current = {"source_block_id": block_id, "unit_ids": []}; ranges.append(current)
                 current["unit_ids"].append(unit["unit_id"])
                 current.setdefault("units", []).append(deepcopy(unit))
+            source_hash = _batch_source_hash(ranges)
+            has_source = bool(ranges and any(item.get("unit_ids") for item in ranges))
             batches.append({
                 "batch_index": len(batches) + 1, "shot_start": start, "shot_end": end,
                 "source_block_ids": [x["source_block_id"] for x in ranges],
                 "source_unit_ranges": ranges,
-                "status": "pending", "retry_count": 0, "error": None, "prompt_id": None,
+                "source_manifest_hash": source_hash,
+                "status": "pending" if has_source else "failed", "retry_count": 0,
+                "error": None if has_source else "该批次没有可验证的原文 source unit，拒绝生成或发布镜头",
+                "prompt_id": None,
             })
+        failed_batches = [b["batch_index"] for b in batches if b["status"] == "failed"]
         state = {
             "schema_version": SCHEMA_VERSION, "created_at": time.time(), "updated_at": time.time(),
-            "script": str(script or ""), "script_signature": script_signature(script, total, seconds_per_shot, episode_format),
+            "script": str(script or ""), "script_signature": session_script_signature,
+            "source_manifest_hash": _source_manifest_hash(manifest),
             "target_shot_count": total, "seconds_per_shot": int(seconds_per_shot),
             "batch_size": self.batch_size, "total_batches": len(batches), "batches": batches,
-            "completed_batches": [], "failed_batches": [], "parsed_shots": [],
+            "completed_batches": [], "failed_batches": failed_batches, "parsed_shots": [],
             "cast": deepcopy(cast or []), "scene_map": deepcopy(scene_map or []),
             "source_manifest": manifest, "current_batch": None, "current_prompt_id": None,
             "cancelled": False, "analysis_status": "partial",
@@ -223,6 +275,15 @@ class AnalysisSessionStore:
             return result
         if not first_unfinished:
             return {"status": "complete", "batch_index": None, "claimed": False}
+        if not any(item.get("unit_ids") for item in first_unfinished.get("source_unit_ranges", [])):
+            first_unfinished["status"] = "failed"
+            first_unfinished["error"] = "该批次没有可验证的原文 source unit，拒绝生成或发布镜头"
+            if first_unfinished["batch_index"] not in state["failed_batches"]:
+                state["failed_batches"].append(first_unfinished["batch_index"])
+            self._touch(state)
+            result = deepcopy(first_unfinished)
+            result["claimed"] = False
+            return result
         first_unfinished["status"] = "running"
         first_unfinished["prompt_id"] = prompt_id
         first_unfinished["claim_token"] = uuid.uuid4().hex
@@ -271,8 +332,16 @@ class AnalysisSessionStore:
                         current[field] = deepcopy(value)
         return merged
 
-    def _validate_batch_result(self, batch: dict, result: dict) -> list[dict]:
+    def _validate_batch_result(self, batch: dict, result: dict, state: dict | None = None) -> list[dict]:
         """Validate one persisted batch without changing session state."""
+        if state is not None:
+            expected_meta = self._batch_metadata(state, batch)
+            for key, expected_value in expected_meta.items():
+                if result.get(key) != expected_value:
+                    raise ValueError(f"第{batch['batch_index']}批结果不属于当前分析会话（{key} 不匹配）")
+        expected_units = [(r["source_block_id"], unit) for r in batch.get("source_unit_ranges", []) for unit in r.get("unit_ids", [])]
+        if not expected_units:
+            raise ValueError(f"第{batch['batch_index']}批没有可验证的原文 source unit，拒绝发布")
         shots = result.get("shots") if isinstance(result, dict) else None
         expected = batch["shot_end"] - batch["shot_start"] + 1
         if not isinstance(shots, list) or len(shots) != expected:
@@ -324,9 +393,10 @@ class AnalysisSessionStore:
 
     def _publish_batch_state(self, state: dict, batch: dict, result: dict, shots: list[dict]) -> dict:
         index = int(batch["batch_index"])
-        result_path = os.path.join(self.results_dir, f"batch_{index:03d}.json")
-        os.makedirs(self.results_dir, exist_ok=True)
-        fd, tmp = tempfile.mkstemp(prefix=f"batch-{index}-", suffix=".json", dir=self.results_dir, text=True)
+        result_path = os.path.join(self._results_dir(state), f"batch_{index:03d}.json")
+        result_dir = os.path.dirname(result_path)
+        os.makedirs(result_dir, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(prefix=f"batch-{index}-", suffix=".json", dir=result_dir, text=True)
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as fh:
                 json.dump(result, fh, ensure_ascii=False, indent=2); fh.flush(); os.fsync(fh.fileno())
@@ -373,7 +443,20 @@ class AnalysisSessionStore:
             state["current_prompt_id"] = None
             self._touch(state)
             raise ValueError(str(message))
-        shots = result.get("shots") if isinstance(result, dict) else None
+        if not isinstance(result, dict):
+            reject(f"第{index}批结果不是结构化对象，未保存不完整结果")
+        result = deepcopy(result)
+        expected_meta = self._batch_metadata(state, batch)
+        for key, expected_value in expected_meta.items():
+            actual = result.get(key)
+            if actual is None:
+                result[key] = expected_value
+            elif actual != expected_value:
+                reject(f"第{index}批结果不属于当前分析会话（{key} 不匹配）")
+        expected_units = [(r["source_block_id"], unit) for r in batch.get("source_unit_ranges", []) for unit in r.get("unit_ids", [])]
+        if not expected_units:
+            reject(f"第{index}批没有可验证的原文 source unit，拒绝发布")
+        shots = result.get("shots")
         expected = batch["shot_end"] - batch["shot_start"] + 1
         if not isinstance(shots, list) or len(shots) != expected:
             reject(f"第{index}批分镜不完整：需要{expected}个，实际返回{len(shots) if isinstance(shots, list) else 0}个")
@@ -421,9 +504,10 @@ class AnalysisSessionStore:
             missing = sorted(expected_unit_set - set(shot_units))
             extra = sorted(set(shot_units) - expected_unit_set)
             reject(f"第{index}批分镜 source_unit_ids 未完整覆盖批次原文：遗漏{missing[:5]}，多出{extra[:5]}")
-        result_path = os.path.join(self.results_dir, f"batch_{index:03d}.json")
-        os.makedirs(self.results_dir, exist_ok=True)
-        fd, tmp = tempfile.mkstemp(prefix=f"batch-{index}-", suffix=".json", dir=self.results_dir, text=True)
+        result_path = os.path.join(self._results_dir(state), f"batch_{index:03d}.json")
+        result_dir = os.path.dirname(result_path)
+        os.makedirs(result_dir, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(prefix=f"batch-{index}-", suffix=".json", dir=result_dir, text=True)
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as fh:
                 json.dump(result, fh, ensure_ascii=False, indent=2); fh.flush(); os.fsync(fh.fileno())
@@ -490,12 +574,12 @@ class AnalysisSessionStore:
             for batch in state["batches"]:
                 if batch["status"] != "running":
                     continue
-                result_path = os.path.join(self.results_dir, f"batch_{batch['batch_index']:03d}.json")
+                result_path = os.path.join(self._results_dir(state), f"batch_{batch['batch_index']:03d}.json")
                 result = None
                 try:
                     with open(result_path, encoding="utf-8") as fh:
                         result = json.load(fh)
-                    shots = self._validate_batch_result(batch, result)
+                    shots = self._validate_batch_result(batch, result, state)
                 except (OSError, ValueError, TypeError, json.JSONDecodeError):
                     shots = None
                 if shots is not None:

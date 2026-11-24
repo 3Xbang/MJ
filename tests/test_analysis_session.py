@@ -208,10 +208,13 @@ def test_cancel_and_restart_recover_running_without_losing_completed_results():
 def test_recovery_publishes_durable_batch_result_after_session_write_gap():
     with tempfile.TemporaryDirectory() as root:
         store = AnalysisSessionStore(root, batch_size=4)
-        store.create("script", 4, 5, scene_fixture(4))
+        created = store.create("script", 4, 5, scene_fixture(4))
         batch = store.claim_next("lost-prompt")
         result = result_for(store, batch)
-        result_path = os.path.join(root, "batches", "batch_001.json")
+        result.update({"session_signature": created["script_signature"],
+                       "source_manifest_hash": batch["source_manifest_hash"],
+                       "batch_index": batch["batch_index"]})
+        result_path = os.path.join(root, "batches", created["script_signature"], "batch_001.json")
         os.makedirs(os.path.dirname(result_path), exist_ok=True)
         with open(result_path, "w", encoding="utf-8") as fh:
             import json
@@ -310,6 +313,52 @@ def test_cancel_without_active_batch_does_not_change_session():
         state = store.status()
         assert state["batches"] == before["batches"]
         assert state["current_batch"] is None
+
+
+def test_mixed_explicit_script_keeps_non_shot_blocks_as_context_only():
+    with tempfile.TemporaryDirectory() as root:
+        scene_map = [{"scene_id": "scene_001", "source_blocks": [
+            {"source_block_id": "block_001", "scene_occurrence_id": "occ_001",
+             "source_text": "片头：伦敦夜雨。"},
+            {"source_block_id": "block_002", "scene_occurrence_id": "occ_002",
+             "source_text": "### 镜头001\nMina waits."},
+        ]}]
+        state = AnalysisSessionStore(root, batch_size=1).create("mixed", 1, 5, scene_map)
+        context = next(item for item in state["source_manifest"] if item["source_block_id"] == "block_001")
+        assert context["context_only"] is True
+        assert context["unit_ids"] == []
+        assert state["batches"][0]["source_block_ids"] == ["block_002"]
+
+
+def test_result_markers_are_isolated_when_script_signature_changes():
+    with tempfile.TemporaryDirectory() as root:
+        store = AnalysisSessionStore(root, batch_size=1)
+        old = store.create("old script", 1, 5, scene_fixture(1))
+        old_batch = store.claim_next()
+        old_result = result_for(store, old_batch)
+        old_result.update({"session_signature": old["script_signature"],
+                           "source_manifest_hash": old_batch["source_manifest_hash"],
+                           "batch_index": 1})
+        old_path = os.path.join(root, "batches", old["script_signature"], "batch_001.json")
+        os.makedirs(os.path.dirname(old_path), exist_ok=True)
+        with open(old_path, "w", encoding="utf-8") as fh:
+            import json
+            json.dump(old_result, fh)
+        new = AnalysisSessionStore(root, batch_size=1)
+        new.create("new script", 1, 5, scene_fixture(1))
+        new.claim_next("new-prompt")
+        new.recover_orphaned_running()
+        state = new.status()
+        assert state["completed_batches"] == []
+        assert state["batches"][0]["status"] == "failed"
+
+
+def test_empty_source_batch_cannot_be_published():
+    with tempfile.TemporaryDirectory() as root:
+        store = AnalysisSessionStore(root, batch_size=1)
+        state = store.create("too few units", 2, 5, scene_fixture(1))
+        assert state["batches"][1]["status"] == "failed"
+        assert state["failed_batches"] == [2]
 
 
 if __name__ == "__main__":

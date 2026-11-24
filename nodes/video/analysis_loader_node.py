@@ -37,17 +37,23 @@ def _validate_complete_analysis(data: dict) -> None:
             raise ValueError("剧本分析原文来源清单不完整或顺序错误。")
         block_id = str(item.get("source_block_id") or "")
         unit_ids = item.get("unit_ids")
+        context_only = bool(item.get("context_only"))
         if (not block_id or item.get("order") != position
-                or not isinstance(unit_ids, list) or not unit_ids):
+                or not isinstance(unit_ids, list)
+                or (not unit_ids and not context_only)):
             raise ValueError("剧本分析原文来源清单不完整或顺序错误。")
         if block_id in by_block:
             raise ValueError("剧本分析原文来源清单包含重复来源块。")
         normalized = [str(unit).strip() for unit in unit_ids]
+        if any(not unit for unit in normalized):
+            raise ValueError("剧本分析原文来源清单不完整或顺序错误。")
         if len(set(normalized)) != len(normalized):
             raise ValueError("剧本分析原文来源清单包含重复单元。")
         by_block[block_id] = normalized
         block_positions[block_id] = position
         manifest_units.update((block_id, unit) for unit in normalized)
+    if not manifest_units:
+        raise ValueError("剧本分析原文来源清单没有可用于分镜的 source unit。")
     covered = set()
     previous_position = None
     for shot in shots:

@@ -129,7 +129,10 @@ def _validate_analysis_payload(analysis: dict) -> None:
         if item.get("order") != position:
             raise ValueError(f"原文来源清单顺序错误：{block_id}")
         unit_ids = item.get("unit_ids")
-        if not isinstance(unit_ids, list) or not unit_ids or any(not str(unit).strip() for unit in unit_ids):
+        context_only = bool(item.get("context_only"))
+        if (not isinstance(unit_ids, list)
+                or (not unit_ids and not context_only)
+                or any(not str(unit).strip() for unit in unit_ids)):
             raise ValueError(f"原文来源清单 {block_id} 缺少完整原文单元。")
         normalized_units = [str(unit).strip() for unit in unit_ids]
         if len(set(normalized_units)) != len(normalized_units):
@@ -140,6 +143,9 @@ def _validate_analysis_payload(analysis: dict) -> None:
         manifest_ids[block_id] = position
         manifest_units[block_id] = normalized_units
         all_units.update((block_id, unit) for unit in normalized_units)
+
+    if not all_units:
+        raise ValueError("剧本分析原文来源清单没有可用于分镜的 source unit。")
 
     errors = []
     seen = set()
@@ -660,6 +666,11 @@ class Api:
                 str(item.get("source_block_id")): set(item.get("unit_ids", []))
                 for item in batch.get("source_unit_ranges", [])
             }
+            context_only_blocks = {
+                str(item.get("source_block_id"))
+                for item in session.get("source_manifest", [])
+                if item.get("context_only")
+            }
             scene_subset = []
             for scene in session.get("scene_map", []):
                 # Keep shot provenance limited to this batch, but retain the
@@ -674,16 +685,22 @@ class Api:
                 blocks = []
                 for source_block in scene.get("source_blocks", []):
                     block_id = str(source_block.get("source_block_id"))
-                    if block_id not in source_ranges:
+                    if block_id not in source_ranges and block_id not in context_only_blocks:
                         continue
                     block = dict(source_block)
-                    block["batch_unit_ids"] = sorted(source_ranges[block_id])
-                    units = _source_units_with_offsets(block.get("source_text", ""))
-                    block["prompt_source_text"] = "\n".join(
-                        [unit["text"] for unit in units if unit.get("is_context")]
-                        + [unit["text"] for unit in units
-                           if unit["unit_id"] in source_ranges[block_id]]
-                    )
+                    if block_id in context_only_blocks:
+                        block["batch_context_only"] = True
+                        units = _source_units_with_offsets(block.get("source_text", ""))
+                        block["prompt_source_text"] = "\n".join(unit["text"] for unit in units)
+                        block["batch_unit_ids"] = []
+                    else:
+                        block["batch_unit_ids"] = sorted(source_ranges[block_id])
+                        units = _source_units_with_offsets(block.get("source_text", ""))
+                        block["prompt_source_text"] = "\n".join(
+                            [unit["text"] for unit in units if unit.get("is_context")]
+                            + [unit["text"] for unit in units
+                               if unit["unit_id"] in source_ranges[block_id]]
+                        )
                     blocks.append(block)
                 if blocks:
                     item = dict(scene)

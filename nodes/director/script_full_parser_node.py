@@ -951,6 +951,12 @@ def _phase1_source_coverage_errors(shots: list, scene_map: list[dict], target_co
     for scene in scene_map:
         for block in scene.get("source_blocks", []):
             block_id = str(block.get("source_block_id") or "")
+            if block.get("batch_context_only"):
+                # This source block is retained as screenplay context (title,
+                # environment, or structure) but cannot consume a shot slot.
+                blocks_by_id[block_id] = block
+                all_units[block_id] = []
+                continue
             if not block_id:
                 continue
             units = _source_units_with_offsets(block.get("source_text", ""))
@@ -1026,7 +1032,8 @@ def _phase1_source_coverage_errors(shots: list, scene_map: list[dict], target_co
         evidence_positions.append((block_order[block_id], selected[0]["start"], block_id, sid))
 
     covered_blocks = {item[2] for item in evidence_positions}
-    missing_blocks = [block_id for block_id in all_units if block_id not in covered_blocks]
+    missing_blocks = [block_id for block_id in all_units
+                     if all_units[block_id] and block_id not in covered_blocks]
     for block_id in missing_blocks:
         block = blocks_by_id[block_id]
         errors.append(f"遗漏原文段 {block_id}（{_compact_source(block.get('source_text', ''))[:160]}）")
@@ -1855,15 +1862,19 @@ class AFE_ScriptFullParser:
         for scene in scene_map:
             for block in scene.get("source_blocks", []):
                 units = _source_units_with_offsets(block.get("source_text", ""))
-                allowed = {str(value) for value in (block.get("batch_unit_ids") or [])}
-                if allowed:
-                    units = [unit for unit in units if unit["unit_id"] in allowed]
+                if block.get("batch_context_only"):
+                    units = []
+                else:
+                    allowed = {str(value) for value in (block.get("batch_unit_ids") or [])}
+                    if allowed:
+                        units = [unit for unit in units if unit["unit_id"] in allowed]
                 source_manifest.append({
                     "scene_id": scene.get("scene_id"),
                     "scene_occurrence_id": block.get("scene_occurrence_id"),
                     "source_block_id": block.get("source_block_id"),
                     "section_type": block.get("section_type", scene.get("section_type")),
                     "unit_ids": [unit["unit_id"] for unit in units],
+                    "context_only": bool(block.get("batch_context_only")),
                 })
         source_manifest.sort(key=lambda item: int(re.search(r"(\d+)$", item["source_block_id"]).group(1)))
         for order, item in enumerate(source_manifest):

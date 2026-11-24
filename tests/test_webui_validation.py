@@ -237,7 +237,9 @@ def test_collect_rejects_delayed_prompt_without_mutating_current_batch():
         api = Api(root, "http://127.0.0.1:8188")
         project = api.project_path("collect-stale")
         store = AnalysisSessionStore(os.path.join(project, "analysis_session"), 4)
-        store.create("script", 1, 5, [{"scene_id": "scene_1", "source_blocks": []}])
+        store.create("script", 1, 5, [{"scene_id": "scene_1", "source_blocks": [{
+            "source_block_id": "block_1", "source_text": "A room with light."
+        }]}])
         store.claim_next("current-prompt")
 
         class Request:
