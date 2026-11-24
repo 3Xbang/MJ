@@ -340,6 +340,20 @@ def test_cancel_only_changes_matching_running_batch_and_preserves_completed_resu
         assert store.status()["batches"][1]["status"] == "pending"
 
 
+def test_stale_failure_cannot_clobber_reclaimed_batch():
+    with tempfile.TemporaryDirectory() as root:
+        store = AnalysisSessionStore(root, batch_size=4)
+        store.create("script", 4, 5, scene_fixture(4))
+        old = store.claim_next("old-prompt")
+        store.cancel(batch_index=old["batch_index"], prompt_id="old-prompt")
+        current = store.claim_next("new-prompt")
+        state = store.fail_batch(old["batch_index"], "stale request failed",
+                                 claim_token=old["claim_token"], prompt_id="old-prompt")
+        assert state["batches"][0]["status"] == "running"
+        assert state["batches"][0]["prompt_id"] == current["prompt_id"]
+        assert state["batches"][0]["error"] == "已取消，可继续或重试"
+
+
 def test_cancel_without_active_batch_does_not_change_session():
     with tempfile.TemporaryDirectory() as root:
         store = AnalysisSessionStore(root, batch_size=4)

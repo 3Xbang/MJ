@@ -8,7 +8,7 @@
 cd /workspace/runpod-slim/ComfyUI/custom_nodes && { [ -d ai_film_editor_nodes/.git ] && git -C ai_film_editor_nodes pull origin main || git clone https://github.com/3Xbang/MJ.git ai_film_editor_nodes; } && bash ai_film_editor_nodes/deploy_pod.sh
 ```
 
-脚本内容在仓库根目录 `deploy_pod.sh`。下面是它的分步版本，仅供参考。
+脚本内容在仓库根目录 `deploy_pod.sh`。脚本会先切换到 `ai_film_editor_nodes` 根目录，执行完整的 CPU/图/UI 回归；任一检查失败都会停止部署，不会报告成功。下面是它的分步版本，仅供参考。
 
 ---
 

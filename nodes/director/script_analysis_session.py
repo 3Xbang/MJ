@@ -439,7 +439,17 @@ class AnalysisSessionStore:
         if len(state["completed_batches"]) == len(state["batches"]): state["analysis_status"] = "complete"
         return self._touch(state)
 
-    def commit_batch(self, batch_index: int, result: dict) -> dict:
+    @staticmethod
+    def _claim_matches(batch: dict, claim_token: str | None = None,
+                       prompt_id: str | None = None) -> bool:
+        if claim_token is not None and str(batch.get("claim_token") or "") != str(claim_token):
+            return False
+        if prompt_id is not None and str(batch.get("prompt_id") or "") != str(prompt_id):
+            return False
+        return True
+
+    def commit_batch(self, batch_index: int, result: dict, claim_token: str | None = None,
+                     prompt_id: str | None = None) -> dict:
         """Validate and publish one batch as one serialized transaction.
 
         Collection requests can arrive twice after a browser retry.  Keep the
@@ -448,14 +458,18 @@ class AnalysisSessionStore:
         returns the already-published state without appending its shots.
         """
         with self._claim_lock():
-            return self._commit_batch_locked(batch_index, result)
+            return self._commit_batch_locked(batch_index, result, claim_token, prompt_id)
 
-    def _commit_batch_locked(self, batch_index: int, result: dict) -> dict:
+    def _commit_batch_locked(self, batch_index: int, result: dict,
+                             claim_token: str | None = None,
+                             prompt_id: str | None = None) -> dict:
         state = self.load(); index = int(batch_index)
         batch = next(b for b in state["batches"] if b["batch_index"] == index)
         if batch["status"] == "completed": return state
         if batch["status"] != "running":
             raise ValueError(f"第{index}批当前状态为 {batch['status']}，不能提交结果；请先继续或重试")
+        if not self._claim_matches(batch, claim_token, prompt_id):
+            raise ValueError(f"第{index}批分析请求已过期，未保存其结果")
         def reject(message: str):
             batch["status"] = "failed"
             batch["retry_count"] += 1
@@ -547,12 +561,24 @@ class AnalysisSessionStore:
         if len(state["completed_batches"]) == len(state["batches"]): state["analysis_status"] = "complete"
         return self._touch(state)
 
-    def fail_batch(self, batch_index: int, error: str) -> dict:
-        state = self.load(); batch = next(b for b in state["batches"] if b["batch_index"] == int(batch_index))
-        batch["status"] = "failed"; batch["retry_count"] += 1; batch["error"] = str(error)[:2000]
-        if batch["batch_index"] not in state["failed_batches"]: state["failed_batches"].append(batch["batch_index"])
-        state["current_batch"] = None; state["current_prompt_id"] = None
-        return self._touch(state)
+    def fail_batch(self, batch_index: int, error: str, claim_token: str | None = None,
+                   prompt_id: str | None = None) -> dict:
+        """Fail only the still-running claim that reported the error.
+
+        A cancelled request can finish after a retry has claimed the same
+        batch.  The ownership check prevents that stale request from marking
+        the new claim failed.
+        """
+        with self._claim_lock():
+            state = self.load()
+            batch = next(b for b in state["batches"] if b["batch_index"] == int(batch_index))
+            if batch["status"] != "running" or not self._claim_matches(batch, claim_token, prompt_id):
+                return state
+            batch["status"] = "failed"; batch["retry_count"] += 1; batch["error"] = str(error)[:2000]
+            if batch["batch_index"] not in state["failed_batches"]:
+                state["failed_batches"].append(batch["batch_index"])
+            state["current_batch"] = None; state["current_prompt_id"] = None
+            return self._touch(state)
 
     def retry(self, batch_index: int) -> dict:
         state = self.load(); batch = next(b for b in state["batches"] if b["batch_index"] == int(batch_index))

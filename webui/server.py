@@ -790,7 +790,9 @@ class Api:
             if problems:
                 logger.error("AFE UI prompt invalid: %s", problems)
                 if stage == 1 and session_store and batch:
-                    session_store.fail_batch(batch["batch_index"], "内部流程配置有误：" + "; ".join(problems[:6]))
+                    session_store.fail_batch(batch["batch_index"], "内部流程配置有误：" + "; ".join(problems[:6]),
+                                              claim_token=batch.get("claim_token"),
+                                              prompt_id=batch.get("prompt_id"))
                 return web.json_response({"error": "内部流程配置有误，请把下面的信息发给技术支持：\n" + "\n".join(problems[:6])}, status=500)
         payload = {"prompt": prompt, "client_id": body.get("client_id", "afe-ui")}
         try:
@@ -800,11 +802,15 @@ class Api:
                     if r.status != 200:
                         detail = json.dumps(data, ensure_ascii=False)[:600]
                         if stage == 1 and session_store and batch:
-                            session_store.fail_batch(batch["batch_index"], friendly_error(detail))
+                            session_store.fail_batch(batch["batch_index"], friendly_error(detail),
+                                                      claim_token=batch.get("claim_token"),
+                                                      prompt_id=batch.get("prompt_id"))
                         return web.json_response({"error": friendly_error(detail), "details": detail}, status=400)
         except Exception as e:
             if stage == 1 and session_store and batch:
-                session_store.fail_batch(batch["batch_index"], f"无法连接 ComfyUI：{e}")
+                session_store.fail_batch(batch["batch_index"], f"无法连接 ComfyUI：{e}",
+                                          claim_token=batch.get("claim_token"),
+                                          prompt_id=batch.get("prompt_id"))
             return web.json_response({"error": f"无法连接 ComfyUI：{e}"}, status=502)
         if stage == 1 and session_store and batch:
             try:
@@ -872,7 +878,9 @@ class Api:
                                           if item.get("status") == "running"
                                           and str(item.get("prompt_id") or "") == str(pid)), None)
                     if current_batch:
-                        self.session_store(pp).fail_batch(current_batch["batch_index"], message)
+                        self.session_store(pp).fail_batch(current_batch["batch_index"], message,
+                                                          claim_token=current_batch.get("claim_token"),
+                                                          prompt_id=pid)
             return web.json_response({"ok": False, "error": message, "details": err.get("exception_message", "")[:800],
                                       "session": self.analysis_status(pp)})
         outputs = entry.get("outputs", {})
@@ -891,7 +899,9 @@ class Api:
                 if not current_batch:
                     raise ValueError("该分析任务已过期或已被取消，未保存其结果。")
                 batch_index = int(current_batch["batch_index"])
-                store.commit_batch(batch_index, raw_analysis)
+                store.commit_batch(batch_index, raw_analysis,
+                                   claim_token=current_batch.get("claim_token"),
+                                   prompt_id=pid)
                 session = store.status()
                 ui_state = self.state(pp)
                 if (ui_state.get("analysis_run") or {}).get("prompt_id") == pid:
@@ -931,7 +941,9 @@ class Api:
                                           if item.get("status") == "running"
                                           and str(item.get("prompt_id") or "") == str(pid)), None)
                     if current_batch:
-                        self.session_store(pp).fail_batch(current_batch["batch_index"], str(exc))
+                        self.session_store(pp).fail_batch(current_batch["batch_index"], str(exc),
+                                                          claim_token=current_batch.get("claim_token"),
+                                                          prompt_id=pid)
                 return web.json_response({"ok": False, "error": str(exc),
                                           "session": self.analysis_status(pp)})
         else:

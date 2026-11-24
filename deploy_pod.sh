@@ -5,6 +5,8 @@
 # 用法（在 RunPod 终端粘贴这一行）：
 #   cd /workspace/runpod-slim/ComfyUI/custom_nodes && { [ -d ai_film_editor_nodes/.git ] && git -C ai_film_editor_nodes pull origin main || git clone https://github.com/3Xbang/MJ.git ai_film_editor_nodes; } && bash ai_film_editor_nodes/deploy_pod.sh
 
+set -euo pipefail
+
 COMFY=/workspace/runpod-slim/ComfyUI
 CN=$COMFY/custom_nodes
 
@@ -26,13 +28,21 @@ else
   git clone https://github.com/3Xbang/MJ.git ai_film_editor_nodes
 fi
 pip install loguru json_repair imageio-ffmpeg -q
-# CPU-only regression and graph check: confirms structured prompts and generated props are connected.
+# CPU-only regression and graph check: run from the repository root so every
+# command validates the code that was just pulled.  A failure stops deployment.
+cd "$CN/ai_film_editor_nodes"
 python3 -m compileall -q nodes webui tests
 python3 tests/test_analysis_session.py
 python3 tests/test_scene_map.py
+python3 tests/test_parser_merge.py
 python3 tests/test_prompt_fidelity.py
 python3 tests/test_reference_dependencies.py
+python3 tests/test_shot_contract.py
+python3 tests/test_webui_validation.py
 python3 tests/test_workflow_graph.py
+python3 tests/check_graphs.py
+python3 tests/ui_e2e.py
+cd "$CN"
 
 [ -d comfyui_LLM_party ] || git clone https://github.com/heshengtao/comfyui_LLM_party.git
 (cd comfyui_LLM_party && pip install -r requirements.txt -q)
@@ -107,7 +117,7 @@ cp "$CN"/ai_film_editor_nodes/assets/poses/*.png "$COMFY/input/poses/" 2>/dev/nu
 
 echo ""
 echo "== 5/6 重启 ComfyUI"
-pkill -f "python main.py" 2>/dev/null
+pkill -f "python main.py" 2>/dev/null || true
 sleep 3
 cd "$COMFY"
 nohup python main.py --listen 0.0.0.0 --port 8188 --enable-cors-header "*" > /tmp/comfyui.log 2>&1 &
