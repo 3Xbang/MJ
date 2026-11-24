@@ -71,19 +71,44 @@ def test_valid_script_without_characters_or_props_keeps_empty_paths():
         assert state["cast"] == [] and state["analysis_status"] == "complete"
 
 
-def test_36_shots_make_nine_contiguous_batches_and_resume():
+def test_36_shots_persist_every_batch_and_resume_after_interruption():
     with tempfile.TemporaryDirectory() as root:
         store = AnalysisSessionStore(root, batch_size=4)
         store.create("script", 36, 5, scene_fixture())
-        assert store.status()["total_batches"] == 9
-        first = store.claim_next("p1")
-        assert (first["shot_start"], first["shot_end"]) == (1, 4)
-        store.commit_batch(1, result_for(store, first))
-        again = store.claim_next("p2")
-        assert again["batch_index"] == 2
-        restored = AnalysisSessionStore(root, batch_size=4).status()
-        assert restored["completed_batches"] == [1]
-        assert restored["completed_shot_count"] == 4
+        completed = set()
+        interrupted = False
+        while True:
+            reopened = AnalysisSessionStore(root, batch_size=4)
+            batch = reopened.claim_next()
+            if batch["status"] == "complete":
+                break
+            assert batch["batch_index"] not in completed
+            if batch["batch_index"] == 5 and not interrupted:
+                # Simulate a process/ComfyUI restart while the fifth claim is running.
+                AnalysisSessionStore(root, batch_size=4).recover_orphaned_running()
+                failed = AnalysisSessionStore(root, batch_size=4).status()
+                assert failed["batches"][4]["status"] == "failed"
+                AnalysisSessionStore(root, batch_size=4).retry(5)
+                batch = AnalysisSessionStore(root, batch_size=4).claim_next()
+                interrupted = True
+            result = result_for(reopened, batch)
+            state = AnalysisSessionStore(root, batch_size=4).commit_batch(
+                batch["batch_index"], result
+            )
+            completed.add(batch["batch_index"])
+            restored = AnalysisSessionStore(root, batch_size=4).status()
+            assert restored["completed_batches"] == sorted(completed)
+            assert len(restored["parsed_shots"]) == len(completed) * 4
+            assert all(item["source_manifest"] for item in [result])
+            assert state["analysis_status"] in {"partial", "complete"}
+        final = AnalysisSessionStore(root, batch_size=4).status()
+        assert interrupted
+        assert final["analysis_status"] == "complete"
+        assert final["completed_batches"] == list(range(1, 10))
+        assert final["completed_shot_count"] == 36
+        assert len(final["parsed_shots"]) == 36
+        # A repeated continue after completion cannot claim or submit any batch.
+        assert AnalysisSessionStore(root, batch_size=4).claim_next()["status"] == "complete"
 
 
 def test_completed_batch_is_idempotent_and_failed_batch_only_retries_it():

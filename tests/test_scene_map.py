@@ -22,11 +22,15 @@ def test_title_sequence_before_first_scene_is_its_own_scene():
               "【场景 B：泰国海边别墅 - 白天】\n[外景]\n胖叔喝茶。\n"
               "【场景 A：伦敦社区超市 - 连续】\n小舟走来。")
     sm = m._build_scene_map(script)
-    assert len(sm) == 4, [s["sample_header"] for s in sm]
-    assert "片头" in sm[0]["sample_header"]
-    assert "佛珠" in sm[1]["source_text"] and "超市" not in sm[1]["source_text"]
-    assert "小宇" in sm[2]["source_text"] and "小舟" in sm[2]["source_text"]     # A + A-continued merged
-    assert "胖叔喝茶" in sm[3]["source_text"]
+    assert len(sm) == 5, [s["sample_header"] for s in sm]
+    assert "片头" in sm[1]["sample_header"]
+    assert "SCREENPLAY PREAMBLE" in sm[0]["sample_header"]
+    assert "视觉风格" in sm[0]["source_text"]
+    assert sm[0]["source_blocks"][0]["source_start"] == 0
+    assert sm[0]["source_blocks"][0]["source_end"] > sm[0]["source_blocks"][0]["source_start"]
+    assert "佛珠" in sm[2]["source_text"] and "超市" not in sm[2]["source_text"]
+    assert "小宇" in sm[3]["source_text"] and "小舟" in sm[3]["source_text"]     # A + A-continued merged
+    assert "胖叔喝茶" in sm[4]["source_text"]
 
 
 def test_prologue_and_epilogue_words():
@@ -310,6 +314,25 @@ def test_place_only_requires_explicit_empty_people_and_props_arrays():
         assert "people and props" in str(exc)
     else:
         raise AssertionError("missing environment props must block place-only generation")
+
+
+def test_prompt_lists_alternating_source_blocks_in_global_order():
+    scene_map = [{"scene_index": 1, "scene_id": "scene_A", "sample_header": "A",
+                  "preview": "A", "source_blocks": [
+                      {"source_block_id": "block_001", "source_order": 0,
+                       "scene_occurrence_id": "a1", "section_type": "location_scene",
+                       "source_text": "A first."},
+                      {"source_block_id": "block_003", "source_order": 2,
+                       "scene_occurrence_id": "a2", "section_type": "location_scene",
+                       "source_text": "A again."},
+                  ]},
+                 {"scene_index": 2, "scene_id": "scene_B", "sample_header": "B",
+                  "preview": "B", "source_blocks": [{
+                      "source_block_id": "block_002", "source_order": 1,
+                      "scene_occurrence_id": "b1", "section_type": "location_scene",
+                      "source_text": "B between."}]}]
+    prompt = m._scene_map_to_prompt_text(scene_map)
+    assert prompt.index("source_block_id=block_001") < prompt.index("source_block_id=block_002") < prompt.index("source_block_id=block_003")
 
 
 if __name__ == "__main__":

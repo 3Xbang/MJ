@@ -286,14 +286,31 @@ def _build_scene_map(raw_script: str) -> list[dict]:
                                     "header": "Unnamed Location", "section_type": "location_scene",
                                     "source_text": raw_script}] }]
 
+    # Preserve screenplay material before the first recognisable heading. It
+    # commonly contains title-card, visual-style, or opening-shot facts and is
+    # part of the source coverage contract just like headed scene text.
+    preamble = raw_script[:candidates[0][0]].strip()
+    if not re.sub(r"[\s\[\]【】()（）:：#\-—]", "", preamble):
+        preamble = ""
+    has_preamble = bool(preamble)
+    if has_preamble:
+        candidates.insert(0, (0, candidates[0][0], "SCREENPLAY PREAMBLE",
+                              "title_sequence", "screenplay_preamble", False))
     grouped: dict[str, dict] = {}
     order: list[str] = []
     for i, (start, end, header, section, key, is_location_header) in enumerate(candidates):
         next_start = candidates[i + 1][0] if i + 1 < len(candidates) else len(raw_script)
         # Include the cue/header in the source block. Phase 2 must see the complete original text.
-        block_text = raw_script[start:next_start].strip()
-        source_block_id = f"block_{i + 1:03d}"
-        occurrence_id = f"occurrence_{i + 1:03d}"
+        raw_block_text = raw_script[start:next_start]
+        left_trim = len(raw_block_text) - len(raw_block_text.lstrip())
+        right_trim = len(raw_block_text.rstrip())
+        block_text = raw_block_text.strip()
+        source_start = start + left_trim
+        source_end = start + right_trim
+        source_number = i if has_preamble else i + 1
+        source_order = i - 1 if has_preamble else i
+        source_block_id = f"block_{source_number:03d}"
+        occurrence_id = f"occurrence_{source_number:03d}"
         if not is_location_header:
             key = f"{key}_{i + 1:03d}"
         if key not in grouped:
@@ -307,10 +324,11 @@ def _build_scene_map(raw_script: str) -> list[dict]:
         g["source_block_ids"].append(source_block_id)
         g["occurrences"].append(occurrence_id)
         g["source_blocks"].append({"source_block_id": source_block_id,
-                                    "source_order": i, "scene_occurrence_id": occurrence_id, "header": header,
+                                    "source_order": source_order, "scene_occurrence_id": occurrence_id, "header": header,
                                     "cue_prefix": _extract_cue_prefix(header),
                                     "physical_header": _physical_location_header(header),
-                                    "section_type": section, "source_text": block_text})
+                                    "section_type": section, "source_text": block_text,
+                                    "source_start": source_start, "source_end": source_end})
 
     scene_map = []
     for idx, key in enumerate(order):
@@ -370,31 +388,57 @@ def _physical_location_header(header: str) -> str:
     ).strip()
 
 
+def _ordered_scene_blocks(scene_map: list[dict]) -> list[tuple[dict, dict]]:
+    """Flatten grouped scene identities into screenplay source order."""
+    blocks = []
+    for scene in scene_map or []:
+        for block in scene.get("source_blocks", []):
+            value = block.get("source_order")
+            if value is None:
+                match = re.search(r"(\d+)$", str(block.get("source_block_id") or ""))
+                value = int(match.group(1)) if match else 10**9
+            blocks.append((int(value), str(block.get("source_block_id") or ""), scene, block))
+    blocks.sort(key=lambda item: (item[0], item[1]))
+    return [(scene, block) for _, _, scene, block in blocks]
+
+def _ordered_prompt_source_text(scene_map: list[dict]) -> str:
+    """Return batch source fragments globally ordered by source occurrence."""
+    return "\n".join(
+        str(block.get("prompt_source_text", block.get("source_text", "")))
+        for _, block in _ordered_scene_blocks(scene_map)
+        if str(block.get("prompt_source_text", block.get("source_text", ""))).strip()
+    )
+
 def _scene_map_to_prompt_text(scene_map: list[dict]) -> str:
     """Format the scene map as text for the LLM prompt."""
     lines = ["PRE-SEGMENTED SCENE MAP (use these EXACT scene_index values, "
              "do not invent new ones):"]
-    for s in scene_map:
-        lines.append(
-            f"  scene_index={s['scene_index']}: \"{s['sample_header']}\" "
-            f"— starts with: {s['preview'][:80]}..."
-        )
-        for block in s.get("source_blocks", []):
-            prompt_text = block.get("prompt_source_text", block.get("source_text", ""))
+    seen_scenes = set()
+    for scene, block in _ordered_scene_blocks(scene_map):
+        scene_id = scene.get("scene_id")
+        if scene_id not in seen_scenes:
             lines.append(
-                f"    source_block_id={block['source_block_id']} "
-                f"scene_occurrence_id={block['scene_occurrence_id']} "
-                f"section_type={block['section_type']}: {prompt_text[:120]}..."
+                f"  scene_index={scene['scene_index']}: \"{scene['sample_header']}\" "
+                f"— starts with: {scene['preview'][:80]}..."
             )
-            for unit in _source_units_with_offsets(block.get("source_text", "")):
-                allowed = block.get("batch_unit_ids")
-                if allowed and unit["unit_id"] not in allowed:
-                    continue
-                lines.append(
-                    f"      source_unit_id={unit['unit_id']} "
-                    f"source_start={unit['start']} source_end={unit['end']}: "
-                    f"{unit['text']}"
-                )
+            seen_scenes.add(scene_id)
+        else:
+            lines.append(f"  scene_index={scene['scene_index']}: (next screenplay occurrence)")
+        prompt_text = block.get("prompt_source_text", block.get("source_text", ""))
+        lines.append(
+            f"    source_block_id={block['source_block_id']} "
+            f"scene_occurrence_id={block['scene_occurrence_id']} "
+            f"section_type={block['section_type']}: {prompt_text[:120]}..."
+        )
+        for unit in _source_units_with_offsets(block.get("source_text", "")):
+            allowed = block.get("batch_unit_ids")
+            if allowed and unit["unit_id"] not in allowed:
+                continue
+            lines.append(
+                f"      source_unit_id={unit['unit_id']} "
+                f"source_start={unit['start']} source_end={unit['end']}: "
+                f"{unit['text']}"
+            )
     return "\n".join(lines)
 
 # ── Phase 1 system prompt ─────────────────────────────────────────────────────
@@ -1353,7 +1397,7 @@ class AFE_ScriptFullParser:
             f"Break scenes and dialogue into individual {seconds_per_shot}-second moments.\n\n"
             f"{scene_map_text}\n\n"
             f"Screenplay source for this batch:\n"
-            f"{raw_script if not batch_mode else chr(10).join(s.get('source_text', '') for s in scene_map)}"
+            f"{raw_script if not batch_mode else _ordered_prompt_source_text(scene_map)}"
         )
         phase1_raw = self._call_llm(
             PHASE1_SYSTEM,

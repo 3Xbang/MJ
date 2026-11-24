@@ -26,7 +26,9 @@ from ai_film_editor_nodes.webui import graphs
 from ai_film_editor_nodes.nodes.director.script_analysis_session import (
     AnalysisSessionStore, DEFAULT_BATCH_SIZE, script_signature,
 )
-from ai_film_editor_nodes.nodes.director.script_full_parser_node import _build_scene_map, _source_units_with_offsets
+from ai_film_editor_nodes.nodes.director.script_full_parser_node import (
+    _build_scene_map, _source_units_with_offsets, _ordered_scene_blocks,
+)
 
 logger = logging.getLogger("AFE_WebUI")
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
@@ -676,6 +678,21 @@ class Api:
                     item = dict(scene); item["source_blocks"] = blocks
                     item["source_text"] = "\n".join(b.get("prompt_source_text", "") for b in blocks)
                     scene_subset.append(item)
+            ordered_blocks = _ordered_scene_blocks(scene_subset)
+            scene_order = {}
+            for position, (scene, _block) in enumerate(ordered_blocks):
+                scene_order.setdefault(id(scene), position)
+            for scene in scene_subset:
+                scene["source_blocks"] = sorted(
+                    scene.get("source_blocks", []),
+                    key=lambda block: (int(block.get("source_order", 10**9)),
+                                       str(block.get("source_block_id", ""))),
+                )
+                scene["source_text"] = "\n".join(
+                    block.get("prompt_source_text", block.get("source_text", ""))
+                    for block in scene["source_blocks"]
+                )
+            scene_subset.sort(key=lambda scene: scene_order.get(id(scene), 10**9))
             batch["context_json"] = json.dumps({"scene_map": scene_subset}, ensure_ascii=False)
         if stage >= 2:
             current_session = self.session_store(pp).load()
