@@ -43,6 +43,15 @@ def test_neutral_horizontal_motion_is_preserved_without_inventing_direction():
     assert "pans horizontally" in build_video_prompt(shot)
 
 
+def test_neutral_horizontal_motion_alias_does_not_invent_direction():
+    shot = normalize_shot({"camera_motion": "pan", "camera_motion_source": "script"})
+    assert shot["camera_motion"] == "pan_horizontal"
+    assert "without a prescribed direction" in build_video_prompt(shot)
+
+    fallback = normalize_shot({})
+    assert fallback["camera_motion"] == "pan_horizontal"
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):

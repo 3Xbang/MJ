@@ -92,6 +92,53 @@ def test_duplicate_verbatim_source_text_is_blocked():
     assert "multiple source spans" in error
 
 
+def test_unbracketed_chinese_cues_and_alternating_locations_keep_order():
+    script = ("片头\n标题卡出现。\n"
+              "【场景 A：厨房】\n甲端起杯子。\n"
+              "快速闪切\n雨夜街道。\n"
+              "【场景 B：花园】\n乙抬头。\n"
+              "【场景 A：厨房】\n甲放下杯子。\n"
+              "尾声\n画面淡出。\n")
+    sm = m._build_scene_map(script)
+    assert [scene["section_type"] for scene in sm][:3] == [
+        "title_sequence", "location_scene", "montage"
+    ]
+    assert any(scene["section_type"] == "epilogue" for scene in sm)
+    locations = [scene for scene in sm if scene["section_type"] == "location_scene"]
+    assert len(locations) == 2
+    assert len(locations[0]["source_blocks"]) == 2
+    ordered_blocks = [block for scene in sm for block in scene["source_blocks"]]
+    assert sorted(block["source_block_id"] for block in ordered_blocks) == [
+        f"block_{i:03d}" for i in range(1, len(ordered_blocks) + 1)
+    ]
+    assert [block["source_block_id"] for block in locations[0]["source_blocks"]] == [
+        "block_002", "block_005"
+    ]
+    assert [block["source_block_id"] for block in locations[1]["source_blocks"]] == ["block_004"]
+    assert "快速闪切" in next(scene for scene in sm if scene["section_type"] == "montage")["sample_header"]
+
+
+def test_source_offsets_must_match_verbatim_evidence_or_unit_boundaries():
+    source = "She turns.\nShe sits."
+    fragment, error = m._validated_source_fragment(
+        source, "", {"source_start": 3, "source_end": 12, "source_shot_text": "She turns."}
+    )
+    assert fragment == ""
+    assert "do not match" in error
+
+    fragment, error = m._validated_source_fragment(
+        source, "", {"source_start": 1, "source_end": 12}
+    )
+    assert fragment == ""
+    assert "boundaries" in error
+
+    fragment, error = m._validated_source_fragment(
+        source, "", {"source_start": 0, "source_end": 10}
+    )
+    assert fragment == "She turns."
+    assert error == ""
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for f in fns:

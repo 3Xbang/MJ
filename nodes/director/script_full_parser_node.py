@@ -43,6 +43,12 @@ _SCENE_HEADER_PATTERNS = [
     r'^[ \t]*(?:TITLE\s+SEQUENCE|TITLE\s+CARD|OPENING\s+TITLES?|END\s+CREDITS?|CREDITS|'
     r'MONTAGE|QUICK\s+FLASH(?:ES)?|FLASH\s+CUT|BLACK\s+SCREEN|HALF\s+SILHOUETTE|'
     r'SILHOUETTE|FADE\s+(?:IN|OUT)|CUT\s+TO|TRANSITION)\b[^\n]*',
+    # Chinese screenplay labels are also valid boundaries when written as a
+    # standalone line.  Requiring a line start plus a label delimiter (or the
+    # label alone) avoids treating ordinary prose such as "开场很安静" as a
+    # new section.
+    r'^[ \t]*(?:片头|序幕|序章|序言|引子|开场|开篇|尾声|片尾|结尾|彩蛋|预告|'
+    r'快速闪切|蒙太奇|黑屏|半剪影|淡出|转场)(?:[ \t]*(?:[：:]|[-—])[^\n]*)?[ \t]*$',
 ]
 _HEADER_RE = re.compile('|'.join(f'(?:{p})' for p in _SCENE_HEADER_PATTERNS),
                          re.IGNORECASE | re.MULTILINE)
@@ -498,15 +504,36 @@ def _validated_source_fragment(source_block_text: str, raw_desc: str, shot: dict
         if any(left["end"] > right["start"] for left, right in zip(selected, selected[1:])):
             return "", "source_unit_ids overlap"
         fragment = source[selected[0]["start"]:selected[-1]["end"]]
+        declared_fragment = _first_present(shot.get("source_shot_text"), default="")
+        if declared_fragment and str(declared_fragment) != fragment:
+            return "", "source_shot_text does not match source_unit_ids verbatim"
         return fragment, ""
 
     start = shot.get("source_start")
     end = shot.get("source_end")
-    if isinstance(start, int) and isinstance(end, int) and 0 <= start < end <= len(source):
+    has_offsets = start is not None or end is not None
+    if has_offsets:
+        if not (isinstance(start, int) and isinstance(end, int) and 0 <= start < end <= len(source)):
+            return "", "source offsets are outside this source block"
         fragment = source[start:end]
-        if fragment.strip():
+        if not fragment.strip():
+            return "", "source offsets point to empty text"
+        declared_fragment = _first_present(shot.get("source_shot_text"), default="")
+        if declared_fragment:
+            if str(declared_fragment) != fragment:
+                return "", "source offsets do not match source_shot_text verbatim"
             return fragment, ""
-        return "", "source offsets point to empty text"
+        # Without verbatim evidence, offsets must cover one or more complete,
+        # adjacent source units. Arbitrary in-bounds slices can point at a
+        # sibling action and are therefore unsafe to send to phase 2.
+        starts = {unit["start"] for unit in units}
+        ends = {unit["end"] for unit in units}
+        if start not in starts or end not in ends:
+            return "", "source offsets do not align with source-unit boundaries"
+        selected = [unit for unit in units if start <= unit["start"] and unit["end"] <= end]
+        if not selected or selected[0]["start"] != start or selected[-1]["end"] != end:
+            return "", "source offsets do not cover adjacent source units"
+        return fragment, ""
 
     model_fragment = _first_present(shot.get("source_shot_text"), raw_desc, default="")
     if model_fragment:

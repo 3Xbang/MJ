@@ -83,7 +83,7 @@ def camera_motion_for(shot: dict) -> tuple[str, str]:
     """
     raw = _text(shot.get("camera_motion")).lower().replace(" ", "_")
     aliases = {"push_in": "slow_push_in", "pull_back": "slow_pull_back", "track": "tracking_shot",
-               "pan": "pan_right", "horizontal_pan": "pan_horizontal", "pan_horizontal": "pan_horizontal",
+               "pan": "pan_horizontal", "horizontal_pan": "pan_horizontal", "pan_horizontal": "pan_horizontal",
                "locked": "static", "hold": "static", "locked_off": "static"}
     raw = aliases.get(raw, raw)
     source = _text(shot.get("camera_motion_source")).lower()
@@ -111,7 +111,7 @@ def camera_motion_for(shot: dict) -> tuple[str, str]:
         return "tracking_shot", "derived"
     if _text(shot.get("dialogue")) or _text(shot.get("emotion")) or _text(shot.get("facial_expression")):
         return "slow_push_in", "derived"
-    return "pan_right", "derived"
+    return "pan_horizontal", "derived"
 
 
 def normalize_shot(shot: dict, index: int = 0) -> dict:

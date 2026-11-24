@@ -65,16 +65,25 @@ function syncToSettings() {
 /* ── network ────────────────────────────────────────────────────────────── */
 async function api(path, body) {
   const opt = body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
-  const r = await fetch(path, opt);
-  let data = {};
-  try { data = await r.json(); } catch (e) { data = { error: `服务器返回了意外内容（${r.status}）` }; }
-  if (!r.ok && !data.error) data.error = `请求失败（${r.status}）`;
-  return data;
+  try {
+    const r = await fetch(path, opt);
+    let data = {};
+    try { data = await r.json(); } catch (e) { data = { error: `服务器返回了意外内容（${r.status}）` }; }
+    if (!r.ok && !data.error) data.error = `请求失败（${r.status}）`;
+    return data;
+  } catch (e) {
+    const detail = e && e.message ? `：${e.message}` : '';
+    return { error: `网络请求失败${detail}。请检查服务连接后重试。`, network_error: true };
+  }
 }
 function saveSettingsSoon() {
   syncToSettings();
   clearTimeout(S.saveTimer);
-  S.saveTimer = setTimeout(() => api('/afe/api/settings', { project: S.project, settings: S.settings }), 400);
+  S.saveTimer = setTimeout(() => {
+    api('/afe/api/settings', { project: S.project, settings: S.settings }).then(v => {
+      if (v.error) showError(`设置保存失败：${v.error}`, '当前页面的设置仍保留。连接恢复后再次修改设置即可重试。');
+    });
+  }, 400);
 }
 
 async function loadProject(name, keep = false) {
@@ -205,7 +214,13 @@ async function runStage(stage, part = 'all') {
   }
 }
 async function cancelRun() {
-  await api('/afe/api/cancel', {});
+  const r = await api('/afe/api/cancel', {});
+  if (r.error) {
+    S.run = null;
+    render();
+    showError(`取消请求失败：${r.error}`, '已保留项目中已保存的结果。连接恢复后可以重新点击当前步骤继续。');
+    return;
+  }
   if (S.run) { S.run.label = '正在取消…'; renderDock(); }
 }
 
