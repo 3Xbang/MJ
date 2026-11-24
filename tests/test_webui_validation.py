@@ -1,3 +1,4 @@
+import asyncio
 import os
 import json
 import os
@@ -6,7 +7,9 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(ROOT))
 
-from ai_film_editor_nodes.webui.server import _validate_analysis_payload
+from ai_film_editor_nodes.webui.server import (
+    _validate_analysis_payload, Api, MAX_REF_UPLOAD_BYTES,
+)
 
 
 def test_webui_rejects_truncated_structured_analysis():
@@ -80,6 +83,21 @@ def test_webui_rejects_source_order_error():
             handle.write(b"second")
         second = api.ref_sig(root)
         assert first != second
+
+
+def test_reference_upload_rejects_oversized_body_before_reading():
+    class NeverRead:
+        async def read(self, size=-1):
+            raise AssertionError("oversized request was read")
+
+    class Request:
+        query = {"kind": "cast", "name": "Mina", "project": "afe_project"}
+        content_length = MAX_REF_UPLOAD_BYTES + 1
+        content = NeverRead()
+
+    api = Api("test-output", "http://127.0.0.1:8188")
+    response = asyncio.run(api.upload_ref(Request()))
+    assert response.status == 413
 
 
 if __name__ == "__main__":

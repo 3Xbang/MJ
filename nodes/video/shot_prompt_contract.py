@@ -107,7 +107,7 @@ def camera_motion_for(shot: dict) -> tuple[str, str]:
         return "slow_pull_back", "derived"
     if section in {"title_sequence", "prologue", "opening"} or re.search(r"establish|opening|title|片头|序幕|开场", text):
         return "slow_push_in", "derived"
-    if re.search(r"walk|run|move|turn|pick|put|grab|raise|grip|carry|place|open|close|走|跑|转身|拿起|放下|移动", text):
+    if re.search(r"walk|run|move|turn|reach|pick|put|grab|raise|grip|pull|push|carry|place|open|close|走|跑|转身|伸手|拿起|放下|移动|抓住|拉|推", text):
         return "tracking_shot", "derived"
     if _text(shot.get("dialogue")) or _text(shot.get("emotion")) or _text(shot.get("facial_expression")):
         return "slow_push_in", "derived"

@@ -35,6 +35,9 @@ USED_KEYS = ("cast_picks", "cast_redo", "scene_view_picks", "kf_picks", "kf_redo
 # ── project files ─────────────────────────────────────────────────────────────
 
 REF_KINDS = ("cast", "scene", "prop")
+MAX_REF_UPLOAD_BYTES = 20 * 1024 * 1024
+MAX_REF_PIXELS = 25_000_000
+MAX_REF_DIMENSION = 8192
 
 
 def ref_filename(kind: str, name: str) -> str:
@@ -395,10 +398,28 @@ class Api:
         kind, name = q.get("kind", ""), (q.get("name") or "").strip()
         if kind not in REF_KINDS or not name:
             return web.json_response({"error": "缺少参数。"}, status=400)
-        data = await request.read()
+        content_length = request.content_length
+        if content_length is not None and content_length > MAX_REF_UPLOAD_BYTES:
+            return web.json_response({"error": "图片文件过大，最大支持 20 MB。"}, status=413)
+        chunks = []
+        total = 0
+        while True:
+            chunk = await request.content.read(min(64 * 1024, MAX_REF_UPLOAD_BYTES - total + 1))
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > MAX_REF_UPLOAD_BYTES:
+                return web.json_response({"error": "图片文件过大，最大支持 20 MB。"}, status=413)
+            chunks.append(chunk)
+        data = b"".join(chunks)
+        if not data:
+            return web.json_response({"error": "上传文件为空。"}, status=400)
         try:
             from PIL import Image
             im = Image.open(io.BytesIO(data))
+            if (im.width > MAX_REF_DIMENSION or im.height > MAX_REF_DIMENSION
+                    or im.width * im.height > MAX_REF_PIXELS):
+                return web.json_response({"error": "图片尺寸过大，最大支持 8192 像素边长和 2500 万像素。"}, status=413)
             im.load()
             im = im.convert("RGB")
             im.thumbnail((2048, 2048))

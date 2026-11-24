@@ -106,6 +106,7 @@ def fake_parser(raw_script, **kw):
             "source_block_id": "block_001" if i < 4 else "block_002", "source_unit_ids": [f"unit_{(i + 1 if i < 4 else i - 3):03d}"], "section_type": "location_scene",
             "scene_name": scene, "scene_name_en": "Supermarket" if i < 4 else "Apartment",
             "scene_environment_en": "bright interior, steel counter" if i < 4 else "warm living room, sofa",
+            "environment_scope": "place_only", "environment_people": [], "environment_props": [],
             "character_names": ["阿明"] if i % 2 == 0 else ["阿明", "小红"],
             "dialogue": "你好" if i == 1 else "（无）", "props_list": ["佛珠", "茶杯"][: 1 + i % 2],
             "shot_type": "medium close-up", "camera_angle": "medium", "camera_motion": "tracking_shot" if i % 2 == 0 else "slow_push_in", "camera_motion_source": "script",

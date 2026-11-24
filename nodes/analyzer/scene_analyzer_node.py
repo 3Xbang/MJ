@@ -23,9 +23,21 @@ _ENV_HUMAN_RE = re.compile(
     re.IGNORECASE,
 )
 
+_ENV_UNPROVEN_RELATION_RE = re.compile(
+    r"\b(?:a|an|the)\s+[a-z][a-z-]*(?:\s+[a-z][a-z-]*){0,2}\s+"
+    r"(?:with|holding|carrying|using|gripping|wearing)\s+(?:a|an|the)\b",
+    re.IGNORECASE,
+)
+
 
 def validate_empty_scene_prompt(prompt: str, characters=(), forbidden_facts=()) -> str:
-    """Return a reason when an environment response is not provably place-only."""
+    """Return a reason when an environment response is not provably place-only.
+
+    The structured ``subject_scope``/people/props contract is enforced by
+    ``analyze_scenes``. This text guard is an additional conservative boundary
+    for direct node callers; it rejects grammatical subject/object relations
+    instead of trying to maintain a finite list of occupations and props.
+    """
     text = str(prompt or "").strip()
     if not text:
         return "environment prompt is empty"
@@ -38,6 +50,9 @@ def validate_empty_scene_prompt(prompt: str, characters=(), forbidden_facts=()) 
         fact_text = str(fact or "").strip()
         if fact_text and fact_text.lower() in lowered:
             return f"contains screenplay fact: {fact_text}"
+    match = _ENV_UNPROVEN_RELATION_RE.search(text)
+    if match:
+        return f"contains an unverified subject/object relation: {match.group(0)}"
     match = _ENV_HUMAN_RE.search(text)
     if match:
         return f"contains human/action fact: {match.group(0)}"
@@ -141,6 +156,9 @@ class AFE_SceneAnalyzer:
             location = shot.get("location", "").strip()
             name_en = (shot.get("scene_name_en") or "").strip()
             env_en = (shot.get("scene_environment_en") or "").strip()
+            env_scope = shot.get("environment_scope") or (shot.get("environment") or {}).get("scope") or ""
+            env_people = shot.get("environment_people") or (shot.get("environment") or {}).get("people") or []
+            env_props = shot.get("environment_props") or (shot.get("environment") or {}).get("props") or []
             scene_id = str(shot.get("scene_id") or scene_name or "scene_unknown")
             scene_occurrence_id = str(shot.get("scene_occurrence_id") or "")
             section_type = shot.get("section_type") or "location_scene"
@@ -161,6 +179,9 @@ class AFE_SceneAnalyzer:
                     "location": location,
                     "scene_name_en": name_en,
                     "scene_environment_en": env_en,
+                    "environment_scope": env_scope,
+                    "environment_people": list(env_people) if isinstance(env_people, (list, tuple)) else [env_people],
+                    "environment_props": list(env_props) if isinstance(env_props, (list, tuple)) else [env_props],
                     "forbidden_facts": [],
                 }
             scene_map[key]["shots"].append(shot_id)
@@ -187,6 +208,12 @@ class AFE_SceneAnalyzer:
                 info["scene_name_en"] = name_en
             if not info["scene_environment_en"] and env_en:
                 info["scene_environment_en"] = env_en
+            if not info.get("environment_scope") and env_scope:
+                info["environment_scope"] = env_scope
+            if env_people:
+                info["environment_people"].extend(x for x in env_people if x not in info["environment_people"])
+            if env_props:
+                info["environment_props"].extend(x for x in env_props if x not in info["environment_props"])
 
         scenes: list[dict] = []
         suffix = style_suffix.strip() or DEFAULT_STYLE
@@ -231,6 +258,15 @@ class AFE_SceneAnalyzer:
             # The environment model is an untrusted summarizer. Do not strip
             # tokens from a contaminated answer, because that can leave an
             # action or a different person in the empty-scene asset.
+            if info.get("environment_scope") != "place_only":
+                raise ValueError(
+                    f"场景 {info.get('scene_id', key)} 缺少可证明的 place-only 环境结构，"
+                    "已阻止生成空场景参考图。请重新分析剧本。"
+                )
+            if info.get("environment_people") or info.get("environment_props"):
+                raise ValueError(
+                    f"场景 {info.get('scene_id', key)} 的环境结构包含人物或道具，已阻止空场景生成。"
+                )
             contamination = validate_empty_scene_prompt(
                 environment_prompt_en, info.get("characters", []), info.get("forbidden_facts", [])
             )
@@ -267,6 +303,9 @@ class AFE_SceneAnalyzer:
                 "appears_in_shots": info["shots"],           # compat alias
                 "scene_name_en": scene_name_en,
                 "environment_prompt_en": environment_prompt_en,
+                "environment_scope": info.get("environment_scope"),
+                "environment_people": info.get("environment_people", []),
+                "environment_props": info.get("environment_props", []),
                 "environment_description_en": environment_description_en,
                 "environment_3view_prompt": environment_3view_prompt,
                 "positive_prompt": positive_prompt,

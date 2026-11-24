@@ -25,7 +25,8 @@ class StubParser(parser_mod.AFE_ScriptFullParser):
                                "shots": [self.phase1_shot]})
         if system_prompt == parser_mod.SCENE_ENV_SYSTEM:
             return json.dumps({"scene_name_en": "Quiet Workshop",
-                               "environment_prompt_en": "empty workshop, steel bench, cool overhead light"})
+                               "environment_prompt_en": "empty workshop, steel bench, cool overhead light",
+                               "subject_scope": "place_only", "people": [], "props": []})
         if system_prompt == parser_mod.PHASE2_SYSTEM:
             return json.dumps(self.phase2)
         return "Mina reaches the lever in the workshop."
@@ -62,13 +63,17 @@ def _null_phase2(camera_motion=None):
 
 def _parse(phase1, phase2, screenplay=None):
     return StubParser(phase1, phase2).parse_script(
-        screenplay or "【场景一：Workshop】\nMina reaches for the brass lever and waits.",
+        screenplay or ("【场景一：Workshop】\nMina in a red wool coat reaches for the brass lever, anxious smile tight, "
+                       "left eyelid trembling, gaze toward the window, shoulders tense; "
+                       "hand approaches the lever, grips the brass lever, thumb rubs the label, she pulls the lever; "
+                       "the camera is framed under cool LEDs."
+                       ),
         target_duration_seconds=5, seconds_per_shot=5, model_path="stub") ["result"][0][0]
 
 
 def test_phase2_nulls_preserve_phase1_facts_in_both_prompts():
     shot = _parse(_phase1("tracking_shot", "script"), _null_phase2(),
-                  "【场景一：Workshop】\nThe camera tracks Mina as she reaches for the brass lever.")
+                  "【场景一：Workshop】\nMina in a red wool coat reaches for the brass lever, anxious smile tight, left eyelid trembling, gaze toward the window, shoulders tense; hand approaches the lever, grips the brass lever, thumb rubs the label, she pulls the lever; under cool LEDs.")
     assert shot["action"] == "reaches for the lever"
     assert shot["business"] == "thumb rubs the brass label"
     # The parser's phase-1 fields remain available to the canonical renderer.
@@ -78,7 +83,7 @@ def test_phase2_nulls_preserve_phase1_facts_in_both_prompts():
     assert shot["action_process"] == "thumb rubs the label"
     assert shot["action_end"] == "she pulls the lever"
     assert shot["prop_interactions"] == ["grips the brass lever"]
-    assert shot["shot_description"] == shot["raw_description"]
+    assert shot["shot_description"] == shot["source_shot_text"]
     assert shot["costume_en"] == "red wool coat"
     assert shot["camera_motion"] == "tracking_shot"
     key = build_keyframe_prompt(shot)
@@ -100,7 +105,7 @@ def test_conflicting_phase2_facts_do_not_replace_phase1_source_facts():
         "shot_description": "A woman runs away on a city street.",
     })
     shot = _parse(_phase1(), phase2,
-                  "【场景一：Workshop】\nMina reaches for the brass lever.")
+                  "【场景一：Workshop】\nMina in a red wool coat reaches for the brass lever, anxious smile tight, left eyelid trembling, gaze toward the window, shoulders tense; hand approaches the lever, grips the brass lever, thumb rubs the label, she pulls the lever; under cool LEDs.")
     assert shot["action"] == "reaches for the lever"
     assert shot["business"] == "thumb rubs the brass label"
     assert shot["facial_expression"] == "anxious smile"

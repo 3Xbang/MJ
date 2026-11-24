@@ -133,7 +133,39 @@ def test_unbracketed_chinese_cues_and_alternating_locations_keep_order():
     assert "快速闪切" in next(scene for scene in sm if scene["section_type"] == "montage")["sample_header"]
 
 
-def test_source_offsets_must_match_verbatim_evidence_or_unit_boundaries():
+def test_generic_unlisted_cues_and_canonical_location_identity():
+    sm = m._build_scene_map(
+        "OPENING IMAGE: a title card.\nA logo appears.\n"
+        "OPEN ON: EXT. HARBOR - NIGHT\nA boat waits.\n"
+        "FADE TO BLACK\nThe screen goes dark.\n"
+        "EXT. HARBOR - CONTINUOUS\nThe boat moves.\n"
+        "FLASHBACK - INT. WAREHOUSE - DAY\nA lever turns.\n"
+    )
+    assert [scene["section_type"] for scene in sm] == [
+        "title_sequence", "location_scene", "transition", "transition"
+    ], [scene["sample_header"] for scene in sm]
+    harbor = [scene for scene in sm if scene["section_type"] == "location_scene"]
+    assert len(harbor) == 1
+    assert len(harbor[0]["source_blocks"]) == 2
+    assert "HARBOR" in harbor[0]["sample_header"]
+
+
+def test_phase1_fact_conflict_and_phase2_hallucination_are_rejected():
+    source = "Mina reaches for the brass lever and smiles."
+    conflict = m._phase1_fact_validation_errors(
+        {"character_names": ["Mina"], "action": "Mina runs away", "props_list": ["brass lever"]},
+        source, source,
+    )
+    assert any("action" in error for error in conflict), conflict
+    hallucination = m._fact_validation_errors(
+        {"action": "Mina runs away", "weather": "snowy", "dialogue": "I am in Paris"},
+        source, source, "Phase 2",
+    )
+    assert {"action", "weather", "dialogue"}.issubset(
+        {error.split(" fact ", 1)[0].split()[-1] for error in hallucination}
+    ), hallucination
+
+
     source = "She turns.\nShe sits."
     fragment, error = m._validated_source_fragment(
         source, "", {"source_start": 3, "source_end": 12, "source_shot_text": "She turns."}
@@ -179,20 +211,21 @@ def test_generic_open_on_and_intercut_cues_preserve_alternating_locations():
         "OPEN ON: EXT. HARBOR - NIGHT\nA boat waits.\n"
         "SMASH CUT TO:\nINT. WORKSHOP - DAY\nA lever turns.\n"
         "INTERCUT\nEXT. HARBOR - NIGHT\nThe boat moves.\n")
-    assert len(sm) == 5, [scene["sample_header"] for scene in sm]
+    assert len(sm) == 4, [scene["sample_header"] for scene in sm]
     assert [scene["section_type"] for scene in sm] == [
-        "location_scene", "transition", "location_scene", "transition", "location_scene"
+        "location_scene", "transition", "location_scene", "transition"
     ]
     assert "HARBOR" in sm[0]["sample_header"]
-    assert "WORKSHOP" in sm[2]["source_text"]
-    assert "HARBOR" in sm[4]["source_text"]
+    assert len(sm[0]["source_blocks"]) == 2
 
 
 def test_scene_environment_rejects_generic_worker_contamination():
     from ai_film_editor_nodes.nodes.analyzer.scene_analyzer_node import validate_empty_scene_prompt
     assert validate_empty_scene_prompt("a worker holding a cup in a kitchen")
+    assert validate_empty_scene_prompt("a mechanic with a wrench in a garage")
 
 
+if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for f in fns:
         f()
