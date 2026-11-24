@@ -89,6 +89,16 @@ def main():
             page.wait_for_selector("#dock:not(.hidden)")
             check("progress dock appears while running", page.locator("#dock").is_visible() and page.inner_text("#dockMsg").strip() != "")
             wait_idle(page)
+            check("batch progress shows current batch and completed-shot count",
+                  ("第 1 批 / 共 2 批" in page.inner_text(".batch-progress") or
+                   "等待继续 / 共 2 批" in page.inner_text(".batch-progress")) and
+                  "已完成镜头 4/6" in page.inner_text(".batch-progress"),
+                  page.inner_text(".batch-progress"))
+            page.reload()
+            page.wait_for_selector("#stepper .step-chip")
+            check("refresh restores partial analysis progress",
+                  "已完成镜头 4/6" in page.inner_text(".batch-progress"),
+                  page.inner_text(".batch-progress"))
             # Batch analysis pauses after each small batch. Continue until the
             # server publishes the complete analysis, without re-running done batches.
             for _ in range(4):
@@ -295,6 +305,22 @@ def main():
             wait_idle(page, 30000)
             check("cancel returns a friendly message", "已取消" in page.inner_text("#dockMsg") or "完成" in page.inner_text("#dockMsg"),
                   page.inner_text("#dockMsg"))
+
+            # targeted retry: only the failed batch is retried and then paused
+            page.evaluate("() => { S.open[1] = true; render(); }")
+            page.fill("input[data-set=duration]", "30")
+            page.fill("textarea[data-set=script]", "【场景 A：超市】阿明整理货物。阿明放下箱子。阿明查看手机。阿明继续工作。 RETRY_ONCE\n【场景 B：公寓】小红看电视。小红关掉电视。")
+            page.click("button[data-act=run][data-stage='1']")
+            wait_idle(page)
+            check("failed batch exposes a targeted retry action",
+                  page.locator(".batch-error button[data-act=retry-batch]").count() == 1,
+                  page.inner_text(".batch-progress"))
+            page.click(".batch-error button[data-act=retry-batch]")
+            page.wait_for_function("() => typeof S !== 'undefined' && S.run !== null", timeout=30000)
+            page.wait_for_function("() => { const d = document.querySelector('#dock'); return d && !d.classList.contains('err'); }", timeout=30000)
+            wait_idle(page)
+            check("targeted retry completes only the failed batch", "已完成镜头 4/6" in page.inner_text(".batch-progress"),
+                  page.inner_text(".batch-progress"))
 
             check("no JavaScript errors", not errors, "; ".join(errors[:3]))
             browser.close()

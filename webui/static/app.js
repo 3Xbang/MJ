@@ -222,7 +222,7 @@ async function runStage(stage, part = 'all') {
   }
 }
 async function cancelRun() {
-  const r = await api('/afe/api/cancel', { project: S.project, prompt_id: S.run && S.run.promptId });
+  const r = await api('/afe/api/cancel', { project: S.project, stage: S.run && S.run.stage, prompt_id: S.run && S.run.promptId });
   if (r.error) {
     S.run = null;
     render();
@@ -356,6 +356,9 @@ function renderAnalysisProgress() {
 function renderStep1() {
   const s = S.settings, a = S.view.analysis;
   let result = renderAnalysisProgress();
+  if (S.view.stale_analysis) {
+    result = `<div class="batch-error stale-analysis">${esc(S.view.stale_analysis_message || '旧剧本分析已隐藏，请继续当前剧本的分析。')}</div>` + result;
+  }
   if (a) {
     const shots = a.shots || [];
     const chips = `<div class="chips"><span class="chip">🎬 ${shots.length} 个分镜</span><span class="chip">🏞 ${(a.scenes || []).length} 个场景</span>

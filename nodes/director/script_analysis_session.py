@@ -309,6 +309,8 @@ class AnalysisSessionStore:
         if not state:
             return {}
         running = next((b for b in state["batches"] if b["status"] == "running"), None)
+        if not running:
+            raise ValueError("当前没有可取消的分析任务")
         if running and batch_index is not None and running["batch_index"] != int(batch_index):
             raise ValueError("当前运行批次已变化，未取消其他任务")
         if running and prompt_id and running.get("prompt_id") != prompt_id:

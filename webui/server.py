@@ -352,19 +352,47 @@ class Api:
         pname = safe_project_name(name)
         st = self.state(pp)
         analysis = read_json(os.path.join(pp, "analysis.json"))
-        assets = st.get("assets")
+        session = self.session_store(pp).load()
+        settings = st.get("settings") or {}
+        target_count = max(1, round(int(settings.get("duration", 180)) /
+                                int(settings.get("seconds_per_shot", 5))))
+        expected_signature = script_signature(
+            settings.get("script", ""), target_count,
+            int(settings.get("seconds_per_shot", 5)), settings.get("episode", "")
+        )
+        # A previous analysis file is retained on purpose, but it must never be
+        # presented as the current script while a resumable session is partial
+        # or its signature differs from the current settings.
+        analysis_current = bool(analysis)
+        if session:
+            analysis_current = bool(
+                analysis and session.get("analysis_status") == "complete"
+                and analysis.get("session_signature") == session.get("script_signature")
+                and session.get("script_signature") == expected_signature
+            )
+        elif analysis and analysis.get("session_signature"):
+            analysis_current = analysis.get("session_signature") == expected_signature
+        current_analysis = analysis if analysis_current else None
+        stale_analysis = bool(analysis) and not analysis_current
+        scenes = st.get("scenes", []) if analysis_current else []
+        props = st.get("props", []) if analysis_current else []
+        assets = st.get("assets") if analysis_current else None
         if assets:
             assets = {"scene_images": {k: [file_url(pname, f, pp) for f in files]
                                        for k, files in assets.get("scene_files", {}).items()},
                       "props_images": [{"url": file_url(pname, p["file"], pp), "name": p.get("name", "")}
                                        for p in assets.get("props_files", [])]}
-        view = {"project": pname, "settings": graphs.merged(st.get("settings")), "done": st.get("done", {}),
-                "has_analysis": bool(analysis), "analysis": None, "assets": assets,
+        view = {"project": pname, "settings": graphs.merged(st.get("settings")),
+                "done": st.get("done", {}) if analysis_current else {},
+                "has_analysis": bool(current_analysis), "analysis": None, "assets": assets,
+                "stale_analysis": stale_analysis,
+                "stale_analysis_message": "检测到旧剧本分析，已隐藏；请继续当前剧本的分批分析。" if stale_analysis else "",
                 "analysis_progress": self.analysis_status(pp),
-                "kf_manifest": st.get("kf_manifest", []), "reports": st.get("reports", {}),
+                "kf_manifest": st.get("kf_manifest", []) if analysis_current else [],
+                "reports": st.get("reports", {}) if analysis_current else {},
                 "used": st.get("used", {}),
                 "keyframes": {}, "clips": {}, "movie": None}
-        if analysis:
+        if current_analysis:
             view["analysis"] = {
                 "shots": [{"id": s.get("shot_id"), "scene": s.get("scene_name"),
                            "scene_id": s.get("scene_id"), "section_type": s.get("section_type"),
@@ -377,28 +405,28 @@ class Api:
                            "action_process": s.get("action_process") or s.get("business"), "action_end": s.get("action_end"),
                            "props": s.get("props_list", []), "prop_interactions": s.get("prop_interactions", []),
                            "environment": s.get("environment") or s.get("scene_environment_en"),
-                           "lighting": s.get("lighting"), "time_of_day": s.get("time_of_day"),
-                           "weather": s.get("weather"),
+                           "lighting": s.get("lighting"), "time_of_day": s.get("time_of_day", ""),
+                           "weather": s.get("weather", ""),
                            "desc": s.get("shot_description") or s.get("action") or ""}
-                          for s in analysis.get("shots", [])],
+                          for s in current_analysis.get("shots", [])],
                 "cast": [{"name": c.get("name"), "role": c.get("role_type"), "gender": c.get("gender"),
-                          "look": c.get("appearance_en")} for c in analysis.get("cast", [])],
-                "scenes": st.get("scenes", []), "props": st.get("props", []),
+                          "look": c.get("appearance_en")} for c in current_analysis.get("cast", [])],
+                "scenes": scenes, "props": props,
             }
-        view["refs"] = self.refs_view(pname, pp, analysis, st.get("scenes", []), st.get("props", []))
-        view["ref_sig"] = self.ref_sig(pp)
-        view["ref_entities"] = self.ref_entity_sigs(pp, analysis, st.get("scenes", []), st.get("props", []))
+        view["refs"] = self.refs_view(pname, pp, current_analysis, scenes, props)
+        view["ref_sig"] = self.ref_sig(pp) if analysis_current else ""
+        view["ref_entities"] = self.ref_entity_sigs(pp, current_analysis, scenes, props)
         kd = os.path.join(pp, "keyframes")
-        if os.path.isdir(kd):
+        if analysis_current and os.path.isdir(kd):
             for f in os.listdir(kd):
                 if f.endswith(".png") and not re.search(r"_v\d+_[0-9a-f]{8}\.png$", f):
                     view["keyframes"][f[:-4]] = file_url(pname, f"keyframes/{f}", pp)
         cd = os.path.join(pp, "clips")
-        if os.path.isdir(cd):
+        if analysis_current and os.path.isdir(cd):
             for f in os.listdir(cd):
                 if f.endswith(".mp4"):
                     view["clips"][f[:-4]] = file_url(pname, f"clips/{f}", pp)
-        if st.get("movie") and os.path.exists(os.path.join(pp, st["movie"])):
+        if analysis_current and st.get("movie") and os.path.exists(os.path.join(pp, st["movie"])):
             view["movie"] = {"file": st["movie"], "url": file_url(pname, st["movie"], pp)}
         return view
 
@@ -523,8 +551,11 @@ class Api:
     async def get_project(self, request):
         view = self.project_view(request.query.get("name", "afe_project"))
         st = self.state(self.project_path(view["project"]))
-        view["cast_images"] = self.cast_images(view["project"], st.get("cast_manifest", []))
-        view["kf_images"] = self.cast_images(view["project"], st.get("kf_manifest", []))
+        if view.get("has_analysis"):
+            view["cast_images"] = self.cast_images(view["project"], st.get("cast_manifest", []))
+            view["kf_images"] = self.cast_images(view["project"], st.get("kf_manifest", []))
+        else:
+            view["cast_images"], view["kf_images"] = [], []
         return web.json_response(view)
 
     async def save_settings(self, request):
@@ -654,6 +685,16 @@ class Api:
         project = safe_project_name(body.get("project", "afe_project"))
         pp = self.project_path(project)
         pid = body["prompt_id"]
+        session_store = self.session_store(pp) if stage == 1 else None
+        session = session_store.load() if session_store else None
+        if stage == 1 and session:
+            current_batch = next((item for item in session.get("batches", [])
+                                  if item.get("status") == "running"), None)
+            if not current_batch or current_batch.get("prompt_id") != pid:
+                return web.json_response({"ok": False,
+                                          "error": "该分析任务已过期或已被取消，未修改当前批次。",
+                                          "expired_task": True,
+                                          "session": self.analysis_status(pp)}, status=409)
         entry = None
         async with ClientSession(timeout=ClientTimeout(total=30)) as sess:
             for _ in range(20):
@@ -668,8 +709,11 @@ class Api:
 
         status = entry.get("status", {})
         if any(m and m[0] == "execution_interrupted" for m in status.get("messages", [])):
-            if stage == 1:
-                self.session_store(pp).cancel()
+            if stage == 1 and session_store and session:
+                current_batch = next((item for item in session.get("batches", [])
+                                      if item.get("status") == "running" and item.get("prompt_id") == pid), None)
+                if current_batch:
+                    session_store.cancel(batch_index=current_batch["batch_index"], prompt_id=pid)
             return web.json_response({"ok": False, "cancelled": True, "error": "已取消。已完成的批次都保留着，继续分析会从未完成批次开始。",
                                       "session": self.analysis_status(pp)})
         if status.get("status_str") == "error":
@@ -799,8 +843,18 @@ class Api:
         store = self.session_store(self.project_path(project))
         state = store.load()
         active = next((b for b in (state or {}).get("batches", []) if b.get("status") == "running"), None)
-        prompt_id = str(body.get("prompt_id") or (active or {}).get("prompt_id") or "")
-        if active and prompt_id != str(active.get("prompt_id") or ""):
+        stage = int(body.get("stage") or 1)
+        if not active:
+            if stage == 1 or not body.get("prompt_id"):
+                return web.json_response({"ok": False, "error": "当前没有可取消的分析任务。",
+                                          "session": self.analysis_status(self.project_path(project))}, status=409)
+            try:
+                await self.cancel_prompt(str(body["prompt_id"]))
+            except Exception as exc:
+                return web.json_response({"ok": False, "error": f"取消任务失败：{exc}"}, status=502)
+            return web.json_response({"ok": True, "session": self.analysis_status(self.project_path(project))})
+        prompt_id = str(body.get("prompt_id") or active.get("prompt_id") or "")
+        if not prompt_id or prompt_id != str(active.get("prompt_id") or ""):
             return web.json_response({"ok": False, "error": "当前分析任务已变化，未取消其他任务。",
                                       "session": self.analysis_status(self.project_path(project))}, status=409)
         try:

@@ -102,6 +102,76 @@ def test_webui_rejects_source_order_error():
         assert first != second
 
 
+def test_project_view_hides_stale_analysis_and_dependent_references():
+    import tempfile
+    from ai_film_editor_nodes.nodes.director.script_analysis_session import AnalysisSessionStore
+    with tempfile.TemporaryDirectory() as root:
+        api = Api(root, "http://127.0.0.1:8188")
+        project = api.project_path("stale")
+        os.makedirs(project, exist_ok=True)
+        old_script = "【场景 A：旧地点】旧镜头。"
+        store = AnalysisSessionStore(os.path.join(project, "analysis_session"), 4)
+        session = store.create(old_script, 1, 5, [], cast=[])
+        session["analysis_status"] = "complete"
+        store.save(session)
+        analysis = _complete_analysis()
+        analysis["session_signature"] = session["script_signature"]
+        with open(os.path.join(project, "analysis.json"), "w", encoding="utf-8") as fh:
+            json.dump(analysis, fh)
+        with open(os.path.join(project, "ui_state.json"), "w", encoding="utf-8") as fh:
+            json.dump({"settings": {"script": "【场景 B：新地点】新镜头。", "duration": 5,
+                                     "seconds_per_shot": 5}}, fh)
+        view = api.project_view("stale")
+        assert view["stale_analysis"] is True
+        assert view["has_analysis"] is False
+        assert view["analysis"] is None
+        assert view["refs"] == {"cast": {}, "scene": {}, "prop": {}}
+
+
+def test_project_view_allows_matching_completed_analysis():
+    import tempfile
+    from ai_film_editor_nodes.nodes.director.script_analysis_session import AnalysisSessionStore
+    with tempfile.TemporaryDirectory() as root:
+        api = Api(root, "http://127.0.0.1:8188")
+        project = api.project_path("current")
+        os.makedirs(project, exist_ok=True)
+        script = "【场景 A：地点】镜头。"
+        store = AnalysisSessionStore(os.path.join(project, "analysis_session"), 4)
+        session = store.create(script, 1, 5, [], cast=[])
+        session["analysis_status"] = "complete"
+        store.save(session)
+        analysis = _complete_analysis()
+        analysis["session_signature"] = session["script_signature"]
+        with open(os.path.join(project, "analysis.json"), "w", encoding="utf-8") as fh:
+            json.dump(analysis, fh)
+        with open(os.path.join(project, "ui_state.json"), "w", encoding="utf-8") as fh:
+            json.dump({"settings": {"script": script, "duration": 5,
+                                     "seconds_per_shot": 5}}, fh)
+        view = api.project_view("current")
+        assert view["stale_analysis"] is False
+        assert view["has_analysis"] is True
+
+
+def test_collect_rejects_delayed_prompt_without_mutating_current_batch():
+    import tempfile
+    from ai_film_editor_nodes.nodes.director.script_analysis_session import AnalysisSessionStore
+    with tempfile.TemporaryDirectory() as root:
+        api = Api(root, "http://127.0.0.1:8188")
+        project = api.project_path("collect-stale")
+        store = AnalysisSessionStore(os.path.join(project, "analysis_session"), 4)
+        store.create("script", 1, 5, [{"scene_id": "scene_1", "source_blocks": []}])
+        store.claim_next("current-prompt")
+
+        class Request:
+            async def json(self):
+                return {"project": "collect-stale", "stage": 1, "prompt_id": "old-prompt"}
+
+        response = asyncio.run(api.collect(Request()))
+        assert response.status == 409
+        assert store.status()["batches"][0]["status"] == "running"
+        assert store.status()["batches"][0]["prompt_id"] == "current-prompt"
+
+
 def test_reference_upload_rejects_oversized_body_before_reading():
     class NeverRead:
         async def read(self, size=-1):

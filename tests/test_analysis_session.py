@@ -159,6 +159,41 @@ def test_create_keeps_unsafe_uncovered_batches_pending_without_reusing_source_un
         assert state["batches"][1]["source_unit_ranges"] == []
 
 
+def test_cancel_only_changes_matching_running_batch_and_preserves_completed_results():
+    with tempfile.TemporaryDirectory() as root:
+        store = AnalysisSessionStore(root, batch_size=4)
+        store.create("script", 8, 5, scene_fixture(8))
+        first = store.claim_next("prompt-1")
+        store.commit_batch(1, result_for(store, first))
+        second = store.claim_next("prompt-2")
+        try:
+            store.cancel(batch_index=2, prompt_id="old-prompt")
+        except ValueError as exc:
+            assert "未取消" in str(exc)
+        else:
+            raise AssertionError("stale cancellation changed the active batch")
+        state = store.status()
+        assert state["completed_batches"] == [1]
+        assert state["batches"][1]["status"] == "running"
+        store.cancel(batch_index=second["batch_index"], prompt_id="prompt-2")
+        assert store.status()["batches"][1]["status"] == "pending"
+
+
+def test_cancel_without_active_batch_does_not_change_session():
+    with tempfile.TemporaryDirectory() as root:
+        store = AnalysisSessionStore(root, batch_size=4)
+        before = store.create("script", 4, 5, scene_fixture(4))
+        try:
+            store.cancel(prompt_id="not-running")
+        except ValueError as exc:
+            assert "没有可取消" in str(exc)
+        else:
+            raise AssertionError("cancellation without an active batch was accepted")
+        state = store.status()
+        assert state["batches"] == before["batches"]
+        assert state["current_batch"] is None
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):

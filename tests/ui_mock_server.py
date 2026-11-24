@@ -51,6 +51,7 @@ def fake_img(h, w, seed):
 
 
 CALLS = {"scene": 0, "prop": 0, "cast": 0, "kf": 0, "qwen": 0, "kf_imgs": [], "keyframe_prompts": [], "video_prompts": []}
+RETRY_FAILED = set()
 
 
 def _count(kind, img):
@@ -94,6 +95,9 @@ def fake_parser(raw_script, **kw):
     if "FAIL" in raw_script:
         raise RuntimeError("CUDA out of memory (mock)")
     batch_start = int(kw.get("batch_start_shot") or 1)
+    if "RETRY_ONCE" in raw_script and batch_start not in RETRY_FAILED:
+        RETRY_FAILED.add(batch_start)
+        raise RuntimeError("temporary parser failure (mock)")
     batch_end = int(kw.get("batch_end_shot") or 0)
     total = batch_end - batch_start + 1 if batch_end >= batch_start else 6
     cast = [
