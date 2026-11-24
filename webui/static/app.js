@@ -86,6 +86,22 @@ function saveSettingsSoon() {
   }, 400);
 }
 
+function restorePersistedAnalysisRun(view) {
+  const p = view && view.analysis_progress;
+  const batch = p && (p.batches || []).find(b => b.status === 'running' && b.prompt_id);
+  if (!batch) return;
+  const sameBatch = S.run && S.run.stage === 1 && S.run.promptId === String(batch.prompt_id);
+  if (sameBatch) return;
+  S.run = {
+    stage: 1,
+    promptId: String(batch.prompt_id),
+    labels: { '1': `分析剧本第${batch.batch_index}批` },
+    label: `第${batch.batch_index}批已提交，排队中…`,
+    t0: Date.now(),
+    progress: null,
+    persisted: true,
+  };
+}
 async function loadProject(name, keep = false) {
   const v = await api('/afe/api/project?name=' + encodeURIComponent(name));
   if (v.error) { showError(v.error, '项目状态没有被覆盖。请检查服务连接后重试。'); return false; }
@@ -94,6 +110,7 @@ async function loadProject(name, keep = false) {
   localStorage.setItem('afe_project', v.project);
   S.settings = v.settings;
   syncFromSettings();
+  restorePersistedAnalysisRun(v);
   $('#projName').value = S.project;
   if (!keep) {
     S.open = {};
@@ -228,19 +245,25 @@ async function runStage(stage, part = 'all') {
   }
 }
 async function cancelRun() {
-  const r = await api('/afe/api/cancel', { project: S.project, stage: S.run && S.run.stage, prompt_id: S.run && S.run.promptId });
+  const persisted = (S.view && S.view.analysis_progress && S.view.analysis_progress.batches || [])
+    .find(b => b.status === 'running' && b.prompt_id);
+  const promptId = (S.run && S.run.promptId) || (persisted && String(persisted.prompt_id));
+  const stage = (S.run && S.run.stage) || (promptId ? 1 : null);
+  if (!promptId || !stage) return;
+  const r = await api('/afe/api/cancel', {
+    project: S.project, stage, prompt_id: promptId,
+  });
   if (r.error) {
     S.run = null;
+    await loadProject(S.project, true);
     render();
     showError(`取消请求失败：${r.error}`, '已保留项目中已保存的结果。连接恢复后可以重新点击当前步骤继续。');
     return;
   }
-  if (S.run) {
-    S.run = null;
-    await loadProject(S.project, true);
-    render();
-    showOk('已取消当前任务。已完成批次已保留，可以继续分析。');
-  }
+  S.run = null;
+  await loadProject(S.project, true);
+  render();
+  showOk('已取消当前任务。已完成批次已保留，可以继续分析。');
 }
 
 /* ── what is stale? (choices changed after a step was produced) ─────────── */

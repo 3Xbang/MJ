@@ -9,6 +9,24 @@ import json
 import os
 
 
+def _load_compat_full_workflow() -> dict:
+    """Load the canonical five-stage graph while keeping parser batching local."""
+    path = os.path.join(os.path.dirname(__file__), "workflow_templates", "afe_full_pipeline.json")
+    with open(path, encoding="utf-8") as f:
+        workflow = json.load(f)
+    parser = next(node for node in workflow["nodes"] if node["type"] == "AFE_ScriptFullParser")
+    values = list(parser.get("widgets_values", []))
+    values[:8] = [
+        "在这里输入剧本...",
+        "3D cartoon Pixar animation style, vibrant colors, 8k",
+        "迷你剧集 Mini Episode (5-10 min)",
+        180, 5, "auto (from script)", "auto (from style)",
+        "LLM/Qwen2.5-7B-Instruct",
+    ]
+    parser["widgets_values"] = values[:8] + [1, 4, ""]
+    return workflow
+
+
 def build_workflow() -> dict:
     """Build the ComfyUI workflow dict.
 
@@ -391,7 +409,7 @@ def build_workflow() -> dict:
         "extra": {"ds": {"scale": 0.6, "offset": [0, 0]}},
         "version": 0.4,
     }
-    return build_batch_workflow()
+    return _load_compat_full_workflow()
 
 
 def build_batch_workflow() -> dict:
@@ -436,25 +454,29 @@ def build_batch_workflow() -> dict:
 def main():
     out_dir = os.path.join(os.path.dirname(__file__), "workflow_templates")
     os.makedirs(out_dir, exist_ok=True)
+    full_workflow = build_workflow()
+    batch_workflow = build_batch_workflow()
+    full_path = os.path.join(out_dir, "afe_full_pipeline.json")
     out_path = os.path.join(out_dir, "afe_script_pipeline.json")
-
-    workflow = build_workflow()
+    with open(full_path, "w", encoding="utf-8") as f:
+        json.dump(full_workflow, f, ensure_ascii=False, indent=2)
     with open(out_path, "w", encoding="utf-8") as f:
-        json.dump(workflow, f, ensure_ascii=False, indent=2)
-    print(f"✅ Workflow saved to: {out_path}")
+        json.dump(batch_workflow, f, ensure_ascii=False, indent=2)
+    print(f"✅ Full workflow saved to: {full_path}")
+    print(f"✅ Batch workflow saved to: {out_path}")
 
-    # Also save to user's local downloads folder
+    # Also save the batch graph to the user's local downloads folder.
     downloads_dir = "D:/下载"
     try:
         os.makedirs(downloads_dir, exist_ok=True)
         downloads_path = os.path.join(downloads_dir, "afe_script_pipeline.json")
         with open(downloads_path, "w", encoding="utf-8") as f:
-            json.dump(workflow, f, ensure_ascii=False, indent=2)
-        print(f"✅ Also saved to: {downloads_path}")
+            json.dump(batch_workflow, f, ensure_ascii=False, indent=2)
+        print(f"✅ Also saved batch workflow to: {downloads_path}")
     except OSError as e:
         print(f"⚠️ Could not save to {downloads_dir}: {e}")
-    print(f"   Nodes: {len(workflow['nodes'])}")
-    print(f"   Links: {len(workflow['links'])}")
+    print(f"   Full nodes: {len(full_workflow['nodes'])}, links: {len(full_workflow['links'])}")
+    print(f"   Batch nodes: {len(batch_workflow['nodes'])}, links: {len(batch_workflow['links'])}")
 
 
 if __name__ == "__main__":
