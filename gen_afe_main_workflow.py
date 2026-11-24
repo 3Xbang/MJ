@@ -391,7 +391,46 @@ def build_workflow() -> dict:
         "extra": {"ds": {"scale": 0.6, "offset": [0, 0]}},
         "version": 0.4,
     }
-    return workflow
+    return build_batch_workflow()
+
+
+def build_batch_workflow() -> dict:
+    """Static template for one bounded parser batch only.
+
+    Later stages are intentionally built by webui/graphs.py after the persisted
+    analysis session reaches complete. Direct links from a partial parser batch
+    would bypass the completed-analysis gate.
+    """
+    parser = {
+        "id": 1, "type": "AFE_ScriptFullParser", "pos": [50, 300],
+        "size": {"0": 400, "1": 220}, "flags": {}, "order": 0, "mode": 0,
+        "inputs": [],
+        "outputs": [
+            {"name": "shot_sequence", "type": "SHOT_SEQUENCE", "links": None, "slot_index": 0},
+            {"name": "cast_data", "type": "CAST_DATA", "links": None, "slot_index": 1},
+            {"name": "shots_json", "type": "STRING", "links": None, "slot_index": 2},
+            {"name": "cast_json", "type": "STRING", "links": None, "slot_index": 3},
+            {"name": "shot_count", "type": "INT", "links": None, "slot_index": 4},
+            {"name": "scene_count", "type": "INT", "links": None, "slot_index": 5},
+            {"name": "props_count", "type": "INT", "links": None, "slot_index": 6},
+            {"name": "report", "type": "STRING", "links": [1], "slot_index": 7},
+        ],
+        "properties": {"Node name for S&R": "AFE_ScriptFullParser"},
+        "widgets_values": ["在这里输入剧本...", "3D cartoon Pixar animation style, vibrant colors, 8k",
+                           "迷你剧集 Mini Episode (5-10 min)", 180, 5, "auto (from script)",
+                           "auto (from style)", "LLM/Qwen2.5-7B-Instruct", 1, 4, ""],
+    }
+    display = {
+        "id": 2, "type": "show_text_party", "pos": [520, 300],
+        "size": {"0": 380, "1": 140}, "flags": {}, "order": 1, "mode": 0,
+        "inputs": [{"name": "text", "type": "STRING", "link": 1}], "outputs": [],
+        "title": "report from AFE_ScriptFullParser",
+        "properties": {"Node name for S&R": "show_text_party"}, "widgets_values": [""],
+    }
+    return {"last_node_id": 2, "last_link_id": 1, "nodes": [parser, display],
+            "links": [[1, 1, 7, 2, 0, "STRING"]], "groups": [], "config": {},
+            "extra": {"ds": {"scale": 0.6, "offset": [0, 0]}}, "version": 0.4}
+
 
 
 def main():

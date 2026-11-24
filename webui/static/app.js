@@ -165,6 +165,12 @@ async function runStage(stage, part = 'all') {
   const run = S.run;
   const r = await api('/afe/api/run', { project: S.project, stage, part, client_id: S.clientId, settings: S.settings });
   if (r.error) { S.run = null; render(); showError(r.error, r.details); return; }
+  if (r.submission_pending) {
+    S.run = null;
+    await loadProject(S.project, true);
+    showOk('当前批次正在提交，请稍后点击“继续分析”。');
+    return;
+  }
   if (r.complete) { S.run = null; await loadProject(S.project, true); showOk('剧本分析已完成，可以进行下一步'); return; }
   run.promptId = r.prompt_id; run.labels = r.labels || {}; run.label = '已提交，排队中…';
   renderDock();

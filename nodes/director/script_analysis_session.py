@@ -11,6 +11,8 @@ import json
 import os
 import tempfile
 import time
+import uuid
+from contextlib import contextmanager
 from copy import deepcopy
 
 SCHEMA_VERSION = "afe-analysis-session-v1"
@@ -161,31 +163,83 @@ class AnalysisSessionStore:
         state["updated_at"] = time.time()
         return self.save(state)
 
-    def claim_next(self, prompt_id: str | None = None) -> dict:
-        state = self.load()
-        if not state: raise ValueError("分析会话不存在")
+    @contextmanager
+    def _claim_lock(self):
+        """Serialize claim and prompt ownership across WebUI worker processes."""
+        os.makedirs(self.root, exist_ok=True)
+        lock_path = os.path.join(self.root, ".claim.lock")
+        deadline = time.time() + 15
+        handle = None
+        while handle is None:
+            try:
+                handle = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            except FileExistsError:
+                try:
+                    if time.time() - os.path.getmtime(lock_path) > 60:
+                        os.unlink(lock_path)
+                        continue
+                except FileNotFoundError:
+                    continue
+                except OSError:
+                    pass
+                if time.time() >= deadline:
+                    raise TimeoutError("分析批次锁定超时，请稍后重试")
+                time.sleep(0.02)
+        try:
+            os.write(handle, str(os.getpid()).encode("ascii", errors="ignore"))
+            os.close(handle)
+            handle = None
+            yield
+        finally:
+            if handle is not None:
+                os.close(handle)
+            try:
+                os.unlink(lock_path)
+            except FileNotFoundError:
+                pass
+
+    def _claim_locked(self, state: dict, prompt_id: str | None = None) -> dict:
         running = next((b for b in state["batches"] if b["status"] == "running"), None)
         if running:
-            # The caller must inspect the persisted prompt before queueing. This
-            # method is intentionally idempotent and never creates a second claim.
-            return deepcopy(running)
+            result = deepcopy(running)
+            result["claimed"] = False
+            result["submission_pending"] = not bool(running.get("prompt_id"))
+            return result
         first_unfinished = next((b for b in state["batches"] if b["status"] != "completed"), None)
         if first_unfinished and first_unfinished["status"] == "failed":
-            return deepcopy(first_unfinished)
-        batch = first_unfinished
-        if not batch:
-            return {"status": "complete", "batch_index": None}
-        batch["status"] = "running"; batch["prompt_id"] = prompt_id
-        state["current_batch"] = batch["batch_index"]; state["current_prompt_id"] = prompt_id
+            result = deepcopy(first_unfinished)
+            result["claimed"] = False
+            return result
+        if not first_unfinished:
+            return {"status": "complete", "batch_index": None, "claimed": False}
+        first_unfinished["status"] = "running"
+        first_unfinished["prompt_id"] = prompt_id
+        first_unfinished["claim_token"] = uuid.uuid4().hex
+        state["current_batch"] = first_unfinished["batch_index"]
+        state["current_prompt_id"] = None
         state["cancelled"] = False
         self._touch(state)
-        return deepcopy(batch)
+        result = deepcopy(first_unfinished)
+        result["claimed"] = True
+        return result
 
-    def set_prompt(self, batch_index: int, prompt_id: str) -> dict:
-        state = self.load(); batch = state["batches"][int(batch_index) - 1]
-        if batch["status"] != "running": raise ValueError("只能为运行中的批次保存 prompt")
-        batch["prompt_id"] = prompt_id; state["current_prompt_id"] = prompt_id
-        return self._touch(state)
+    def claim_next(self, prompt_id: str | None = None) -> dict:
+        with self._claim_lock():
+            state = self.load()
+            if not state:
+                raise ValueError("分析会话不存在")
+            return self._claim_locked(state, prompt_id)
+
+    def set_prompt(self, batch_index: int, prompt_id: str, claim_token: str | None = None) -> dict:
+        with self._claim_lock():
+            state = self.load()
+            batch = state["batches"][int(batch_index) - 1]
+            if batch["status"] != "running":
+                raise ValueError("只能为运行中的批次保存 prompt")
+            if claim_token and batch.get("claim_token") != claim_token:
+                raise ValueError("该分析批次已被其他请求接管")
+            batch["prompt_id"] = prompt_id; state["current_prompt_id"] = prompt_id
+            return self._touch(state)
 
     @staticmethod
     def _merge_cast(existing: list, incoming: list) -> list:
@@ -305,34 +359,40 @@ class AnalysisSessionStore:
         return self._touch(state)
 
     def cancel(self, batch_index: int | None = None, prompt_id: str | None = None) -> dict:
-        state = self.load()
-        if not state:
-            return {}
-        running = next((b for b in state["batches"] if b["status"] == "running"), None)
-        if not running:
-            raise ValueError("当前没有可取消的分析任务")
-        if running and batch_index is not None and running["batch_index"] != int(batch_index):
-            raise ValueError("当前运行批次已变化，未取消其他任务")
-        if running and prompt_id and running.get("prompt_id") != prompt_id:
-            raise ValueError("取消请求不是当前分析 prompt，未取消其他任务")
-        if running:
+        with self._claim_lock():
+            state = self.load()
+            if not state:
+                return {}
+            running = next((b for b in state["batches"] if b["status"] == "running"), None)
+            if not running:
+                raise ValueError("当前没有可取消的分析任务")
+            if batch_index is not None and running["batch_index"] != int(batch_index):
+                raise ValueError("当前运行批次已变化，未取消其他任务")
+            if prompt_id and running.get("prompt_id") != prompt_id:
+                raise ValueError("取消请求不是当前分析 prompt，未取消其他任务")
             running["status"] = "pending"
             running["error"] = "已取消，可继续或重试"
             running["prompt_id"] = None
-        state["cancelled"] = True
-        state["current_batch"] = None
-        state["current_prompt_id"] = None
-        return self._touch(state)
+            state["cancelled"] = True
+            state["current_batch"] = None
+            state["current_prompt_id"] = None
+            return self._touch(state)
 
     def recover_orphaned_running(self) -> dict:
-        state = self.load();
-        if not state: return {}
-        for batch in state["batches"]:
-            if batch["status"] == "running":
-                batch["status"] = "failed"; batch["error"] = "ComfyUI 重启后未找到该批次结果，可重试"; batch["retry_count"] += 1
-                if batch["batch_index"] not in state["failed_batches"]: state["failed_batches"].append(batch["batch_index"])
-        state["current_batch"] = None; state["current_prompt_id"] = None
-        return self._touch(state)
+        with self._claim_lock():
+            state = self.load()
+            if not state:
+                return {}
+            for batch in state["batches"]:
+                if batch["status"] == "running":
+                    batch["status"] = "failed"
+                    batch["error"] = "ComfyUI 重启后未找到该批次结果，可重试"
+                    batch["retry_count"] += 1
+                    if batch["batch_index"] not in state["failed_batches"]:
+                        state["failed_batches"].append(batch["batch_index"])
+            state["current_batch"] = None
+            state["current_prompt_id"] = None
+            return self._touch(state)
 
     def status(self) -> dict:
         state = self.load() or {}

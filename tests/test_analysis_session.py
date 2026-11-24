@@ -159,6 +159,18 @@ def test_create_keeps_unsafe_uncovered_batches_pending_without_reusing_source_un
         assert state["batches"][1]["source_unit_ranges"] == []
 
 
+def test_concurrent_claim_returns_existing_owner_without_second_claim():
+    with tempfile.TemporaryDirectory() as root:
+        store = AnalysisSessionStore(root, batch_size=4)
+        store.create("script", 4, 5, scene_fixture(4))
+        owner = store.claim_next()
+        contender = AnalysisSessionStore(root, batch_size=4).claim_next()
+        assert owner["claimed"] is True
+        assert contender["claimed"] is False
+        assert contender["batch_index"] == owner["batch_index"]
+        assert contender["submission_pending"] is True
+
+
 def test_cancel_only_changes_matching_running_batch_and_preserves_completed_results():
     with tempfile.TemporaryDirectory() as root:
         store = AnalysisSessionStore(root, batch_size=4)

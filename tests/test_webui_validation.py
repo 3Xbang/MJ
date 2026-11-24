@@ -1,4 +1,5 @@
 import asyncio
+import asyncio
 import json
 import os
 import sys
@@ -185,6 +186,34 @@ def test_reference_upload_rejects_oversized_body_before_reading():
     api = Api("test-output", "http://127.0.0.1:8188")
     response = asyncio.run(api.upload_ref(Request()))
     assert response.status == 413
+
+
+def test_completed_session_republishes_missing_analysis_file():
+    import tempfile
+    from ai_film_editor_nodes.nodes.director.script_analysis_session import AnalysisSessionStore
+    with tempfile.TemporaryDirectory() as root:
+        api = Api(root, "http://127.0.0.1:8188")
+        project = api.project_path("republish")
+        scene_map = [{"scene_id": "scene_1", "source_blocks": [{
+            "source_block_id": "block_1", "scene_occurrence_id": "occ_1",
+            "section_type": "location_scene", "source_text": "A room with light."
+        }]}]
+        store = AnalysisSessionStore(os.path.join(project, "analysis_session"), 4)
+        state = store.create("script", 1, 5, scene_map, cast=[])
+        shot = {"shot_id": "shot_001", "scene_id": "scene_1", "scene_occurrence_id": "occ_1",
+                "source_block_id": "block_1", "source_unit_ids": ["unit_001"],
+                "section_type": "location_scene"}
+        state["batches"][0]["status"] = "completed"
+        state["completed_batches"] = [1]
+        state["parsed_shots"] = [shot]
+        state["analysis_status"] = "complete"
+        store.save(state)
+        assert not os.path.exists(os.path.join(project, "analysis.json"))
+        status = api.analysis_status(project)
+        published = json.load(open(os.path.join(project, "analysis.json"), encoding="utf-8"))
+        assert status["analysis_status"] == "complete"
+        assert published["session_signature"] == state["script_signature"]
+        assert published["expected_shot_count"] == 1
 
 
 if __name__ == "__main__":

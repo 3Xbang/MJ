@@ -1294,11 +1294,11 @@ class AFE_ScriptFullParser:
         target_shot_count = max(1, round(target_duration_seconds / seconds_per_shot))
 
         # Every parser invocation is a bounded batch. The WebUI supplies the
-        # persisted session context; direct/manual node calls use the first
-        # small batch rather than silently reverting to whole-screenplay mode.
+        # persisted session context; direct/manual node calls also return a
+        # partial batch and can never publish a complete screenplay analysis.
         requested_end = int(batch_end_shot or 0)
-        batch_mode = requested_end > 0
-        if batch_mode:
+        batch_mode = True
+        if requested_end > 0:
             batch_start_shot = max(1, int(batch_start_shot))
             batch_end_shot = requested_end
         else:

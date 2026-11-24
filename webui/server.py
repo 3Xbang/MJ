@@ -292,9 +292,40 @@ class Api:
     def session_store(self, project_path: str) -> AnalysisSessionStore:
         return AnalysisSessionStore(os.path.join(project_path, "analysis_session"), DEFAULT_BATCH_SIZE)
 
+    def _assembled_analysis(self, session: dict) -> dict:
+        analysis = {
+            "schema_version": "afe-analysis-v1", "analysis_status": "complete",
+            "session_signature": session["script_signature"],
+            "expected_shot_count": session["target_shot_count"],
+            "source_manifest": [{k: v for k, v in item.items() if k != "source_text"}
+                                for item in session["source_manifest"]],
+            "shots": session["parsed_shots"], "cast": session.get("cast", []),
+        }
+        _validate_analysis_payload(analysis)
+        return analysis
+
+    def _publish_completed_session(self, project_path: str, session: dict) -> dict:
+        """Repair the final publish window after a process or ComfyUI restart."""
+        if session.get("analysis_status") != "complete":
+            raise ValueError("分析会话尚未完成全部批次。")
+        path = os.path.join(project_path, "analysis.json")
+        published = read_json(path, {}) or {}
+        if published.get("session_signature") == session.get("script_signature"):
+            _validate_analysis_payload(published)
+            return published
+        analysis = self._assembled_analysis(session)
+        write_json(path, analysis)
+        return analysis
+
     def analysis_status(self, project_path: str) -> dict:
         store = self.session_store(project_path)
         state = store.status()
+        publication_error = None
+        if state and state.get("analysis_status") == "complete":
+            try:
+                self._publish_completed_session(project_path, state)
+            except (ValueError, KeyError, TypeError) as exc:
+                publication_error = str(exc)
         if not state:
             return {"analysis_status": "none", "completed_shot_count": 0}
         return {
@@ -309,6 +340,7 @@ class Api:
             "batches": state.get("batches", []),
             "completed_shot_count": state.get("completed_shot_count", 0),
             "error": next((b.get("error") for b in state.get("batches", []) if b.get("status") == "failed"), None),
+            "publication_error": publication_error,
         }
 
     async def prompt_is_known(self, prompt_id: str) -> bool:
@@ -351,8 +383,13 @@ class Api:
         pp = self.project_path(name)
         pname = safe_project_name(name)
         st = self.state(pp)
-        analysis = read_json(os.path.join(pp, "analysis.json"))
         session = self.session_store(pp).load()
+        if session and session.get("analysis_status") == "complete":
+            try:
+                self._publish_completed_session(pp, session)
+            except (ValueError, KeyError, TypeError):
+                logger.exception("Unable to republish completed analysis session")
+        analysis = read_json(os.path.join(pp, "analysis.json"))
         settings = st.get("settings") or {}
         target_count = max(1, round(int(settings.get("duration", 180)) /
                                 int(settings.get("seconds_per_shot", 5))))
@@ -592,11 +629,18 @@ class Api:
             existing = next((item for item in session.get("batches", [])
                              if item.get("status") == "running"), None)
             if existing:
+                # A claim is persisted before the HTTP request reaches ComfyUI.
+                # Never turn that reservation into a second prompt while the
+                # first request is still attaching its prompt id.
+                if not existing.get("prompt_id"):
+                    return web.json_response({"ok": True, "submission_pending": True,
+                                              "batch": existing, "session": self.analysis_status(pp)},
+                                             status=202)
                 if await self.prompt_is_known(existing.get("prompt_id", "")):
                     return web.json_response({"prompt_id": existing.get("prompt_id"),
                                               "batch": existing, "session": self.analysis_status(pp),
                                               "labels": {"1": f"分析剧本第{existing['batch_index']}批"}})
-                # A running prompt that is absent from both history and queue is
+                # A running prompt absent from both history and queue is
                 # conservatively retryable after a ComfyUI/browser restart.
                 session_store.recover_orphaned_running()
                 session = session_store.load()
@@ -607,6 +651,9 @@ class Api:
             if batch.get("status") == "failed":
                 return web.json_response({"error": f"第{batch['batch_index']}批失败，请先重试该批次。",
                                           "session": self.analysis_status(pp)}, status=409)
+            if not batch.get("claimed"):
+                return web.json_response({"ok": True, "submission_pending": True,
+                                          "batch": batch, "session": self.analysis_status(pp)}, status=202)
             source_ranges = {
                 str(item.get("source_block_id")): set(item.get("unit_ids", []))
                 for item in batch.get("source_unit_ranges", [])
@@ -641,9 +688,13 @@ class Api:
                     return web.json_response({"error": "剧本已改变，请先完成当前剧本的分批分析。"}, status=400)
                 if current_session.get("analysis_status") != "complete":
                     return web.json_response({"error": "请先完成第 ① 步「分析剧本」的全部批次。"}, status=400)
+                try:
+                    self._publish_completed_session(pp, current_session)
+                except (ValueError, KeyError, TypeError) as exc:
+                    return web.json_response({"error": f"完整分析尚未发布：{exc}"}, status=409)
                 published = read_json(os.path.join(pp, "analysis.json"), {}) or {}
                 if published.get("session_signature") != current_session.get("script_signature"):
-                    return web.json_response({"error": "当前剧本尚未发布匹配的完整分析结果。"}, status=400)
+                    return web.json_response({"error": "当前剧本尚未发布匹配的完整分析结果。"}, status=409)
             elif not os.path.exists(os.path.join(pp, "analysis.json")):
                 return web.json_response({"error": "请先完成第 ① 步「分析剧本」。"}, status=400)
         os.makedirs(pp, exist_ok=True)
@@ -660,6 +711,8 @@ class Api:
             problems = graphs.validate_prompt(prompt, classes)
             if problems:
                 logger.error("AFE UI prompt invalid: %s", problems)
+                if stage == 1 and session_store and batch:
+                    session_store.fail_batch(batch["batch_index"], "内部流程配置有误：" + "; ".join(problems[:6]))
                 return web.json_response({"error": "内部流程配置有误，请把下面的信息发给技术支持：\n" + "\n".join(problems[:6])}, status=500)
         payload = {"prompt": prompt, "client_id": body.get("client_id", "afe-ui")}
         try:
@@ -668,11 +721,26 @@ class Api:
                     data = await r.json(content_type=None)
                     if r.status != 200:
                         detail = json.dumps(data, ensure_ascii=False)[:600]
+                        if stage == 1 and session_store and batch:
+                            session_store.fail_batch(batch["batch_index"], friendly_error(detail))
                         return web.json_response({"error": friendly_error(detail), "details": detail}, status=400)
         except Exception as e:
+            if stage == 1 and session_store and batch:
+                session_store.fail_batch(batch["batch_index"], f"无法连接 ComfyUI：{e}")
             return web.json_response({"error": f"无法连接 ComfyUI：{e}"}, status=502)
         if stage == 1 and session_store and batch:
-            session_store.set_prompt(batch["batch_index"], data.get("prompt_id", ""))
+            try:
+                session_store.set_prompt(batch["batch_index"], data.get("prompt_id", ""),
+                                         batch.get("claim_token"))
+            except ValueError as exc:
+                # The claim was cancelled or superseded while ComfyUI accepted
+                # the request. Do not associate this prompt with a new batch.
+                try:
+                    await self.cancel_prompt(data.get("prompt_id", ""))
+                except Exception:
+                    logger.warning("Unable to cancel superseded analysis prompt", exc_info=True)
+                return web.json_response({"error": str(exc),
+                                          "session": self.analysis_status(pp)}, status=409)
             st["analysis_run"] = {"batch_index": batch["batch_index"], "prompt_id": data.get("prompt_id", "")}
             self.save_state(pp, st)
         return web.json_response({"prompt_id": data.get("prompt_id"), "labels": labels,
@@ -732,57 +800,46 @@ class Api:
         if stage == 1:
             try:
                 raw_analysis = _first_json(outputs.get("1", {}), "afe_analysis") or {}
-                if raw_analysis.get("analysis_status") == "complete" and not self.session_store(pp).load():
-                    # Compatibility for direct legacy parser calls.
-                    _validate_analysis_payload(raw_analysis)
-                    res = {"analysis": raw_analysis, "scenes": [], "props": [], "reports": {"parse": _text(outputs.get("1", {}))}}
-                else:
-                    store = self.session_store(pp)
-                    session = store.load()
-                    if not session:
-                        raise ValueError("分析会话不存在，请重新开始分析。")
-                    batch_index = (self.state(pp).get("analysis_run") or {}).get("batch_index") or session.get("current_batch")
-                    if not batch_index:
-                        raise ValueError("没有可提交的当前分析批次。")
-                    current_batch = next((item for item in session.get("batches", [])
-                                          if item.get("batch_index") == int(batch_index)), None)
-                    if not current_batch or current_batch.get("prompt_id") != pid:
-                        raise ValueError("该分析任务已过期或已被取消，未保存其结果。")
-                    store.commit_batch(int(batch_index), raw_analysis)
-                    session = store.status()
-                    if session.get("analysis_status") != "complete":
-                        self.save_state(pp, {**self.state(pp), "analysis_progress": session})
-                        return web.json_response({"ok": True, "partial": True,
-                                                  "session": self.analysis_status(pp)})
-                    analysis = {"schema_version": "afe-analysis-v1", "analysis_status": "complete",
-                                "session_signature": session["script_signature"],
-                                "expected_shot_count": session["target_shot_count"],
-                                "source_manifest": [{k: v for k, v in item.items() if k != "source_text"}
-                                                     for item in session["source_manifest"]],
-                                "shots": session["parsed_shots"], "cast": session.get("cast", [])}
-                    _validate_analysis_payload(analysis)
-                    scenes = []
-                    for shot in session.get("parsed_shots", []):
-                        scene_id = shot.get("scene_id")
-                        if scene_id and not any(item.get("scene_id") == scene_id for item in scenes):
-                            scenes.append({"scene_id": scene_id,
-                                           "scene_name": shot.get("scene_name", scene_id),
-                                           "scene_name_en": shot.get("scene_name_en", ""),
-                                           "shot_appearances": [],
-                                           "environment_prompt_en": shot.get("scene_environment_en", "")})
-                    if not scenes:
-                        scenes = [{"scene_id": scene.get("scene_id"),
-                                   "scene_name": scene.get("sample_header", scene.get("scene_id", "")),
-                                   "scene_name_en": scene.get("sample_header", ""),
-                                   "shot_appearances": [], "environment_prompt_en": ""}
-                                  for scene in session.get("scene_map", [])]
-                    props = []
-                    for shot in session.get("parsed_shots", []):
-                        for name in shot.get("props_list", []) or []:
-                            if name and not any(p.get("name") == name for p in props):
-                                props.append({"name": name, "shot_appearances": []})
-                    res = {"analysis": analysis, "scenes": scenes, "props": props,
-                           "reports": {"parse": "✅ 所有分析批次已完成"}}
+                store = self.session_store(pp)
+                session = store.load()
+                if not session:
+                    raise ValueError("分析结果必须来自已持久化的分批会话，请从网页第 ① 步开始分析。")
+                batch_index = (self.state(pp).get("analysis_run") or {}).get("batch_index") or session.get("current_batch")
+                if not batch_index:
+                    raise ValueError("没有可提交的当前分析批次。")
+                current_batch = next((item for item in session.get("batches", [])
+                                      if item.get("batch_index") == int(batch_index)), None)
+                if not current_batch or current_batch.get("prompt_id") != pid:
+                    raise ValueError("该分析任务已过期或已被取消，未保存其结果。")
+                store.commit_batch(int(batch_index), raw_analysis)
+                session = store.status()
+                if session.get("analysis_status") != "complete":
+                    self.save_state(pp, {**self.state(pp), "analysis_progress": session})
+                    return web.json_response({"ok": True, "partial": True,
+                                              "session": self.analysis_status(pp)})
+                analysis = self._publish_completed_session(pp, session)
+                scenes = []
+                for shot in session.get("parsed_shots", []):
+                    scene_id = shot.get("scene_id")
+                    if scene_id and not any(item.get("scene_id") == scene_id for item in scenes):
+                        scenes.append({"scene_id": scene_id,
+                                       "scene_name": shot.get("scene_name", scene_id),
+                                       "scene_name_en": shot.get("scene_name_en", ""),
+                                       "shot_appearances": [],
+                                       "environment_prompt_en": shot.get("scene_environment_en", "")})
+                if not scenes:
+                    scenes = [{"scene_id": scene.get("scene_id"),
+                               "scene_name": scene.get("sample_header", scene.get("scene_id", "")),
+                               "scene_name_en": scene.get("sample_header", ""),
+                               "shot_appearances": [], "environment_prompt_en": ""}
+                              for scene in session.get("scene_map", [])]
+                props = []
+                for shot in session.get("parsed_shots", []):
+                    for name in shot.get("props_list", []) or []:
+                        if name and not any(p.get("name") == name for p in props):
+                            props.append({"name": name, "shot_appearances": []})
+                res = {"analysis": analysis, "scenes": scenes, "props": props,
+                       "reports": {"parse": "✅ 所有分析批次已完成"}}
             except (ValueError, KeyError, TypeError) as exc:
                 session = self.session_store(pp).load()
                 batch_index = (self.state(pp).get("analysis_run") or {}).get("batch_index") or (session or {}).get("current_batch")
