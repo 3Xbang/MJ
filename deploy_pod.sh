@@ -27,7 +27,7 @@ if [ -d ai_film_editor_nodes/.git ]; then
 else
   git clone https://github.com/3Xbang/MJ.git ai_film_editor_nodes
 fi
-pip install loguru json_repair imageio-ffmpeg -q
+pip install loguru json_repair imageio-ffmpeg accelerate -q
 # CPU-only regression and graph check: run from the repository root so every
 # command validates the code that was just pulled.  A failure stops deployment.
 cd "$CN/ai_film_editor_nodes"
