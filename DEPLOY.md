@@ -143,7 +143,7 @@ echo "✅ 部署完成！等30秒后访问 ComfyUI"
 ## Workflow loading
 
 Customers use `/afe/` only. Do not edit JSON or connect ComfyUI nodes by hand.
-Both `workflow_templates/afe_full_pipeline.json` and `workflow_templates/afe_script_pipeline.json` are safe single-batch parser graphs. They submit only shots 1-4 and retain `show_text_party`; they have no direct Krea, Qwen Image, Wan, or movie links. Do not queue legacy `D:\download\now-02.json` or `D:\download\now-03.json`, because those graphs lack the persisted batch-session gate. The web UI creates stages 2-5 only after all batches validate and publishes `analysis.json`.
+`workflow_templates/afe_script_pipeline.json` is the safe single-batch parser graph. `workflow_templates/afe_full_pipeline.json` retains the original material, first-frame, Wan, movie, props, and `show_text_party` nodes, but all downstream analysis inputs come from `AFE_AnalysisLoader`, never from the partial parser node. The loader accepts only a complete, session-signed `analysis.json`, so the full artifact cannot start generation from an unfinished batch. Do not queue legacy `D:\download\now-02.json` or `D:\download\now-03.json`, because those graphs lack the persisted batch-session gate. The web UI creates stages 2-5 only after all batches validate and publishes `analysis.json`.
 
 The web UI keeps the five-step order: 1 script, 2 assets, 3 keyframes, 4 video, 5 movie.
 

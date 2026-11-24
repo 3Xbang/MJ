@@ -71,6 +71,10 @@ def _parse(phase1, phase2, screenplay=None):
         target_duration_seconds=5, seconds_per_shot=5, model_path="stub") ["result"][0][0]
 
 
+def test_single_character_chinese_cast_name_is_grounded_in_source():
+    parser_mod._validate_cast_against_script([{"name": "李"}], "【场景】\n李走进厨房，停下。")
+
+
 def test_phase2_nulls_preserve_phase1_facts_in_both_prompts():
     shot = _parse(_phase1("tracking_shot", "script"), _null_phase2(),
                   "【场景一：Workshop】\nMina in a red wool coat reaches for the brass lever, anxious smile tight, left eyelid trembling, gaze toward the window, shoulders tense; hand approaches the lever, grips the brass lever, thumb rubs the brass label, she pulls the lever; under cool LEDs.")

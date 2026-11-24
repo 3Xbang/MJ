@@ -819,12 +819,21 @@ def _phase1_fact_validation_errors(shot: dict, source_fragment: str, source_bloc
 
 def _validate_cast_against_script(cast_list: list, raw_script: str) -> None:
     source = _source_tokens(raw_script)
+    normalized_source = re.sub(r"\s+", "", _compact_source(raw_script)).casefold()
     unknown = []
     for entry in cast_list or []:
         if not isinstance(entry, dict) or not str(entry.get("name") or "").strip():
             unknown.append("<missing name>")
             continue
         name = str(entry["name"]).strip()
+        normalized_name = re.sub(r"\s+", "", name).casefold()
+        # A one-character CJK name is a valid screenplay name, but the
+        # general token extractor intentionally ignores one-character runs.
+        # Verify CJK names against the original text first, then retain the
+        # word-token check for English and multi-character names.
+        if any("\u4e00" <= char <= "\u9fff" for char in name):
+            if normalized_name and normalized_name in normalized_source:
+                continue
         if not _source_tokens(name).intersection(source):
             unknown.append(name)
     if unknown:
