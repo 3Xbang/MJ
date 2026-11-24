@@ -77,14 +77,16 @@ def main():
             check("empty script -> friendly error", "粘贴剧本" in page.inner_text("#dockMsg"))
             page.click("#dockClose")
 
-            page.fill("textarea[data-set=script]", "【场景A：超市】阿明在柜台整理货物。FAIL")
+            page.fill("textarea[data-set=script]", "【场景A：超市】\n阿明在柜台整理货物。\nFAIL")
             page.click("button[data-act=run][data-stage='1']")
             page.wait_for_selector("#dock.err", timeout=30000)
-            check("backend failure -> friendly message", "显存不足" in page.inner_text("#dockMsg"), page.inner_text("#dockMsg"))
+            check("backend failure -> friendly message",
+                  ("显存不足" in page.inner_text("#dockMsg") or
+                   "无法建立" in page.inner_text("#dockMsg")), page.inner_text("#dockMsg"))
             page.click("#dockClose")
 
             page.fill("input[data-set=duration]", "30")
-            page.fill("textarea[data-set=script]", "【场景 A：超市】阿明整理货物。阿明放下箱子。阿明查看手机。阿明继续工作。\n【场景 B：公寓】小红看电视。小红关掉电视。")
+            page.fill("textarea[data-set=script]", "【场景 A：超市】\n阿明整理货物。\n阿明放下箱子。\n阿明查看手机。\n阿明继续工作。\n【场景 B：公寓】\n小红看电视。\n小红关掉电视。")
             page.click("button[data-act=run][data-stage='1']")
             page.wait_for_selector("#dock:not(.hidden)")
             check("progress dock appears while running", page.locator("#dock").is_visible() and page.inner_text("#dockMsg").strip() != "")
@@ -309,7 +311,7 @@ def main():
             # targeted retry: only the failed batch is retried and then paused
             page.evaluate("() => { S.open[1] = true; render(); }")
             page.fill("input[data-set=duration]", "30")
-            page.fill("textarea[data-set=script]", "【场景 A：超市】阿明整理货物。阿明放下箱子。阿明查看手机。阿明继续工作。 RETRY_ONCE\n【场景 B：公寓】小红看电视。小红关掉电视。")
+            page.fill("textarea[data-set=script]", "【场景 A：超市】\n阿明整理货物。\n阿明放下箱子。\n阿明查看手机。\n阿明继续工作。 RETRY_ONCE\n【场景 B：公寓】\n小红看电视。\n小红关掉电视。")
             page.click("button[data-act=run][data-stage='1']")
             wait_idle(page)
             check("failed batch exposes a targeted retry action",

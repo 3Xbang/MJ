@@ -189,7 +189,9 @@ def test_project_view_hides_stale_analysis_and_dependent_references():
         os.makedirs(project, exist_ok=True)
         old_script = "【场景 A：旧地点】旧镜头。"
         store = AnalysisSessionStore(os.path.join(project, "analysis_session"), 4)
-        session = store.create(old_script, 1, 5, [], cast=[])
+        session = store.create(old_script, 1, 5, [{"scene_id": "scene_old", "source_blocks": [{
+            "source_block_id": "block_old", "source_text": old_script,
+        }]}], cast=[])
         session["analysis_status"] = "complete"
         store.save(session)
         analysis = _complete_analysis()
@@ -215,7 +217,9 @@ def test_project_view_allows_matching_completed_analysis():
         os.makedirs(project, exist_ok=True)
         script = "【场景 A：地点】镜头。"
         store = AnalysisSessionStore(os.path.join(project, "analysis_session"), 4)
-        session = store.create(script, 1, 5, [], cast=[])
+        session = store.create(script, 1, 5, [{"scene_id": "scene_current", "source_blocks": [{
+            "source_block_id": "block_current", "source_text": script,
+        }]}], cast=[])
         session["analysis_status"] = "complete"
         store.save(session)
         analysis = _complete_analysis()

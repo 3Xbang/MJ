@@ -694,8 +694,22 @@ class Api:
                         block["prompt_source_text"] = "\n".join(unit["text"] for unit in units)
                         block["batch_unit_ids"] = []
                     else:
+                        source_range = next(
+                            (item for item in batch.get("source_unit_ranges", [])
+                             if str(item.get("source_block_id")) == block_id),
+                            {},
+                        )
                         block["batch_unit_ids"] = sorted(source_ranges[block_id])
-                        units = _source_units_with_offsets(block.get("source_text", ""))
+                        # Generic scripts may use refined punctuation fragments
+                        # whose IDs cannot be reconstructed from the raw block
+                        # alone. Carry the persisted offsets into the parser.
+                        block["batch_units"] = [
+                            dict(unit) for unit in source_range.get("units", [])
+                            if str(unit.get("unit_id")) in source_ranges[block_id]
+                        ]
+                        units = [dict(unit) for unit in source_range.get("units", [])]
+                        if not units:
+                            units = _source_units_with_offsets(block.get("source_text", ""))
                         block["prompt_source_text"] = "\n".join(
                             [unit["text"] for unit in units if unit.get("is_context")]
                             + [unit["text"] for unit in units

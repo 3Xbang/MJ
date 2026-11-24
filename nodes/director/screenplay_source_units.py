@@ -52,8 +52,9 @@ def source_units_with_offsets(source_text: str) -> list[dict]:
 
     Explicit shot headings take precedence over sentence/paragraph splitting.
     A pre-heading context unit is retained for prompts but is marked as context
-    and is never assigned to a shot range.  Scripts without explicit headings
-    retain the existing sentence/paragraph behavior.
+    and is never assigned to a shot range.  Ordinary screenplay line breaks are
+    action/fragment boundaries, while a single line is never split merely to
+    reach a requested shot count.
     """
     source = str(source_text or "")
     markers = list(EXPLICIT_SHOT_HEADER_RE.finditer(source))
@@ -61,7 +62,7 @@ def source_units_with_offsets(source_text: str) -> list[dict]:
         return _explicit_units(source, markers)
 
     boundary = re.compile(
-        r"\n\s*\n+|(?<=[。！？!?])\s+|(?<=[。！？!?])(?=[\u4e00-\u9fff])|(?<=[.!?])\s+"
+        r"\r?\n+|(?<=[。！？!?])\s+|(?<=[。！？!?])(?=[\u4e00-\u9fff])|(?<=[.!?])\s+"
     )
     units = []
     start = 0
@@ -75,6 +76,57 @@ def source_units_with_offsets(source_text: str) -> list[dict]:
                          is_context=False, is_explicit_shot=False)
     if unit:
         units.append(unit)
+    if units and len(units) > 1 and re.match(
+            r"^\s*(?:[【\[]?(?:场景|SCENE)(?:\s|[一二三四五六七八九十0-9：:.-]|$)|"
+            r"[【\[]?(?:INT\.|EXT\.|INT/EXT|TITLE|PROLOGUE|EPILOGUE|MONTAGE)\b)",
+            units[0]["text"], re.IGNORECASE):
+        # Scene structure belongs to the first visual fragment. Keeping the
+        # heading with its first action preserves the established one-block
+        # provenance and prevents a heading-only unit from consuming a shot.
+        merged = _trimmed_unit(source, units[0]["start"], units[1]["end"],
+                               "unit_001", is_context=False, is_explicit_shot=False)
+        units = [merged] + units[2:]
+        for index, unit in enumerate(units, 1):
+            unit["unit_id"] = f"unit_{index:03d}"
+    return units
+
+
+def refine_source_units(source_text: str, minimum_count: int) -> list[dict]:
+    """Split only punctuation-delimited fragments for generic batch planning.
+
+    Every returned fragment is a contiguous verbatim source slice. If the
+    screenplay has no further action boundary, the original units are returned
+    so the caller can reject an impossible plan instead of fabricating shots.
+    """
+    source = str(source_text or "")
+    units = source_units_with_offsets(source)
+    if len(units) >= int(minimum_count):
+        return units
+    for separator in (
+        re.compile(r"(?<=[;；])(?:[ \t]+|(?=[\u4e00-\u9fff]))"),
+        re.compile(r"(?<=[,，])(?:[ \t]+|(?=[\u4e00-\u9fff]))"),
+    ):
+        refined = []
+        for unit in units:
+            text = source[unit["start"]:unit["end"]]
+            starts = [unit["start"]]
+            starts.extend(unit["start"] + match.end() for match in separator.finditer(text))
+            starts = [unit["start"]] + sorted(set(
+                value for value in starts if unit["start"] < value < unit["end"]
+            ))
+            edges = starts + [unit["end"]]
+            for start, end in zip(edges, edges[1:]):
+                piece = _trimmed_unit(source, start, end, "pending",
+                                      is_context=bool(unit.get("is_context")),
+                                      is_explicit_shot=False)
+                if piece:
+                    refined.append(piece)
+        if len(refined) > len(units):
+            units = refined
+            if len(units) >= int(minimum_count):
+                break
+    for index, unit in enumerate(units, 1):
+        unit["unit_id"] = f"unit_{index:03d}"
     return units
 
 

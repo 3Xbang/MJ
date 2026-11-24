@@ -24,6 +24,14 @@ logger = get_logger("AFE_ScriptFullParser")
 DEFAULT_DIRECT_BATCH_SIZE = 4
 
 
+def _source_units_for_block(block: dict) -> list[dict]:
+    """Use persisted batch fragments when a session supplied them."""
+    specs = block.get("batch_units")
+    if isinstance(specs, list) and specs:
+        return [dict(unit) for unit in specs if isinstance(unit, dict)]
+    return source_units_with_offsets(block.get("source_text", ""))
+
+
 # ── Scene pre-segmentation (code-level, NOT LLM-dependent) ───────────────────
 #
 # Qwen2.5-7B cannot reliably track scene boundaries across a long script with
@@ -435,7 +443,7 @@ def _scene_map_to_prompt_text(scene_map: list[dict]) -> str:
             f"scene_occurrence_id={block['scene_occurrence_id']} "
             f"section_type={block['section_type']}: {prompt_text[:120]}..."
         )
-        for unit in _source_units_with_offsets(block.get("source_text", "")):
+        for unit in _source_units_for_block(block):
             allowed = block.get("batch_unit_ids")
             if allowed and unit["unit_id"] not in allowed and not unit.get("is_context"):
                 continue
@@ -841,7 +849,8 @@ def _validate_cast_against_script(cast_list: list, raw_script: str) -> None:
         raise ValueError("剧本分镜解析被阻止：角色清单包含原文未出现的人物：" + ", ".join(unknown))
 
 
-def _validated_source_fragment(source_block_text: str, raw_desc: str, shot: dict) -> tuple[str, str]:
+def _validated_source_fragment(source_block_text: str, raw_desc: str, shot: dict,
+                               source_units: list[dict] | None = None) -> tuple[str, str]:
     """Resolve a shot to a verified original span, or return an error.
 
     A model summary is never used as a substitute for source text.  Accepted
@@ -850,7 +859,7 @@ def _validated_source_fragment(source_block_text: str, raw_desc: str, shot: dict
     intentionally rejected so sibling actions cannot leak into this shot.
     """
     source = str(source_block_text or "")
-    units = _source_units_with_offsets(source)
+    units = list(source_units or source_units_with_offsets(source))
     by_id = {unit["unit_id"]: unit for unit in units}
     requested_ids = shot.get("source_unit_ids")
     if isinstance(requested_ids, str):
@@ -959,7 +968,7 @@ def _phase1_source_coverage_errors(shots: list, scene_map: list[dict], target_co
                 continue
             if not block_id:
                 continue
-            units = _source_units_with_offsets(block.get("source_text", ""))
+            units = _source_units_for_block(block)
             allowed_ids = {str(value) for value in (block.get("batch_unit_ids") or [])}
             if allowed_ids:
                 units = [unit for unit in units
@@ -1144,7 +1153,7 @@ def _select_batch_scene_map(scene_map: list[dict], total_shots: int,
     flat = []
     for scene in scene_map:
         for block in scene.get("source_blocks", []):
-            for unit in _source_units_with_offsets(block.get("source_text", "")):
+            for unit in _source_units_for_block(block):
                 if not unit.get("is_context"):
                     flat.append((scene, block, unit))
 
@@ -1186,7 +1195,7 @@ def _select_batch_scene_map(scene_map: list[dict], total_shots: int,
             ids = selected.get((id(scene), block.get("source_block_id")))
             if not ids:
                 continue
-            units = _source_units_with_offsets(block.get("source_text", ""))
+            units = _source_units_for_block(block)
             copy = dict(block)
             copy["batch_unit_ids"] = [
                 unit["unit_id"] for unit in units
@@ -1579,7 +1588,8 @@ class AFE_ScriptFullParser:
             char_names = _clean_semantic(shot.get("character_names")) or []
             raw_desc   = _first_present(shot.get("raw_description"), default="")
             source_shot_text, source_validation_error = _validated_source_fragment(
-                source_block_text, raw_desc, shot
+                source_block_text, raw_desc, shot,
+                source_units=_source_units_for_block(source_block) if source_block else None,
             )
             fact_validation_errors = _phase1_fact_validation_errors(
                 shot, source_shot_text, source_block_text
@@ -1861,7 +1871,7 @@ class AFE_ScriptFullParser:
         source_manifest = []
         for scene in scene_map:
             for block in scene.get("source_blocks", []):
-                units = _source_units_with_offsets(block.get("source_text", ""))
+                units = _source_units_for_block(block)
                 if block.get("batch_context_only"):
                     units = []
                 else:

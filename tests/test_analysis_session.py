@@ -260,12 +260,52 @@ def test_cast_from_earlier_batches_is_retained_and_source_units_are_not_reused()
         assert state["analysis_status"] == "complete"
 
 
-def test_create_keeps_unsafe_uncovered_batches_pending_without_reusing_source_units():
+def test_generic_multiline_screenplay_creates_contiguous_batches_without_headings():
+    with tempfile.TemporaryDirectory() as root:
+        script = "\n".join(
+            f"Mina crosses the London market aisle and checks the sign {index}."
+            for index in range(1, 37)
+        )
+        scene_map = [{"scene_id": "scene_001", "source_blocks": [{
+            "source_block_id": "block_001", "scene_occurrence_id": "occ_001",
+            "section_type": "location_scene", "source_text": script,
+        }]}]
+        store = AnalysisSessionStore(root, batch_size=4)
+        state = store.create(script, 36, 5, scene_map)
+        assert state["total_batches"] == 9
+        assert [len(batch["source_unit_ranges"][0]["unit_ids"])
+                for batch in state["batches"]] == [4] * 9
+        assert all(
+            batch["source_unit_ranges"][0]["units"][0]["text"].startswith("Mina")
+            for batch in state["batches"]
+        )
+
+
+def test_generic_punctuation_fragments_keep_verbatim_offsets_and_order():
+    with tempfile.TemporaryDirectory() as root:
+        script = "Mina enters; Mina looks at the door; Mina turns; Mina exits."
+        scene_map = [{"scene_id": "scene_001", "source_blocks": [{
+            "source_block_id": "block_001", "scene_occurrence_id": "occ_001",
+            "section_type": "location_scene", "source_text": script,
+        }]}]
+        state = AnalysisSessionStore(root, batch_size=2).create(script, 4, 5, scene_map)
+        units = [unit for batch in state["batches"]
+                 for item in batch["source_unit_ranges"] for unit in item["units"]]
+        assert len(units) == 4
+        assert [script[unit["start"]:unit["end"]] for unit in units] == [
+            unit["text"] for unit in units
+        ]
+        assert "".join(script[unit["start"]:unit["end"]] for unit in units).replace(" ", "") == script.replace(" ", "")
+
+
     with tempfile.TemporaryDirectory() as root:
         store = AnalysisSessionStore(root, batch_size=1)
-        state = store.create("script", 2, 5, scene_fixture(1))
-        assert state["batches"][0]["source_unit_ranges"]
-        assert state["batches"][1]["source_unit_ranges"] == []
+        try:
+            store.create("script", 2, 5, scene_fixture(1))
+        except ValueError as exc:
+            assert "无法建立" in str(exc)
+        else:
+            raise AssertionError("an impossible generic plan must not create partial batches")
 
 
 def test_concurrent_claim_returns_existing_owner_without_second_claim():
@@ -353,12 +393,15 @@ def test_result_markers_are_isolated_when_script_signature_changes():
         assert state["batches"][0]["status"] == "failed"
 
 
-def test_empty_source_batch_cannot_be_published():
+def test_empty_source_plan_is_rejected_before_any_batch_is_claimable():
     with tempfile.TemporaryDirectory() as root:
         store = AnalysisSessionStore(root, batch_size=1)
-        state = store.create("too few units", 2, 5, scene_fixture(1))
-        assert state["batches"][1]["status"] == "failed"
-        assert state["failed_batches"] == [2]
+        try:
+            store.create("too few units", 2, 5, scene_fixture(1))
+        except ValueError as exc:
+            assert "无法建立" in str(exc)
+        else:
+            raise AssertionError("an empty source batch must not be published")
 
 
 if __name__ == "__main__":

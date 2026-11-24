@@ -15,7 +15,10 @@ import uuid
 from contextlib import contextmanager
 from copy import deepcopy
 
-from ai_film_editor_nodes.nodes.director.screenplay_source_units import source_units_with_offsets
+from ai_film_editor_nodes.nodes.director.screenplay_source_units import (
+    refine_source_units,
+    source_units_with_offsets,
+)
 
 SCHEMA_VERSION = "afe-analysis-session-v1"
 DEFAULT_BATCH_SIZE = 4
@@ -156,6 +159,26 @@ class AnalysisSessionStore:
             if unit.get("unit_id") in set(item.get("unit_ids") or [])
         ]
         explicit_units = [entry for entry in all_units if entry[1].get("is_explicit_shot")]
+        if not explicit_units and len(all_units) < total:
+            # Ordinary scripts often use action lines or clause fragments rather
+            # than numbered shot headings. Refine only at exact punctuation
+            # boundaries and persist those offsets as the batch contract.
+            for item in manifest:
+                refined = refine_source_units(item.get("source_text", ""), total)
+                if len(refined) > len(item.get("units", [])):
+                    item["units"] = refined
+                    item["unit_ids"] = [unit["unit_id"] for unit in refined]
+            all_units = [
+                (item["source_block_id"], unit)
+                for item in manifest
+                for unit in item.get("units", [])
+                if unit.get("unit_id") in set(item.get("unit_ids") or [])
+            ]
+            if len(all_units) < total:
+                raise ValueError(
+                    f"原文只有 {len(all_units)} 个可验证 source unit，无法建立 {total} 个有效镜头边界；"
+                    "拒绝文本切分或静默复制。"
+                )
         if explicit_units:
             if len(explicit_units) != total:
                 raise ValueError(
