@@ -1215,6 +1215,59 @@ def _select_batch_scene_map(scene_map: list[dict], total_shots: int,
     return result
 
 
+def _canonical_explicit_batch_catalog(scene_map: list[dict]) -> list[dict] | None:
+    """Build the authoritative shot catalog for an explicit-shot batch.
+
+    Session/server ranges carry the exact units assigned to the current batch.
+    The model may omit or misstate their metadata, so explicit shots are bound
+    by screenplay order before any Phase 1 validation or Phase 2 prompt is
+    built. Context-only blocks remain available to environment analysis but
+    never become shot catalog entries.
+    """
+    catalog = []
+    ordered_blocks = _ordered_scene_blocks(scene_map)
+    for scene, block in ordered_blocks:
+        if block.get("batch_context_only"):
+            continue
+        units = _source_units_for_block(block)
+        allowed_ids = {str(value) for value in (block.get("batch_unit_ids") or [])}
+        if allowed_ids:
+            units = [unit for unit in units
+                     if str(unit.get("unit_id")) in allowed_ids or unit.get("is_context")]
+        explicit_units = [unit for unit in units if unit.get("is_explicit_shot")]
+        source = str(block.get("source_text") or "")
+        for unit in explicit_units:
+            start, end = unit.get("start"), unit.get("end")
+            if not (isinstance(start, int) and isinstance(end, int)
+                    and 0 <= start < end <= len(source)):
+                # Keep the entry so the later source validator reports the
+                # persisted range defect instead of allowing model evidence.
+                fragment = ""
+            else:
+                fragment = source[start:end]
+            catalog.append({
+                "scene_index": scene.get("scene_index"),
+                "scene_id": scene.get("scene_id"),
+                "source_block_id": str(block.get("source_block_id") or ""),
+                "scene_occurrence_id": str(block.get("scene_occurrence_id") or ""),
+                "section_type": block.get("section_type", scene.get("section_type", "location_scene")),
+                "source_unit_ids": [str(unit.get("unit_id") or "")],
+                "source_start": start,
+                "source_end": end,
+                "source_shot_text": fragment,
+                "source_text": fragment,
+            })
+    return catalog or None
+
+
+def _explicit_source_context(source_block: dict, source_block_text: str) -> str:
+    """Return only non-shot context for an explicit shot's Phase 2 prompt."""
+    # Rebuild from the complete persisted block, not batch_units, because the
+    # latter deliberately contains only the current batch's shot units.
+    units = source_units_with_offsets(source_block_text)
+    return "\n".join(unit["text"] for unit in units if unit.get("is_context")).strip()
+
+
 class AFE_ScriptFullParser:
     """
     全剧本深度解析器 — Two-phase LLM approach.
@@ -1449,6 +1502,19 @@ class AFE_ScriptFullParser:
 
         cast_list    = phase1_data.get("cast", [])
         minimal_shots = phase1_data.get("shots", [])
+        # Explicit shot units are the persisted source contract. Bind each
+        # returned item to its positional unit before coverage or fact checks;
+        # Qwen metadata is enrichment and may be absent or wrong.
+        explicit_catalog = _canonical_explicit_batch_catalog(scene_map)
+        if explicit_catalog is not None:
+            if len(explicit_catalog) != target_shot_count:
+                raise ValueError(
+                    f"当前批次包含 {len(explicit_catalog)} 个显式原文镜头，"
+                    f"但需要 {target_shot_count} 个；拒绝跨批次或拆分镜头。"
+                )
+            for item, canonical in zip(minimal_shots, explicit_catalog):
+                if isinstance(item, dict):
+                    item.update(canonical)
         # Models often restart numbering inside a small request. Canonicalise
         # only the requested contiguous range, never inventing missing shots.
         for local_index, item in enumerate(minimal_shots):
@@ -1585,6 +1651,15 @@ class AFE_ScriptFullParser:
             source_block_text = source_block.get("source_text", "") if source_block else ""
             if not source_block_text:
                 source_block_text = scene_info.get("source_text", "") if scene_info else ""
+            source_context_text = (
+                _explicit_source_context(source_block, source_block_text)
+                if explicit_catalog is not None and source_block else source_block_text
+            )
+            # For explicit shots, location/context evidence may come from the
+            # current block's context unit, but never from sibling shot bodies.
+            fact_source_block_text = (
+                source_context_text if explicit_catalog is not None else source_block_text
+            )
             char_names = _clean_semantic(shot.get("character_names")) or []
             raw_desc   = _first_present(shot.get("raw_description"), default="")
             source_shot_text, source_validation_error = _validated_source_fragment(
@@ -1592,7 +1667,7 @@ class AFE_ScriptFullParser:
                 source_units=_source_units_for_block(source_block) if source_block else None,
             )
             fact_validation_errors = _phase1_fact_validation_errors(
-                shot, source_shot_text, source_block_text
+                shot, source_shot_text, fact_source_block_text
             ) if not source_validation_error else []
             invalid_phase1_fields = set()
             if fact_validation_errors:
@@ -1630,7 +1705,7 @@ class AFE_ScriptFullParser:
                 f"Character Appearance:\n{char_context}\n"
                 f"Source block ID: {source_block_id or 'unverified'}; occurrence: {occurrence_id or 'unverified'}\n"
                 f"Exact source fragment for THIS shot (canonical visual facts; do not add sibling moments):\n{source_shot_text or 'unverified'}\n"
-                f"Scene block context (environment only; do not copy its other actions, characters, props, or dialogue):\n{source_block_text}\n"
+                f"Current block context unit (environment/structure only; do not copy other shots):\n{source_context_text or 'none'}\n"
                 f"Phase 1 shot description (use only to enrich the exact fragment): {raw_desc}\n"
                 f"Dialogue fact: {dialogue or 'null'}; Props fact: {json.dumps(props_list, ensure_ascii=False)}\n"
                 f"Requested structured facts: expression={shot.get('facial_expression','')}; micro_expression={shot.get('micro_expression','')}; gaze={shot.get('gaze','')}; body_language={shot.get('body_language','')}; action_start={shot.get('action_start','')}; action_process={shot.get('action_process','')}; action_end={shot.get('action_end','')}; prop_interactions={shot.get('prop_interactions','')}\n"
@@ -1654,7 +1729,7 @@ class AFE_ScriptFullParser:
             # Phase-1 field from becoming a hallucinated action, person,
             # location, prop, expression, dialogue, light, or weather cue.
             phase2_fact_errors = _fact_validation_errors(
-                p2_data, source_shot_text, source_block_text, "Phase 2"
+                p2_data, source_shot_text, fact_source_block_text, "Phase 2"
             )
             if phase2_fact_errors:
                 assignment_errors.extend(f"{shot_id}: {error}" for error in phase2_fact_errors)
