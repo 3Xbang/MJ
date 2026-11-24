@@ -257,7 +257,13 @@ def test_article_free_non_structural_subject_actions_are_rejected():
         "Equipment vibrates beside the loading bay",
     ):
         assert validate_empty_scene_prompt(prompt), prompt
-    assert not validate_empty_scene_prompt("Windows overlook the courtyard")
+    for prompt in (
+        "steel counters",
+        "glass roofs",
+        "Steel beams support the glass roof",
+        "Windows overlook the courtyard",
+    ):
+        assert not validate_empty_scene_prompt(prompt), prompt
 
 
 def test_embedded_intercut_and_flashback_locations_keep_physical_identity():

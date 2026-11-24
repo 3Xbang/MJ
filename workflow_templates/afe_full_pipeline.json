@@ -205,7 +205,7 @@
         {
           "name": "auto_all",
           "type": "BOOLEAN",
-          "link": 45
+          "link": 47
         }
       ],
       "outputs": [
@@ -299,7 +299,7 @@
         {
           "name": "auto_all",
           "type": "BOOLEAN",
-          "link": 46
+          "link": 48
         }
       ],
       "outputs": [
@@ -309,7 +309,7 @@
           "slot_index": 0,
           "links": [
             16,
-            59
+            45
           ]
         },
         {
@@ -322,7 +322,7 @@
           "name": "props_manifest",
           "type": "STRING",
           "links": [
-            60
+            46
           ],
           "slot_index": 2
         }
@@ -1598,12 +1598,12 @@
           "name": "BOOLEAN",
           "type": "BOOLEAN",
           "links": [
-            45,
-            46,
             47,
             48,
             49,
-            50
+            50,
+            51,
+            52
           ],
           "slot_index": 0
         }
@@ -1639,7 +1639,7 @@
         {
           "name": "auto_all",
           "type": "BOOLEAN",
-          "link": 47
+          "link": 49
         }
       ],
       "outputs": [
@@ -1648,7 +1648,7 @@
           "type": "IMAGE",
           "links": [
             38,
-            51
+            53
           ],
           "slot_index": 0
         },
@@ -1656,7 +1656,7 @@
           "name": "report",
           "type": "STRING",
           "links": [
-            55
+            57
           ],
           "slot_index": 1
         },
@@ -1664,7 +1664,7 @@
           "name": "candidates_preview",
           "type": "IMAGE",
           "links": [
-            52
+            54
           ],
           "slot_index": 2
         }
@@ -1733,19 +1733,19 @@
           "link": 44
         },
         {
-          "name": "auto_all",
-          "type": "BOOLEAN",
-          "link": 48
-        },
-        {
           "name": "props_images",
           "type": "IMAGE",
-          "link": 59
+          "link": 45
         },
         {
           "name": "props_manifest",
           "type": "STRING",
-          "link": 60
+          "link": 46
+        },
+        {
+          "name": "auto_all",
+          "type": "BOOLEAN",
+          "link": 50
         }
       ],
       "outputs": [
@@ -1753,7 +1753,7 @@
           "name": "keyframes",
           "type": "IMAGE",
           "links": [
-            53
+            55
           ],
           "slot_index": 0
         },
@@ -1769,7 +1769,7 @@
           "name": "report",
           "type": "STRING",
           "links": [
-            56
+            58
           ],
           "slot_index": 2
         },
@@ -1777,7 +1777,7 @@
           "name": "candidates_preview",
           "type": "IMAGE",
           "links": [
-            54
+            56
           ],
           "slot_index": 3
         }
@@ -1797,8 +1797,8 @@
         "",
         "",
         "",
-        false,
-        ""
+        "",
+        false
       ],
       "title": "🖼 分镜首帧 (Qwen Image 2.1)"
     },
@@ -1830,7 +1830,7 @@
         {
           "name": "auto_all",
           "type": "BOOLEAN",
-          "link": 49
+          "link": 51
         }
       ],
       "outputs": [
@@ -1846,7 +1846,7 @@
           "name": "report",
           "type": "STRING",
           "links": [
-            57
+            59
           ],
           "slot_index": 1
         }
@@ -1897,16 +1897,9 @@
           "link": 42
         },
         {
-          "name": "render_style",
-          "type": "STRING",
-          "widget": {
-            "name": "render_style"
-          }
-        },
-        {
           "name": "auto_all",
           "type": "BOOLEAN",
-          "link": 50
+          "link": 52
         }
       ],
       "outputs": [
@@ -1920,7 +1913,7 @@
           "name": "report",
           "type": "STRING",
           "links": [
-            58
+            60
           ],
           "slot_index": 1
         }
@@ -1955,7 +1948,7 @@
         {
           "name": "images",
           "type": "IMAGE",
-          "link": 51
+          "link": 53
         }
       ],
       "outputs": [],
@@ -1983,7 +1976,7 @@
         {
           "name": "images",
           "type": "IMAGE",
-          "link": 52
+          "link": 54
         }
       ],
       "outputs": [],
@@ -2011,7 +2004,7 @@
         {
           "name": "images",
           "type": "IMAGE",
-          "link": 53
+          "link": 55
         }
       ],
       "outputs": [],
@@ -2039,7 +2032,7 @@
         {
           "name": "images",
           "type": "IMAGE",
-          "link": 54
+          "link": 56
         }
       ],
       "outputs": [],
@@ -2067,7 +2060,7 @@
         {
           "name": "text",
           "type": "STRING",
-          "link": 55
+          "link": 57
         }
       ],
       "outputs": [
@@ -2104,7 +2097,7 @@
         {
           "name": "text",
           "type": "STRING",
-          "link": 56
+          "link": 58
         }
       ],
       "outputs": [
@@ -2141,7 +2134,7 @@
         {
           "name": "text",
           "type": "STRING",
-          "link": 57
+          "link": 59
         }
       ],
       "outputs": [
@@ -2178,7 +2171,7 @@
         {
           "name": "text",
           "type": "STRING",
-          "link": 58
+          "link": 60
         }
       ],
       "outputs": [
@@ -2545,6 +2538,22 @@
     ],
     [
       45,
+      18,
+      0,
+      33,
+      6,
+      "IMAGE"
+    ],
+    [
+      46,
+      18,
+      2,
+      33,
+      7,
+      "STRING"
+    ],
+    [
+      47,
       31,
       0,
       14,
@@ -2552,7 +2561,7 @@
       "BOOLEAN"
     ],
     [
-      46,
+      48,
       31,
       0,
       18,
@@ -2560,7 +2569,7 @@
       "BOOLEAN"
     ],
     [
-      47,
+      49,
       31,
       0,
       32,
@@ -2568,15 +2577,15 @@
       "BOOLEAN"
     ],
     [
-      48,
+      50,
       31,
       0,
       33,
-      6,
+      8,
       "BOOLEAN"
     ],
     [
-      49,
+      51,
       31,
       0,
       34,
@@ -2584,7 +2593,7 @@
       "BOOLEAN"
     ],
     [
-      50,
+      52,
       31,
       0,
       35,
@@ -2592,7 +2601,7 @@
       "BOOLEAN"
     ],
     [
-      51,
+      53,
       32,
       0,
       36,
@@ -2600,7 +2609,7 @@
       "IMAGE"
     ],
     [
-      52,
+      54,
       32,
       2,
       37,
@@ -2608,7 +2617,7 @@
       "IMAGE"
     ],
     [
-      53,
+      55,
       33,
       0,
       38,
@@ -2616,7 +2625,7 @@
       "IMAGE"
     ],
     [
-      54,
+      56,
       33,
       3,
       39,
@@ -2624,7 +2633,7 @@
       "IMAGE"
     ],
     [
-      55,
+      57,
       32,
       1,
       40,
@@ -2632,7 +2641,7 @@
       "STRING"
     ],
     [
-      56,
+      58,
       33,
       2,
       41,
@@ -2640,7 +2649,7 @@
       "STRING"
     ],
     [
-      57,
+      59,
       34,
       1,
       42,
@@ -2648,27 +2657,11 @@
       "STRING"
     ],
     [
-      58,
+      60,
       35,
       1,
       43,
       0,
-      "STRING"
-    ],
-    [
-      59,
-      18,
-      0,
-      33,
-      7,
-      "IMAGE"
-    ],
-    [
-      60,
-      18,
-      2,
-      33,
-      8,
       "STRING"
     ]
   ],

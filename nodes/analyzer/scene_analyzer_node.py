@@ -34,17 +34,16 @@ _ENV_HUMAN_ROLE_RE = re.compile(
     r"inspector|janitor|customer|shopkeeper|clerk|assistant|agent)\b",
     re.IGNORECASE,
 )
-# A place-only description may use a structural subject ("windows overlook
-# the courtyard"), but an unlisted occupation/action/object relation is not
-# safe for an empty-set reference. Detect ordinary third-person verbs rather
-# than maintaining a finite blacklist: otherwise "Machinery hums" and
-# "Equipment vibrates" can silently contaminate the empty-scene slot.
+# A place-only description may use a structural relation ("windows overlook
+# the courtyard") or a noun compound ("steel counters"). An article-free
+# token ending in ``s`` is therefore ambiguous: distinguish the final token
+# from a known structural noun before treating it as a predicate. A structural
+# noun may use a small, source-grounded relation vocabulary, but an unknown
+# predicate still fails closed so "Machinery hums" and "Equipment vibrates"
+# cannot contaminate the empty-scene slot.
 _ENV_ARTICLE_FREE_SUBJECT_ACTION_RE = re.compile(
-    r"(?<![A-Za-z])(?P<subject>[A-Za-z][A-Za-z-]*(?:\s+[A-Za-z][A-Za-z-]*){0,2})\s+"
-    r"(?P<verb>(?:[A-Za-z][A-Za-z-]*s)|"
-    r"is|are|was|were|has|have|had|does|do|can|will|"
-    r"support|overlook|contain|reveal|connect|lead)"
-    r"(?=\s+[A-Za-z]|[.!?]\s|$)\b",
+    r"(?=(?<![A-Za-z])(?P<subject>[A-Za-z][A-Za-z-]*)\s+"
+    r"(?P<verb>[A-Za-z][A-Za-z-]*)\b)",
     re.IGNORECASE,
 )
 _ENV_STRUCTURAL_SUBJECTS = {
@@ -55,6 +54,13 @@ _ENV_STRUCTURAL_SUBJECTS = {
     "chair", "chairs", "sofa", "sofas", "curtain", "curtains", "building", "buildings",
     "room", "rooms", "hall", "halls", "corridor", "corridors", "street", "streets",
     "garden", "gardens", "sky", "sea", "water", "mist", "fog", "rain", "sunlight",
+}
+_ENV_STRUCTURAL_RELATION_VERBS = {
+    "support", "overlook", "contain", "reveal", "connect", "lead",
+}
+_ENV_PREDICATE_WORDS = {
+    "is", "are", "was", "were", "has", "have", "had", "does", "do", "can", "will",
+    *_ENV_STRUCTURAL_RELATION_VERBS,
 }
 
 
@@ -92,12 +98,22 @@ def validate_empty_scene_prompt(prompt: str, characters=(), forbidden_facts=(), 
     match = _ENV_HUMAN_ROLE_RE.search(text)
     if match:
         return f"contains an unverified human occupation: {match.group(0)}"
-    match = _ENV_ARTICLE_FREE_SUBJECT_ACTION_RE.search(text)
-    if match:
-        subject_words = match.group("subject").lower().split()
-        if not subject_words or subject_words[-1] not in _ENV_STRUCTURAL_SUBJECTS:
-            return ("contains an unverified subject/action relation: "
-                    f"{match.group(0).strip()}")
+    for match in _ENV_ARTICLE_FREE_SUBJECT_ACTION_RE.finditer(text):
+        subject = match.group("subject").lower()
+        verb = match.group("verb").lower()
+        # Inspect overlapping word pairs. This keeps "steel counters" and
+        # "glass roofs" as noun compounds instead of mistaking their plural
+        # head for a verb, while still checking the next pair in a sentence.
+        if subject in {"a", "an", "the"} or verb in _ENV_STRUCTURAL_SUBJECTS:
+            continue
+        if not (verb.endswith("s") or verb in _ENV_PREDICATE_WORDS):
+            continue
+        # A structural noun may use an explicitly structural relation, but
+        # never an unlisted action.
+        if subject in _ENV_STRUCTURAL_SUBJECTS and verb in _ENV_STRUCTURAL_RELATION_VERBS:
+            continue
+        return ("contains an unverified subject/action relation: "
+                f"{subject} {verb}")
     match = _ENV_UNPROVEN_RELATION_RE.search(text)
     if match:
         return f"contains an unverified subject/object relation: {match.group(0)}"
