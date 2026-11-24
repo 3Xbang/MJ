@@ -88,18 +88,26 @@ function saveSettingsSoon() {
 
 function restorePersistedAnalysisRun(view) {
   const p = view && view.analysis_progress;
-  const batch = p && (p.batches || []).find(b => b.status === 'running' && b.prompt_id);
+  // A claim is persisted before /prompt returns. Keep that state visible after
+  // a reload so the customer can cancel/release it instead of losing access.
+  const batch = p && (p.batches || []).find(b => b.status === 'running');
   if (!batch) return null;
-  const sameBatch = S.run && S.run.stage === 1 && S.run.promptId === String(batch.prompt_id);
+  const promptId = batch.prompt_id ? String(batch.prompt_id) : null;
+  const sameBatch = S.run && S.run.stage === 1
+    && ((S.run.batchIndex === Number(batch.batch_index) && S.run.promptId === promptId)
+      || (promptId && S.run.promptId === promptId));
   if (sameBatch) return null;
   S.run = {
     stage: 1,
-    promptId: String(batch.prompt_id),
+    batchIndex: Number(batch.batch_index),
+    promptId,
     labels: { '1': `分析剧本第${batch.batch_index}批` },
-    label: `第${batch.batch_index}批已提交，排队中…`,
+    label: promptId ? `第${batch.batch_index}批已提交，排队中…`
+      : `第${batch.batch_index}批正在提交，可取消并恢复…`,
     t0: Date.now(),
     progress: null,
     persisted: true,
+    submissionPending: !promptId,
   };
   return S.run;
 }
@@ -118,7 +126,7 @@ async function loadProject(name, keep = false) {
     S.open[currentStep()] = true;
   }
   render();
-  if (restoredRun) monitorPrompt(restoredRun, restoredRun.promptId, 1, 'all', true);
+  if (restoredRun && restoredRun.promptId) monitorPrompt(restoredRun, restoredRun.promptId, 1, 'all', true);
   return true;
 }
 
@@ -252,7 +260,8 @@ async function runStage(stage, part = 'all') {
     return;
   }
   if (r.complete) { S.run = null; await loadProject(S.project, true); showOk('剧本分析已完成，可以进行下一步'); return; }
-  run.promptId = r.prompt_id; run.labels = r.labels || {}; run.label = '已提交，排队中…';
+  run.promptId = r.prompt_id; run.batchIndex = r.batch && Number(r.batch.batch_index) || null;
+  run.labels = r.labels || {}; run.label = '已提交，排队中…';
   renderDock();
   return monitorPrompt(run, r.prompt_id, stage, part);
 }
@@ -392,7 +401,7 @@ function renderAnalysisProgress() {
     <div class="batch-list">${(p.batches || []).map(b => `<span class="batch-chip ${esc(b.status)}">第${b.batch_index}批 ${b.status === 'completed' ? '✓' : b.status === 'failed' ? '失败' : b.status === 'running' ? '运行中' : '待处理'}</span>`).join('')}</div>
     ${failed.map(b => `<div class="batch-error">第${b.batch_index}批（镜头${b.shot_start}-${b.shot_end}）：${esc(b.error || '未知错误')} <button class="small" data-act="retry-batch" data-batch="${b.batch_index}" ${S.run ? 'disabled' : ''}>重试此批</button></div>`).join('')}
     <div class="row batch-actions"><button class="primary small" data-act="continue-analysis" ${S.run || p.analysis_status === 'complete' ? 'disabled' : ''}>继续分析</button>
-      <button class="small" data-act="cancel-analysis" ${S.run ? '' : 'disabled'}>取消</button></div></div>`;
+      <button class="small" data-act="cancel-analysis" ${S.run ? '' : 'disabled'}>${S.run && S.run.submissionPending ? '取消提交并恢复' : '取消'}</button></div></div>`;
 }
 /* step 1 — script */
 function renderStep1() {

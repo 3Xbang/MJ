@@ -322,6 +322,22 @@ def main():
             check("targeted retry completes only the failed batch", "已完成镜头 4/6" in page.inner_text(".batch-progress"),
                   page.inner_text(".batch-progress"))
 
+            # A browser restart can leave the durable claim in flight before
+            # /prompt returns. The refreshed page must expose cancellation and
+            # release only that claim so Continue works again.
+            urllib.request.urlopen(f"http://127.0.0.1:{PORT}/mock/claim_pending?project=afe_project").read()
+            page.reload()
+            page.wait_for_selector(".batch-progress")
+            pending_cancel = page.locator(".batch-progress button[data-act=cancel-analysis]")
+            check("restart-window claim exposes cancel recovery", pending_cancel.is_enabled() and
+                  "取消提交" in pending_cancel.inner_text(), page.inner_text(".batch-progress"))
+            pending_cancel.click()
+            page.wait_for_function("() => document.querySelector('.batch-progress .batch-chip.running') === null")
+            check("cancelled restart-window claim returns to continue",
+                  page.locator("button[data-act=continue-analysis]").is_enabled() and
+                  page.locator(".batch-progress .batch-chip.pending").count() == 1,
+                  page.inner_text(".batch-progress"))
+
             check("no JavaScript errors", not errors, "; ".join(errors[:3]))
             browser.close()
     finally:

@@ -314,6 +314,13 @@ def make_app(port: int):
             mock.queue.put_nowait(item)
         return web.json_response({})
 
+    @routes.get("/mock/claim_pending")
+    async def claim_pending(request):
+        project = request.query.get("project", "afe_project")
+        store = api.session_store(api.project_path(project))
+        batch = store.claim_next()
+        return web.json_response({"batch": batch})
+
     @routes.get("/mock/lose_next")
     async def lose_next(request):
         mock.lose_next = True

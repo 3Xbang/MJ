@@ -183,7 +183,7 @@ def test_cancel_releases_submission_pending_claim_without_prompt_id():
         store.create("script", 1, 5, [{"scene_id": "scene_1", "source_blocks": [{
             "source_block_id": "block_1", "source_text": "A room with light."
         }]}], cast=[])
-        store.claim_next()
+        claimed = store.claim_next()
 
         class Request:
             can_read_body = True
@@ -194,6 +194,12 @@ def test_cancel_releases_submission_pending_claim_without_prompt_id():
         assert response.status == 200
         assert store.status()["batches"][0]["status"] == "pending"
         assert store.status()["current_batch"] is None
+        try:
+            store.set_prompt(claimed["batch_index"], "late-prompt", claimed["claim_token"])
+        except ValueError as exc:
+            assert "运行中" in str(exc)
+        else:
+            raise AssertionError("late /prompt response rebound a cancelled claim")
 
 
 def test_reference_upload_rejects_oversized_body_before_reading():
