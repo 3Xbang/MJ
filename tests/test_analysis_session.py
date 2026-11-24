@@ -27,6 +27,29 @@ def result_for(store, batch):
     return {"shots": shots, "cast": [], "source_manifest": ranges}
 
 
+def test_explicit_shot_headings_create_one_contiguous_source_shot_per_batch():
+    with tempfile.TemporaryDirectory() as root:
+        script = "\n\n".join(
+            f"### 镜头{i:03d}（5秒）\n动作开始：动作{i}。\n动作结束：停住。"
+            for i in range(1, 37)
+        )
+        scene_map = [{"scene_id": "scene_001", "source_blocks": [{
+            "source_block_id": "block_001", "scene_occurrence_id": "occurrence_001",
+            "section_type": "location_scene", "source_text": script,
+        }]}]
+        state = AnalysisSessionStore(root, batch_size=4).create(script, 36, 5, scene_map)
+        assert state["total_batches"] == 9
+        assert [batch["source_unit_ranges"][0]["unit_ids"] for batch in state["batches"]] == [
+            [f"unit_{index:03d}" for index in range(start, start + 4)]
+            for start in range(1, 37, 4)
+        ]
+        assert all(
+            len(batch["source_unit_ranges"]) == 1
+            and len(batch["source_unit_ranges"][0]["unit_ids"]) == 4
+            for batch in state["batches"]
+        )
+
+
 def test_ab_a_source_blocks_are_batched_in_screenplay_order():
     with tempfile.TemporaryDirectory() as root:
         scene_map = [{"scene_id": "scene_A", "source_blocks": [

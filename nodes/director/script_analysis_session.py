@@ -15,6 +15,8 @@ import uuid
 from contextlib import contextmanager
 from copy import deepcopy
 
+from ai_film_editor_nodes.nodes.director.screenplay_source_units import source_units_with_offsets
+
 SCHEMA_VERSION = "afe-analysis-session-v1"
 DEFAULT_BATCH_SIZE = 4
 
@@ -48,17 +50,7 @@ def _unit_manifest(scene_map: list[dict]) -> list[dict]:
         return int(match.group(1)) if match else len(blocks)
     for block, scene in sorted(blocks, key=source_order):
         text = str(block.get("source_text") or "")
-        # Keep the same stable unit algorithm without importing the model
-        # node. Newline and sentence boundaries are sufficient for planning.
-        import re
-        parts = [p.strip() for p in re.split(r"\n\s*\n+|(?<=[。！？!?])\s+|(?<=[。！？!?])(?=[\u4e00-\u9fff])|(?<=[.!?])\s+", text) if p.strip()]
-        units = []
-        cursor = 0
-        for index, part in enumerate(parts):
-            start = text.find(part, cursor)
-            end = start + len(part) if start >= 0 else cursor + len(part)
-            units.append({"unit_id": f"unit_{index + 1:03d}", "start": start, "end": end, "text": part})
-            cursor = max(end, cursor)
+        units = source_units_with_offsets(text)
         manifest.append({
             "order": len(manifest), "scene_id": scene.get("scene_id"),
             "scene_occurrence_id": block.get("scene_occurrence_id"),
@@ -105,35 +97,47 @@ class AnalysisSessionStore:
         manifest = _unit_manifest(scene_map)
         total = int(target_shot_count)
         batches = []
-        flat_units = [(item["source_block_id"], unit) for item in manifest for unit in item["unit_ids"]]
+        all_units = [
+            (item["source_block_id"], unit)
+            for item in manifest for unit in item.get("units", [])
+        ]
+        explicit_units = [entry for entry in all_units if entry[1].get("is_explicit_shot")]
+        if explicit_units:
+            if len(explicit_units) != total:
+                raise ValueError(
+                    f"原文包含 {len(explicit_units)} 个显式镜头边界，但目标为 {total} 个镜头；"
+                    "不会跨镜头拆分或静默填充镜头。"
+                )
+            flat_units = explicit_units
+        else:
+            flat_units = [entry for entry in all_units if not entry[1].get("is_context")]
         if total <= 0:
             raise ValueError("目标镜头数必须大于零")
         for start in range(1, total + 1, self.batch_size):
             end = min(total, start + self.batch_size - 1)
-            # Source ranges are ordered and deterministic. A unit is assigned to
-            # one batch; no round-robin or synthetic shot is ever introduced.
-            if len(flat_units) < total:
+            # Source ranges are ordered and deterministic. Explicit shot units
+            # are selected one-for-one; generic scripts retain proportional
+            # planning because they have no declared shot boundaries.
+            if explicit_units:
+                selected_units = flat_units[start - 1:end]
+            elif len(flat_units) < total:
                 # Keep every real unit in screenplay order. Remaining batches
                 # stay empty and will fail validation rather than reusing text.
                 lo, hi = min(start - 1, len(flat_units)), min(end, len(flat_units))
+                selected_units = flat_units[lo:hi]
             else:
                 lo = (start - 1) * len(flat_units) // total
                 hi = end * len(flat_units) // total
                 if end == total:
                     hi = len(flat_units)
-            selected_units = flat_units[lo:hi]
+                selected_units = flat_units[lo:hi]
             ranges = []
-            for block_id, unit_id in selected_units:
-                item = next(x for x in manifest if x["source_block_id"] == block_id)
+            for block_id, unit in selected_units:
                 current = next((x for x in ranges if x["source_block_id"] == block_id), None)
                 if current is None:
                     current = {"source_block_id": block_id, "unit_ids": []}; ranges.append(current)
-                current["unit_ids"].append(unit_id)
-                manifest_item = next(x for x in manifest if x["source_block_id"] == block_id)
-                unit_detail = next((item for item in manifest_item.get("units", [])
-                                    if item["unit_id"] == unit_id), None)
-                if unit_detail:
-                    current.setdefault("units", []).append(deepcopy(unit_detail))
+                current["unit_ids"].append(unit["unit_id"])
+                current.setdefault("units", []).append(deepcopy(unit))
             batches.append({
                 "batch_index": len(batches) + 1, "shot_start": start, "shot_end": end,
                 "source_block_ids": [x["source_block_id"] for x in ranges],

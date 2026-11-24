@@ -14,6 +14,10 @@ import os
 import re
 from ai_film_editor_nodes.lib.utils.logger import get_logger
 from ai_film_editor_nodes.nodes.video.shot_prompt_contract import normalize_shot
+from ai_film_editor_nodes.nodes.director.screenplay_source_units import (
+    explicit_shot_units,
+    source_units_with_offsets,
+)
 
 logger = get_logger("AFE_ScriptFullParser")
 DEFAULT_DIRECT_BATCH_SIZE = 4
@@ -432,7 +436,7 @@ def _scene_map_to_prompt_text(scene_map: list[dict]) -> str:
         )
         for unit in _source_units_with_offsets(block.get("source_text", "")):
             allowed = block.get("batch_unit_ids")
-            if allowed and unit["unit_id"] not in allowed:
+            if allowed and unit["unit_id"] not in allowed and not unit.get("is_context"):
                 continue
             lines.append(
                 f"      source_unit_id={unit['unit_id']} "
@@ -650,37 +654,12 @@ def _first_present(*values, default=""):
 
 
 def _source_units_with_offsets(source_text: str) -> list[dict]:
-    """Return stable, verifiable units from one source block.
+    """Return stable, verifiable source units for parser validation.
 
-    Offsets are relative to the unmodified block text.  The phase-1 model can
-    identify one or more of these units instead of paraphrasing a moment.  The
-    parser then joins the original span, preserving every screenplay fact and
-    the separators between adjacent units.
+    Explicit shot headings are handled as hard boundaries by the shared
+    splitter. This wrapper keeps the parser's existing private API intact.
     """
-    source = str(source_text or "")
-    boundary = re.compile(
-        r"\n\s*\n+|(?<=[。！？!?])\s+|(?<=[。！？!?])(?=[\u4e00-\u9fff])|(?<=[.!?])\s+"
-    )
-    units = []
-    start = 0
-    for match in boundary.finditer(source):
-        end = match.start()
-        raw = source[start:end]
-        left = len(raw) - len(raw.lstrip())
-        right = len(raw.rstrip())
-        if left < right:
-            units.append({"unit_id": f"unit_{len(units) + 1:03d}",
-                          "start": start + left, "end": start + right,
-                          "text": source[start + left:start + right]})
-        start = match.end()
-    raw = source[start:]
-    left = len(raw) - len(raw.lstrip())
-    right = len(raw.rstrip())
-    if left < right:
-        units.append({"unit_id": f"unit_{len(units) + 1:03d}",
-                      "start": start + left, "end": start + right,
-                      "text": source[start + left:start + right]})
-    return units
+    return source_units_with_offsets(source_text)
 
 
 def _source_units(source_text: str) -> list[str]:
@@ -967,7 +946,14 @@ def _phase1_source_coverage_errors(shots: list, scene_map: list[dict], target_co
             units = _source_units_with_offsets(block.get("source_text", ""))
             allowed_ids = {str(value) for value in (block.get("batch_unit_ids") or [])}
             if allowed_ids:
-                units = [unit for unit in units if unit["unit_id"] in allowed_ids]
+                units = [unit for unit in units
+                         if unit["unit_id"] in allowed_ids or unit.get("is_context")]
+            # A pre-heading scene/environment fragment is prompt context, not
+            # a shot. It must remain available to the model but must not consume
+            # a shot slot or make a complete explicit-shot batch fail coverage.
+            explicit = explicit_shot_units(units)
+            if explicit:
+                units = explicit
             blocks_by_id[block_id] = block
             all_units[block_id] = units
     ordered_block_ids = sorted(
@@ -1132,32 +1118,50 @@ TO_ENGLISH_SYSTEM = (
 
 def _select_batch_scene_map(scene_map: list[dict], total_shots: int,
                             shot_start: int, shot_end: int) -> list[dict]:
-    """Keep only the exact ordered source units assigned to this batch."""
+    """Keep exact screenplay shot units assigned to this contiguous batch.
+
+    Explicit shot headings are authoritative. Generic scripts retain the
+    existing ordered source-unit partition because they provide no shot
+    boundary to honor.
+    """
     flat = []
     for scene in scene_map:
         for block in scene.get("source_blocks", []):
             for unit in _source_units_with_offsets(block.get("source_text", "")):
-                flat.append((scene, block, unit))
+                if not unit.get("is_context"):
+                    flat.append((scene, block, unit))
+
     def source_order(item):
         block = item[1]
         if block.get("source_order") is not None:
             return int(block["source_order"])
         match = re.search(r"(\d+)$", str(block.get("source_block_id") or ""))
         return int(match.group(1)) if match else len(flat)
+
     flat.sort(key=source_order)
-    if len(flat) < total_shots:
-        raise ValueError(
-            f"原文只有 {len(flat)} 个可验证 source unit，无法安全生成 {total_shots} 个镜头；"
-            "不会复制原文或静默填充镜头。"
-        )
-    lo = (shot_start - 1) * len(flat) // total_shots
-    hi = shot_end * len(flat) // total_shots
-    if shot_end == total_shots:
-        hi = len(flat)
-    selected = {(id(scene), block.get("source_block_id")): set()
-                for scene, block, _ in flat[lo:hi]}
-    for scene, block, unit in flat[lo:hi]:
-        selected[(id(scene), block.get("source_block_id"))].add(unit["unit_id"])
+    explicit = [item for item in flat if item[2].get("is_explicit_shot")]
+    if explicit:
+        if len(explicit) != total_shots:
+            raise ValueError(
+                f"原文包含 {len(explicit)} 个显式镜头边界，但目标为 {total_shots} 个镜头；"
+                "不会跨镜头拆分或静默填充镜头。"
+            )
+        selected_items = explicit[shot_start - 1:shot_end]
+    else:
+        if len(flat) < total_shots:
+            raise ValueError(
+                f"原文只有 {len(flat)} 个可验证 source unit，无法安全生成 {total_shots} 个镜头；"
+                "不会复制原文或静默填充镜头。"
+            )
+        lo = (shot_start - 1) * len(flat) // total_shots
+        hi = shot_end * len(flat) // total_shots
+        if shot_end == total_shots:
+            hi = len(flat)
+        selected_items = flat[lo:hi]
+
+    selected = {}
+    for scene, block, unit in selected_items:
+        selected.setdefault((id(scene), block.get("source_block_id")), set()).add(unit["unit_id"])
     result = []
     for scene in scene_map:
         blocks = []
@@ -1165,12 +1169,17 @@ def _select_batch_scene_map(scene_map: list[dict], total_shots: int,
             ids = selected.get((id(scene), block.get("source_block_id")))
             if not ids:
                 continue
+            units = _source_units_with_offsets(block.get("source_text", ""))
             copy = dict(block)
-            copy["batch_unit_ids"] = sorted(ids, key=lambda value: int(value.rsplit("_", 1)[-1]))
-            copy["prompt_source_text"] = "\n".join(
-                unit["text"] for unit in _source_units_with_offsets(block.get("source_text", ""))
+            copy["batch_unit_ids"] = [
+                unit["unit_id"] for unit in units
                 if unit["unit_id"] in ids
-            )
+            ]
+            # Keep scene/environment metadata in every prompt, while only the
+            # selected explicit shot units consume this batch's source range.
+            context = [unit["text"] for unit in units if unit.get("is_context")]
+            selected_text = [unit["text"] for unit in units if unit["unit_id"] in ids]
+            copy["prompt_source_text"] = "\n".join(context + selected_text)
             blocks.append(copy)
         if blocks:
             copy = dict(scene)

@@ -671,7 +671,9 @@ class Api:
                     block["batch_unit_ids"] = sorted(source_ranges[block_id])
                     units = _source_units_with_offsets(block.get("source_text", ""))
                     block["prompt_source_text"] = "\n".join(
-                        unit["text"] for unit in units if unit["unit_id"] in source_ranges[block_id]
+                        [unit["text"] for unit in units if unit.get("is_context")]
+                        + [unit["text"] for unit in units
+                           if unit["unit_id"] in source_ranges[block_id]]
                     )
                     blocks.append(block)
                 if blocks:
