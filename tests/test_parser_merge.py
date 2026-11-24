@@ -206,6 +206,49 @@ def test_phase1_coverage_rejects_truncated_or_repeated_source_blocks():
     assert any("顺序" in error for error in ordered_errors), ordered_errors
 
 
+def test_batch_environment_analysis_keeps_full_repeated_scene_context():
+    class EnvironmentContextParser(StubParser):
+        def __init__(self):
+            super().__init__(_phase1(), _null_phase2())
+            self.environment_prompts = []
+
+        def _call_llm(self, system_prompt, user_prompt, model_path, max_new_tokens=2048):
+            if system_prompt == parser_mod.SCENE_ENV_SYSTEM:
+                self.environment_prompts.append(user_prompt)
+            return super()._call_llm(system_prompt, user_prompt, model_path, max_new_tokens)
+
+    parser = EnvironmentContextParser()
+    context = {
+        "scene_map": [{
+            "scene_index": 1,
+            "scene_id": "scene_001",
+            "sample_header": "INT. London supermarket - NIGHT",
+            "preview": "The supermarket has 6000K fluorescent ceiling lights and wet floors.",
+            "source_text": "Mina walks between the aisles.",
+            "environment_source_text": (
+                "INT. London supermarket - NIGHT\n"
+                "The supermarket has 6000K fluorescent ceiling lights and wet floors.\n"
+                "Mina walks between the aisles."
+            ),
+            "source_blocks": [{
+                "source_block_id": "block_001",
+                "scene_occurrence_id": "occurrence_002",
+                "section_type": "location_scene",
+                "source_text": "Mina walks between the aisles.",
+                "batch_unit_ids": ["unit_001"],
+            }],
+        }]
+    }
+    parser.parse_script(
+        "Mina walks between the aisles.", target_duration_seconds=5,
+        seconds_per_shot=5, model_path="stub", batch_start_shot=1,
+        batch_end_shot=1, batch_context_json=json.dumps(context),
+    )
+    assert len(parser.environment_prompts) == 1
+    assert "6000K fluorescent ceiling lights" in parser.environment_prompts[0]
+    assert "Mina walks between the aisles" in parser.environment_prompts[0]
+
+
 def test_environment_prompt_failure_blocks_analysis_instead_of_fallback():
     class EnvFailureParser(StubParser):
         def _call_llm(self, system_prompt, user_prompt, model_path, max_new_tokens=2048):

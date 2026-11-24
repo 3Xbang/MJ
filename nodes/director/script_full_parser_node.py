@@ -1466,7 +1466,7 @@ class AFE_ScriptFullParser:
         scene_env: dict[int, dict] = {}
         for s in scene_map:
             idx = s["scene_index"]
-            src = s.get("source_text", "")
+            src = str(s.get("environment_source_text") or s.get("source_text") or "")
             if not src.strip():
                 raise ValueError(f"场景 {idx}（{s.get('sample_header', '')}）没有可用的原文环境")
             try:

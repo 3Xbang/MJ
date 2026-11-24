@@ -662,6 +662,15 @@ class Api:
             }
             scene_subset = []
             for scene in session.get("scene_map", []):
+                # Keep shot provenance limited to this batch, but retain the
+                # complete ordered screenplay for the place-only environment
+                # pass. Repeated occurrences of one physical scene can carry
+                # lighting and set facts from an earlier occurrence.
+                environment_source_text = "\n".join(
+                    str(source_block.get("source_text", ""))
+                    for _, source_block in _ordered_scene_blocks([scene])
+                    if str(source_block.get("source_text", "")).strip()
+                ) or str(scene.get("source_text", ""))
                 blocks = []
                 for source_block in scene.get("source_blocks", []):
                     block_id = str(source_block.get("source_block_id"))
@@ -677,8 +686,10 @@ class Api:
                     )
                     blocks.append(block)
                 if blocks:
-                    item = dict(scene); item["source_blocks"] = blocks
+                    item = dict(scene)
+                    item["source_blocks"] = blocks
                     item["source_text"] = "\n".join(b.get("prompt_source_text", "") for b in blocks)
+                    item["environment_source_text"] = environment_source_text
                     scene_subset.append(item)
             ordered_blocks = _ordered_scene_blocks(scene_subset)
             scene_order = {}

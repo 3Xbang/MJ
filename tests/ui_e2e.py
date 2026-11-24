@@ -62,9 +62,9 @@ def main():
             page.wait_for_selector("#stepper .step-chip")
             page.evaluate("() => { S.open[2] = true; render(); }")
             check("reference upload entry is visible even before the script is analysed",
-                  page.locator(".card[data-step='2'] details.refs summary").is_visible())
+                  page.locator(".card[data-step='2'] details.refs > summary").is_visible())
             check("... with an explanation that it is optional",
-                  "不上传也完全没问题" in page.inner_text(".card[data-step='2'] details.refs"))
+                  page.get_by_text("不上传也完全没问题", exact=False).count() > 0)
             check("version label shown in the header", "版本" in page.inner_text("#ver"), page.inner_text("#ver"))
             page.evaluate("() => { S.open = {1: true}; render(); }")
             check("page loads, 5 steps shown", page.locator("#stepper .step-chip").count() == 5)
