@@ -249,6 +249,17 @@ def test_unlisted_article_free_occupation_relations_are_rejected():
     assert not validate_empty_scene_prompt("Steel beams support the glass roof")
 
 
+def test_article_free_non_structural_subject_actions_are_rejected():
+    from ai_film_editor_nodes.nodes.analyzer.scene_analyzer_node import validate_empty_scene_prompt
+    for prompt in (
+        "Crane hums beside warehouse",
+        "Machinery hums in workshop",
+        "Equipment vibrates beside the loading bay",
+    ):
+        assert validate_empty_scene_prompt(prompt), prompt
+    assert not validate_empty_scene_prompt("Windows overlook the courtyard")
+
+
 def test_embedded_intercut_and_flashback_locations_keep_physical_identity():
     sm = m._build_scene_map(
         "INTERCUT WITH EXT. HARBOR - NIGHT\nA boat waits.\n"

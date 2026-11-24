@@ -36,16 +36,15 @@ _ENV_HUMAN_ROLE_RE = re.compile(
 )
 # A place-only description may use a structural subject ("windows overlook
 # the courtyard"), but an unlisted occupation/action/object relation is not
-# safe for an empty-set reference. This deliberately covers article-free model
-# output such as "Technician inspects machinery" and "Security officer stands
-# beside equipment" without maintaining a finite list of forbidden actions.
+# safe for an empty-set reference. Detect ordinary third-person verbs rather
+# than maintaining a finite blacklist: otherwise "Machinery hums" and
+# "Equipment vibrates" can silently contaminate the empty-scene slot.
 _ENV_ARTICLE_FREE_SUBJECT_ACTION_RE = re.compile(
-    r"^\s*(?P<subject>[A-Za-z][A-Za-z-]*(?:\s+[A-Za-z][A-Za-z-]*){0,2})\s+"
-    r"(?P<verb>inspects?|stands?|checks?|examines?|operates?|handles?|"
-    r"holds?|carries?|uses?|wears?|grips?|touches?|opens?|closes?|"
-    r"walks?|runs?|moves?|enters?|leaves?|looks?|watches?|sits?|sits|"
-    r"works?|cleans?|arranges?|serves?|waits?|talks?|speaks?|"
-    r"supports?|overlooks?|contains?|reveals?|connects?|leads?)\b",
+    r"(?<![A-Za-z])(?P<subject>[A-Za-z][A-Za-z-]*(?:\s+[A-Za-z][A-Za-z-]*){0,2})\s+"
+    r"(?P<verb>(?:[A-Za-z][A-Za-z-]*s)|"
+    r"is|are|was|were|has|have|had|does|do|can|will|"
+    r"support|overlook|contain|reveal|connect|lead)"
+    r"(?=\s+[A-Za-z]|[.!?]\s|$)\b",
     re.IGNORECASE,
 )
 _ENV_STRUCTURAL_SUBJECTS = {

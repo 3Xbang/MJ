@@ -139,6 +139,17 @@ def test_parser_preserves_explicit_locked_camera_cue():
     assert (motion, source, explicit) == ("static", "script", True)
 
 
+def test_parser_preserves_reaction_hold_but_not_object_hold():
+    reaction = parser_mod._camera_motion_from_phases(
+        {}, {}, "Hold on reaction while Mina looks toward the door.", ""
+    )
+    assert reaction == ("static", "script", True)
+    object_hold = parser_mod._camera_motion_from_phases(
+        {}, {}, "Mina holds the cup while speaking.", ""
+    )
+    assert object_hold[0] != "static"
+
+
 def test_phase2_static_for_ordinary_dialogue_is_derived_motion():
     shot = _parse(_phase1(), _null_phase2("static"))
     assert shot["camera_motion"] != "static"

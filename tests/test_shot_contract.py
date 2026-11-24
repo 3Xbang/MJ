@@ -48,6 +48,15 @@ def test_neutral_horizontal_motion_alias_does_not_invent_direction():
     assert shot["camera_motion"] == "pan_horizontal"
     assert "without a prescribed direction" in build_video_prompt(shot)
 
+
+def test_reaction_hold_is_static_but_object_hold_is_not():
+    reaction = normalize_shot({"source_shot_text": "hold on reaction"})
+    assert reaction["camera_motion"] == "static"
+    assert "locked off" in build_video_prompt(reaction).lower()
+
+    object_action = normalize_shot({"source_shot_text": "hold the cup"})
+    assert object_action["camera_motion"] != "static"
+
     fallback = normalize_shot({})
     assert fallback["camera_motion"] == "pan_horizontal"
 

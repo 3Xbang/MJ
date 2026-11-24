@@ -30,6 +30,10 @@ _STATIC_CAMERA_CUES = re.compile(
     r"\b(?:locked(?:[- ]off)?|fixed|still)\s+(?:camera|shot|frame|view)\b|"
     r"\b(?:camera|shot|frame|view)\s+(?:is\s+)?(?:static|fixed|still|locked(?:[- ]off)?)\b|"
     r"\bhold\s+(?:on\s+)?(?:the\s+)?(?:camera|shot|frame|view)\b|"
+    # Reaction/subject holds are director camera cues; ordinary object actions
+    # such as "hold the cup" remain outside this expression.
+    r"\bhold\s+(?:on\s+)?(?:the\s+)?(?:reaction|subject|expression|face|response)\b|"
+    r"\bhold\s+on\s+(?:his|her|their)\s+(?:reaction|expression|face)\b|"
     r"(?:固定机位|固定镜头|定机位|镜头停留|画面停留|"
     r"(?:镜头|机位|画面)(?:保持不动|静止|固定)|"
     r"(?:保持不动|静止|固定)(?:镜头|机位|画面))", re.IGNORECASE,
@@ -120,10 +124,10 @@ def camera_motion_for(shot: dict) -> tuple[str, str]:
     # or an object action as ``static``.
     explicit_static = bool(shot.get("locked_camera"))
     explicit_static = explicit_static or bool(_STATIC_CAMERA_CUES.search(source_text))
+    if explicit_static:
+        return "static", "script"
     if raw in CAMERA_MOTIONS and raw != "static":
         return raw, source or "script"
-    if raw == "static" and explicit_static:
-        return "static", "script"
     text = " ".join(_text(shot.get(k)) for k in ("shot_type", "action", "business", "section_type", "director_notes")).lower()
     section = _text(shot.get("section_type")).lower()
     if section in {"epilogue", "ending", "transition"} or re.search(r"ending|resolution|fade|淡出|结尾", text):
