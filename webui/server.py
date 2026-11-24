@@ -714,8 +714,12 @@ class Api:
                 published = read_json(os.path.join(pp, "analysis.json"), {}) or {}
                 if published.get("session_signature") != current_session.get("script_signature"):
                     return web.json_response({"error": "当前剧本尚未发布匹配的完整分析结果。"}, status=409)
-            elif not os.path.exists(os.path.join(pp, "analysis.json")):
-                return web.json_response({"error": "请先完成第 ① 步「分析剧本」。"}, status=400)
+            else:
+                # A leftover analysis.json is retained for recovery and audit,
+                # but it is not proof that this project has a current,
+                # resumable session.  Downstream stages require the durable
+                # session gate above; never fall back to file existence.
+                return web.json_response({"error": "请先完成第 ① 步「分析剧本」，并保留可恢复的分析会话。"}, status=400)
         os.makedirs(pp, exist_ok=True)
         st.setdefault("run_settings", {})[str(stage)] = {**{k: s.get(k, "") for k in USED_KEYS},
                                                          "refs": self.ref_sig(pp),

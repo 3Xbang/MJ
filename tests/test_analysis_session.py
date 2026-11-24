@@ -19,12 +19,26 @@ def scene_fixture(count=36):
 
 
 def result_for(store, batch):
-    state = store.load()
-    ranges = batch["source_unit_ranges"]
-    shots = [{"shot_id": f"shot_{n:03d}", "source_unit_ids": ["unit_001"],
-              "source_block_id": ranges[min(n - batch["shot_start"], len(ranges) - 1)]["source_block_id"]}
-             for n in range(batch["shot_start"], batch["shot_end"] + 1)]
-    return {"shots": shots, "cast": [], "source_manifest": ranges}
+    expected = [
+        (item["source_block_id"], unit_id)
+        for item in batch["source_unit_ranges"]
+        for unit_id in item.get("unit_ids", [])
+    ]
+    if len(expected) != batch["shot_end"] - batch["shot_start"] + 1:
+        raise AssertionError("fixture must provide one source unit per shot")
+    shots = [{"shot_id": f"shot_{n:03d}", "source_unit_ids": [unit_id],
+              "source_block_id": block_id}
+             for n, (block_id, unit_id) in zip(
+                 range(batch["shot_start"], batch["shot_end"] + 1), expected)]
+    source_manifest = []
+    for block_id, unit_id in expected:
+        item = next((entry for entry in source_manifest
+                     if entry["source_block_id"] == block_id), None)
+        if item is None:
+            item = {"source_block_id": block_id, "unit_ids": []}
+            source_manifest.append(item)
+        item["unit_ids"].append(unit_id)
+    return {"shots": shots, "cast": [], "source_manifest": source_manifest}
 
 
 def test_explicit_shot_headings_create_one_contiguous_source_shot_per_batch():
@@ -48,6 +62,31 @@ def test_explicit_shot_headings_create_one_contiguous_source_shot_per_batch():
             and len(batch["source_unit_ranges"][0]["unit_ids"]) == 4
             for batch in state["batches"]
         )
+
+
+def test_explicit_preamble_is_persisted_as_context_but_final_coverage_uses_36_shots():
+    with tempfile.TemporaryDirectory() as root:
+        script = "环境设定：伦敦超市外，夜雨。\n\n" + "\n\n".join(
+            f"### 镜头{i:03d}（5秒）\n动作{i}。" for i in range(1, 37)
+        )
+        scene_map = [{"scene_id": "scene_001", "source_blocks": [{
+            "source_block_id": "block_001", "scene_occurrence_id": "occurrence_001",
+            "section_type": "location_scene", "source_text": script,
+        }]}]
+        store = AnalysisSessionStore(root, batch_size=4)
+        state = store.create(script, 36, 5, scene_map)
+        manifest = state["source_manifest"][0]
+        assert manifest["context_units"][0]["text"].startswith("环境设定")
+        assert manifest["unit_ids"] == [f"unit_{i:03d}" for i in range(1, 37)]
+        while True:
+            batch = store.claim_next()
+            if batch["status"] == "complete":
+                break
+            store.commit_batch(batch["batch_index"], result_for(store, batch))
+        final = store.status()
+        assert final["analysis_status"] == "complete"
+        assert len(final["parsed_shots"]) == 36
+        assert final["source_manifest"][0]["context_units"][0]["text"].startswith("环境设定")
 
 
 def test_ab_a_source_blocks_are_batched_in_screenplay_order():

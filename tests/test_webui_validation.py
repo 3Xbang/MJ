@@ -10,6 +10,8 @@ sys.path.insert(0, os.path.dirname(ROOT))
 from ai_film_editor_nodes.webui.server import (
     _validate_analysis_payload, Api, MAX_REF_UPLOAD_BYTES,
 )
+from ai_film_editor_nodes.nodes.video.analysis_loader_node import AFE_AnalysisLoader
+import ai_film_editor_nodes.nodes.video.analysis_loader_node as analysis_loader_module
 
 
 from ai_film_editor_nodes.webui import graphs
@@ -51,6 +53,81 @@ def _complete_analysis(unit_ids=("unit_001",)):
 
 def test_webui_accepts_complete_structured_analysis():
     _validate_analysis_payload(_complete_analysis())
+
+
+def test_explicit_context_is_retained_while_36_shot_publication_passes():
+    import tempfile
+    from ai_film_editor_nodes.nodes.director.script_analysis_session import AnalysisSessionStore
+    with tempfile.TemporaryDirectory() as root:
+        script = "环境设定：伦敦超市外，夜雨。\n\n" + "\n\n".join(
+            f"### 镜头{i:03d}（5秒）\n动作{i}。" for i in range(1, 37)
+        )
+        scene_map = [{"scene_id": "scene_001", "source_blocks": [{
+            "source_block_id": "block_001", "scene_occurrence_id": "occurrence_001",
+            "section_type": "location_scene", "source_text": script,
+        }]}]
+        store = AnalysisSessionStore(os.path.join(root, "session"), 4)
+        store.create(script, 36, 5, scene_map)
+        while True:
+            batch = store.claim_next()
+            if batch["status"] == "complete":
+                break
+            expected = [(item["source_block_id"], unit_id)
+                        for item in batch["source_unit_ranges"]
+                        for unit_id in item["unit_ids"]]
+            shots = [{"shot_id": f"shot_{number:03d}", "scene_id": "scene_001",
+                      "scene_occurrence_id": "occurrence_001", "source_block_id": block_id,
+                      "source_unit_ids": [unit_id], "section_type": "location_scene"}
+                     for number, (block_id, unit_id) in zip(
+                         range(batch["shot_start"], batch["shot_end"] + 1), expected)]
+            manifest = [{"source_block_id": batch["source_unit_ranges"][0]["source_block_id"],
+                         "unit_ids": [unit_id for _, unit_id in expected]}]
+            store.commit_batch(batch["batch_index"], {"shots": shots, "cast": [],
+                                                        "source_manifest": manifest})
+        analysis = Api(root, "http://127.0.0.1:8188")._assembled_analysis(store.status())
+        assert len(analysis["shots"]) == 36
+        assert analysis["source_manifest"][0]["unit_ids"] == [f"unit_{i:03d}" for i in range(1, 37)]
+        assert analysis["source_manifest"][0]["context_units"][0]["text"].startswith("环境设定")
+
+
+def test_downstream_loader_rejects_partial_or_orphan_analysis():
+    import tempfile
+    with tempfile.TemporaryDirectory() as root:
+        path = os.path.join(root, "analysis.json")
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump({"schema_version": "afe-analysis-v1", "analysis_status": "partial",
+                       "session_signature": "orphan", "expected_shot_count": 0,
+                       "shots": [], "source_manifest": []}, fh)
+        original = analysis_loader_module.analysis_path
+        analysis_loader_module.analysis_path = lambda _project: path
+        try:
+            try:
+                AFE_AnalysisLoader().load("orphan")
+            except ValueError as exc:
+                assert "尚未完成" in str(exc)
+            else:
+                raise AssertionError("downstream loader accepted partial analysis")
+        finally:
+            analysis_loader_module.analysis_path = original
+
+
+def test_stage_two_rejects_orphan_analysis_without_session():
+    import tempfile
+    with tempfile.TemporaryDirectory() as root:
+        api = Api(root, "http://127.0.0.1:8188")
+        project = api.project_path("orphan")
+        os.makedirs(project, exist_ok=True)
+        with open(os.path.join(project, "ui_state.json"), "w", encoding="utf-8") as fh:
+            json.dump({"settings": {"script": "script", "duration": 5, "seconds_per_shot": 5}}, fh)
+        with open(os.path.join(project, "analysis.json"), "w", encoding="utf-8") as fh:
+            json.dump(_complete_analysis(), fh)
+
+        class Request:
+            async def json(self):
+                return {"project": "orphan", "stage": 2}
+
+        response = asyncio.run(api.run(Request()))
+        assert response.status == 400
 
 
 def test_webui_rejects_missing_manifest_even_with_identity_fields():

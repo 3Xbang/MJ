@@ -51,12 +51,19 @@ def _unit_manifest(scene_map: list[dict]) -> list[dict]:
     for block, scene in sorted(blocks, key=source_order):
         text = str(block.get("source_text") or "")
         units = source_units_with_offsets(text)
+        # Context before the first explicit heading remains persisted with the
+        # session and is sent to Qwen, but it is not a shot-consumable source
+        # unit.  Keep it in ``context_units`` rather than making final coverage
+        # require a fake shot for environment/title text.
+        consumable = [unit for unit in units if not unit.get("is_context")]
+        context_units = [unit for unit in units if unit.get("is_context")]
         manifest.append({
             "order": len(manifest), "scene_id": scene.get("scene_id"),
             "scene_occurrence_id": block.get("scene_occurrence_id"),
             "source_block_id": block.get("source_block_id"),
             "section_type": block.get("section_type", scene.get("section_type")),
-            "unit_ids": [unit["unit_id"] for unit in units],
+            "unit_ids": [unit["unit_id"] for unit in consumable],
+            "context_units": context_units,
             "units": units,
             "source_text": text,
         })
