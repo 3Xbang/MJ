@@ -40,6 +40,18 @@ def test_every_required_fact_is_in_both_prompts():
     assert "do not render subtitles" in key.lower()
 
 
+def test_lighting_style_and_director_notes_are_shared_facts():
+    shot = _shot()
+    shot.update({"lighting": "6000K cool LED", "lighting_style": "high key",
+                 "director_notes": "hold on reaction"})
+    key = build_keyframe_prompt(shot)
+    video = build_video_prompt(shot)
+    for prompt in (key, video):
+        assert "Lighting: 6000K cool LED" in prompt
+        assert "Lighting style: high key" in prompt
+        assert "Director notes: hold on reaction" in prompt
+
+
 def test_contaminated_empty_scene_response_is_rejected():
     reason = validate_empty_scene_prompt("Mina reaches for the cup in the kitchen", ["Mina"])
     assert "character name" in reason or "human/action" in reason

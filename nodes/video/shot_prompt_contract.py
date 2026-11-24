@@ -218,7 +218,9 @@ def required_facts(shot: dict) -> dict[str, str]:
         "props": _text(s.get("props_list")),
         "prop_interactions": _text(s.get("prop_interactions")),
         "dialogue": _text(s.get("dialogue")),
-        "lighting": _text(s.get("lighting") or s.get("lighting_style")),
+        "lighting": _text(s.get("lighting")),
+        "lighting_style": _text(s.get("lighting_style")),
+        "director_notes": _text(s.get("director_notes")),
         "color_temperature": _text(s.get("color_temperature") or s["environment"].get("color_temperature")),
         "shot_type": _canonical_direction(s.get("shot_type"), "shot_type"),
         "camera_angle": _canonical_direction(s.get("camera_angle"), "camera_angle"),
@@ -240,6 +242,7 @@ def render_shared_facts(shot: dict, include_dialogue: bool = True) -> str:
               ("Micro-expression", "micro_expression"), ("Gaze", "gaze"),
               ("Body language", "body_language"), ("Props", "props"),
               ("Prop interaction", "prop_interactions"), ("Lighting", "lighting"),
+              ("Lighting style", "lighting_style"), ("Director notes", "director_notes"),
               ("Color temperature", "color_temperature"), ("Shot type", "shot_type"),
               ("Camera angle", "camera_angle"), ("Camera motion", "camera"),
               ("Camera path", "camera_path"), ("Pace", "pace"))

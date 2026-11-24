@@ -220,6 +220,17 @@ def test_generic_open_on_and_intercut_cues_preserve_alternating_locations():
     assert len(sm[0]["source_blocks"]) == 2
 
 
+def test_dialogue_lines_do_not_create_scene_boundaries():
+    sm = m._build_scene_map(
+        "INT. ROOM - DAY\nJOHN: Hello, stay here.\nMARY: Run!\n"
+        "EXT. STREET - NIGHT\nJOHN: I am outside.\nMARY: Wait!\n"
+    )
+    assert len(sm) == 2, [scene["sample_header"] for scene in sm]
+    assert all(scene["section_type"] == "location_scene" for scene in sm)
+    assert "JOHN: Hello" in sm[0]["source_text"]
+    assert "MARY: Wait" in sm[1]["source_text"]
+
+
 def test_scene_environment_rejects_generic_worker_contamination():
     from ai_film_editor_nodes.nodes.analyzer.scene_analyzer_node import validate_empty_scene_prompt
     assert validate_empty_scene_prompt("a worker holding a cup in a kitchen")
@@ -229,6 +240,13 @@ def test_scene_environment_rejects_generic_worker_contamination():
     assert validate_empty_scene_prompt("a locksmith manipulating a device in a workshop")
     assert validate_empty_scene_prompt("a locksmith calibrates a device in a workshop")
     assert validate_empty_scene_prompt("a workshop with an unlisted device")
+
+
+def test_unlisted_article_free_occupation_relations_are_rejected():
+    from ai_film_editor_nodes.nodes.analyzer.scene_analyzer_node import validate_empty_scene_prompt
+    assert validate_empty_scene_prompt("Technician inspects machinery in workshop")
+    assert validate_empty_scene_prompt("Security officer stands beside equipment")
+    assert not validate_empty_scene_prompt("Steel beams support the glass roof")
 
 
 def test_embedded_intercut_and_flashback_locations_keep_physical_identity():

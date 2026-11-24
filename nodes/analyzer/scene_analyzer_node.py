@@ -28,6 +28,35 @@ _ENV_EXPLICIT_HUMAN_RE = re.compile(
     r"人物|男人|女人|男孩|女孩|他|她|他们|人影",
     re.IGNORECASE,
 )
+_ENV_HUMAN_ROLE_RE = re.compile(
+    r"\b(?:technician|security\s+officer|officer|worker|mechanic|engineer|"
+    r"guard|driver|chef|cook|waiter|nurse|doctor|police|soldier|operator|"
+    r"inspector|janitor|customer|shopkeeper|clerk|assistant|agent)\b",
+    re.IGNORECASE,
+)
+# A place-only description may use a structural subject ("windows overlook
+# the courtyard"), but an unlisted occupation/action/object relation is not
+# safe for an empty-set reference. This deliberately covers article-free model
+# output such as "Technician inspects machinery" and "Security officer stands
+# beside equipment" without maintaining a finite list of forbidden actions.
+_ENV_ARTICLE_FREE_SUBJECT_ACTION_RE = re.compile(
+    r"^\s*(?P<subject>[A-Za-z][A-Za-z-]*(?:\s+[A-Za-z][A-Za-z-]*){0,2})\s+"
+    r"(?P<verb>inspects?|stands?|checks?|examines?|operates?|handles?|"
+    r"holds?|carries?|uses?|wears?|grips?|touches?|opens?|closes?|"
+    r"walks?|runs?|moves?|enters?|leaves?|looks?|watches?|sits?|sits|"
+    r"works?|cleans?|arranges?|serves?|waits?|talks?|speaks?|"
+    r"supports?|overlooks?|contains?|reveals?|connects?|leads?)\b",
+    re.IGNORECASE,
+)
+_ENV_STRUCTURAL_SUBJECTS = {
+    "wall", "walls", "window", "windows", "door", "doors", "ceiling", "floor",
+    "floors", "beam", "beams", "pillar", "pillars", "counter", "counters",
+    "shelf", "shelves", "railing", "railings", "roof", "roofs", "stair", "stairs",
+    "lamp", "lamps", "light", "lights", "sign", "signs", "table", "tables",
+    "chair", "chairs", "sofa", "sofas", "curtain", "curtains", "building", "buildings",
+    "room", "rooms", "hall", "halls", "corridor", "corridors", "street", "streets",
+    "garden", "gardens", "sky", "sea", "water", "mist", "fog", "rain", "sunlight",
+}
 
 
 def validate_empty_scene_prompt(prompt: str, characters=(), forbidden_facts=(), *,
@@ -61,6 +90,15 @@ def validate_empty_scene_prompt(prompt: str, characters=(), forbidden_facts=(), 
     match = _ENV_EXPLICIT_HUMAN_RE.search(text)
     if match:
         return f"contains an unverified human fact: {match.group(0)}"
+    match = _ENV_HUMAN_ROLE_RE.search(text)
+    if match:
+        return f"contains an unverified human occupation: {match.group(0)}"
+    match = _ENV_ARTICLE_FREE_SUBJECT_ACTION_RE.search(text)
+    if match:
+        subject_words = match.group("subject").lower().split()
+        if not subject_words or subject_words[-1] not in _ENV_STRUCTURAL_SUBJECTS:
+            return ("contains an unverified subject/action relation: "
+                    f"{match.group(0).strip()}")
     match = _ENV_UNPROVEN_RELATION_RE.search(text)
     if match:
         return f"contains an unverified subject/object relation: {match.group(0)}"

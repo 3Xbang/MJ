@@ -90,14 +90,25 @@ _SCREENPLAY_CUE_LINE_RE = re.compile(
     r'CUT\s+TO|FADE\s+(?:IN|OUT)|DISSOLVE\s+TO|WIPE\s+TO)\b[^\n]*$',
     re.IGNORECASE | re.MULTILINE,
 )
-# Generic line-scoped screenplay cue grammar.  The parser must not depend on a
-# finite list of customer labels: OPENING IMAGE:, FLASHBACK -, FADE TO BLACK,
-# and future all-caps transition cues are boundaries too.  Location headings
+# Generic line-scoped screenplay cue grammar. Only validated section/transition
+# labels may use this fallback. In particular, an all-caps ``NAME: dialogue``
+# line is character dialogue, not a scene boundary. Physical INT/EXT headings
 # remain handled by _HEADER_RE and are deduplicated by source range below.
 _GENERIC_SCREENPLAY_CUE_LINE_RE = re.compile(
     r'^[ \t]*(?P<cue>[A-Z][A-Z0-9]*(?:[ \t]+[A-Z][A-Z0-9]*){0,7}'
     r'(?:[ \t]*(?::|[-—])[ \t]*[^\n]*)?)$',
     re.MULTILINE,
+)
+_GENERIC_VALIDATED_CUE_RE = re.compile(
+    r'^(?:OPEN(?:ING)?(?:[ \t]+IMAGE)?|FLASHBACK|FLASHFORWARD|'
+    r'FADE(?:[ \t]+(?:IN|OUT|TO(?:[ \t]+BLACK)?)?)?|DISSOLVE(?:[ \t]+TO)?|'
+    r'WIPE(?:[ \t]+TO)?|SMASH[ \t]+CUT(?:[ \t]+TO)?|MATCH[ \t]+CUT(?:[ \t]+TO)?|'
+    r'JUMP[ \t]+CUT(?:[ \t]+TO)?|INTERCUT(?:[ \t]+WITH)?|CUT(?:[ \t]+TO)?|'
+    r'TITLE(?:[ \t]+(?:SEQUENCE|CARD))?|OPENING[ \t]+TITLES?|'
+    r'(?:END[ \t]+)?CREDITS?|BLACK[ \t]+SCREEN|HALF[ \t]+SILHOUETTE|SILHOUETTE|'
+    r'MONTAGE|QUICK[ \t]+FLASH(?:ES)?|FLASH[ \t]+CUT|TRANSITION|BEGIN|END)'
+    r'(?:[ \t]*(?::|[-—])[ \t]*.*)?$',
+    re.IGNORECASE,
 )
 # A montage may contain several inserts before the next screenplay heading.
 # Split only explicit location-bearing insert lines, never arbitrary prose. This
@@ -244,12 +255,10 @@ def _build_scene_map(raw_script: str) -> list[dict]:
         if any(start <= match.start() < end for start, end in header_ranges):
             continue
         cue = match.group().strip()
-        # A cue must contain a screenplay marker or a transition verb. This
-        # keeps ordinary all-caps dialogue/name lines from becoming blocks,
-        # while accepting labels that are absent from our examples.
-        if re.match(r"^(?:LOCATION|地点|场景)\b", cue, re.IGNORECASE):
-            continue
-        if not re.search(r"[:：]|[-—]|\b(?:OPEN|OPENING|FLASHBACK|FLASHFORWARD|FADE|DISSOLVE|SMASH|MATCH|JUMP|INTERCUT|CUT|TITLE|CREDITS|BLACK|END|BEGIN|TRANSITION)\b", cue, re.IGNORECASE):
+        # Only validated section/transition labels may use the generic
+        # fallback. An all-caps ``JOHN: Hello`` or ``MARY - Run!`` line is
+        # ordinary dialogue and must stay inside the surrounding location.
+        if not _GENERIC_VALIDATED_CUE_RE.match(cue):
             continue
         section = _section_type(cue)
         candidates.append((match.start(), match.end(), cue, section,
