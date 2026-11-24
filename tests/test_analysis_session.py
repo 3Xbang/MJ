@@ -118,6 +118,25 @@ def test_cancel_and_restart_recover_running_without_losing_completed_results():
         assert "重启" in state["batches"][1]["error"]
 
 
+def test_recovery_publishes_durable_batch_result_after_session_write_gap():
+    with tempfile.TemporaryDirectory() as root:
+        store = AnalysisSessionStore(root, batch_size=4)
+        store.create("script", 4, 5, scene_fixture(4))
+        batch = store.claim_next("lost-prompt")
+        result = result_for(store, batch)
+        result_path = os.path.join(root, "batches", "batch_001.json")
+        os.makedirs(os.path.dirname(result_path), exist_ok=True)
+        with open(result_path, "w", encoding="utf-8") as fh:
+            import json
+            json.dump(result, fh)
+        recovered = AnalysisSessionStore(root, batch_size=4)
+        recovered.recover_orphaned_running()
+        state = recovered.status()
+        assert state["completed_batches"] == [1]
+        assert state["batches"][0]["status"] == "completed"
+        assert state["parsed_shots"] == result["shots"]
+
+
 def test_source_manifest_duplicate_is_rejected_and_empty_cast_props_are_valid():
     with tempfile.TemporaryDirectory() as root:
         store = AnalysisSessionStore(root, batch_size=4)

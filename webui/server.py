@@ -789,11 +789,12 @@ class Api:
             message = friendly_error(err.get("exception_message", ""), err.get("node_type", ""))
             if stage == 1:
                 session = self.session_store(pp).load()
-                if session and session.get("current_batch"):
+                if session:
                     current_batch = next((item for item in session.get("batches", [])
-                                          if item.get("batch_index") == session.get("current_batch")), None)
-                    if current_batch and current_batch.get("prompt_id") == pid:
-                        self.session_store(pp).fail_batch(session["current_batch"], message)
+                                          if item.get("status") == "running"
+                                          and str(item.get("prompt_id") or "") == str(pid)), None)
+                    if current_batch:
+                        self.session_store(pp).fail_batch(current_batch["batch_index"], message)
             return web.json_response({"ok": False, "error": message, "details": err.get("exception_message", "")[:800],
                                       "session": self.analysis_status(pp)})
         outputs = entry.get("outputs", {})
@@ -804,17 +805,22 @@ class Api:
                 session = store.load()
                 if not session:
                     raise ValueError("分析结果必须来自已持久化的分批会话，请从网页第 ① 步开始分析。")
-                batch_index = (self.state(pp).get("analysis_run") or {}).get("batch_index") or session.get("current_batch")
-                if not batch_index:
-                    raise ValueError("没有可提交的当前分析批次。")
+                # The prompt-matched batch is authoritative.  analysis_run is
+                # only a UI cache and can lag behind after a restart.
                 current_batch = next((item for item in session.get("batches", [])
-                                      if item.get("batch_index") == int(batch_index)), None)
-                if not current_batch or current_batch.get("prompt_id") != pid:
+                                      if item.get("status") == "running"
+                                      and str(item.get("prompt_id") or "") == str(pid)), None)
+                if not current_batch:
                     raise ValueError("该分析任务已过期或已被取消，未保存其结果。")
-                store.commit_batch(int(batch_index), raw_analysis)
+                batch_index = int(current_batch["batch_index"])
+                store.commit_batch(batch_index, raw_analysis)
                 session = store.status()
+                ui_state = self.state(pp)
+                if (ui_state.get("analysis_run") or {}).get("prompt_id") == pid:
+                    ui_state.pop("analysis_run", None)
+                ui_state["analysis_progress"] = session
+                self.save_state(pp, ui_state)
                 if session.get("analysis_status") != "complete":
-                    self.save_state(pp, {**self.state(pp), "analysis_progress": session})
                     return web.json_response({"ok": True, "partial": True,
                                               "session": self.analysis_status(pp)})
                 analysis = self._publish_completed_session(pp, session)
@@ -842,12 +848,12 @@ class Api:
                        "reports": {"parse": "✅ 所有分析批次已完成"}}
             except (ValueError, KeyError, TypeError) as exc:
                 session = self.session_store(pp).load()
-                batch_index = (self.state(pp).get("analysis_run") or {}).get("batch_index") or (session or {}).get("current_batch")
-                if session and batch_index:
+                if session:
                     current_batch = next((item for item in session.get("batches", [])
-                                          if item.get("batch_index") == int(batch_index)), None)
-                    if current_batch and current_batch.get("status") == "running" and current_batch.get("prompt_id") == pid:
-                        self.session_store(pp).fail_batch(int(batch_index), str(exc))
+                                          if item.get("status") == "running"
+                                          and str(item.get("prompt_id") or "") == str(pid)), None)
+                    if current_batch:
+                        self.session_store(pp).fail_batch(current_batch["batch_index"], str(exc))
                 return web.json_response({"ok": False, "error": str(exc),
                                           "session": self.analysis_status(pp)})
         else:
@@ -931,15 +937,35 @@ class Api:
             except Exception as exc:
                 return web.json_response({"ok": False, "error": f"取消任务失败：{exc}"}, status=502)
             return web.json_response({"ok": True, "session": self.analysis_status(self.project_path(project))})
-        prompt_id = str(body.get("prompt_id") or active.get("prompt_id") or "")
-        if not prompt_id or prompt_id != str(active.get("prompt_id") or ""):
+        requested_prompt_id = str(body.get("prompt_id") or "")
+        active_prompt_id = str(active.get("prompt_id") or "")
+        if not active_prompt_id:
+            # The claim is already durable while /prompt is in flight.  Release
+            # that claim even though there is no ComfyUI id to cancel yet.
+            if requested_prompt_id:
+                return web.json_response({"ok": False, "error": "当前分析任务尚未绑定 prompt，未取消其他任务。",
+                                          "session": self.analysis_status(self.project_path(project))}, status=409)
+            try:
+                store.cancel(batch_index=active.get("batch_index"), prompt_id=None)
+            except (ValueError, RuntimeError) as exc:
+                return web.json_response({"ok": False, "error": str(exc),
+                                          "session": self.analysis_status(self.project_path(project))}, status=409)
+            st = self.state(self.project_path(project))
+            st.pop("analysis_run", None)
+            self.save_state(self.project_path(project), st)
+            return web.json_response({"ok": True, "session": self.analysis_status(self.project_path(project))})
+        prompt_id = requested_prompt_id or active_prompt_id
+        if prompt_id != active_prompt_id:
             return web.json_response({"ok": False, "error": "当前分析任务已变化，未取消其他任务。",
                                       "session": self.analysis_status(self.project_path(project))}, status=409)
         try:
             await self.cancel_prompt(prompt_id)
             if state:
-                store.cancel(batch_index=active.get("batch_index") if active else None,
-                             prompt_id=prompt_id or None)
+                store.cancel(batch_index=active.get("batch_index"), prompt_id=prompt_id)
+                st = self.state(self.project_path(project))
+                if (st.get("analysis_run") or {}).get("prompt_id") == prompt_id:
+                    st.pop("analysis_run", None)
+                self.save_state(self.project_path(project), st)
         except (ValueError, RuntimeError) as exc:
             return web.json_response({"ok": False, "error": str(exc),
                                       "session": self.analysis_status(self.project_path(project))}, status=409)

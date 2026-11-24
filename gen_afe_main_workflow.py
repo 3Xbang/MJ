@@ -25,6 +25,13 @@ def build_workflow() -> dict:
     New layout: single AFE_ScriptFullParser replaces the three-node
     LLM_local_loader → LLM_local → AFE_ScriptParser chain.
     """
+    # Keep the committed full pipeline contract intact.  The WebUI never uses
+    # this legacy graph for a partial batch; it submits build_batch_workflow()
+    # and opens downstream stages only after the persisted session is complete.
+    template_path = os.path.join(os.path.dirname(__file__), "workflow_templates", "afe_full_pipeline.json")
+    if os.path.isfile(template_path):
+        with open(template_path, encoding="utf-8-sig") as fh:
+            return json.load(fh)
 
     nodes = []
     links = []
@@ -401,7 +408,7 @@ def build_workflow() -> dict:
         "extra": {"ds": {"scale": 0.6, "offset": [0, 0]}},
         "version": 0.4,
     }
-    return _load_compat_full_workflow()
+    return workflow
 
 
 def build_batch_workflow() -> dict:

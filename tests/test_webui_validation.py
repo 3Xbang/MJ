@@ -173,6 +173,29 @@ def test_collect_rejects_delayed_prompt_without_mutating_current_batch():
         assert store.status()["batches"][0]["prompt_id"] == "current-prompt"
 
 
+def test_cancel_releases_submission_pending_claim_without_prompt_id():
+    import tempfile
+    from ai_film_editor_nodes.nodes.director.script_analysis_session import AnalysisSessionStore
+    with tempfile.TemporaryDirectory() as root:
+        api = Api(root, "http://127.0.0.1:8188")
+        project = api.project_path("pending-cancel")
+        store = AnalysisSessionStore(os.path.join(project, "analysis_session"), 4)
+        store.create("script", 1, 5, [{"scene_id": "scene_1", "source_blocks": [{
+            "source_block_id": "block_1", "source_text": "A room with light."
+        }]}], cast=[])
+        store.claim_next()
+
+        class Request:
+            can_read_body = True
+            async def json(self):
+                return {"project": "pending-cancel", "stage": 1}
+
+        response = asyncio.run(api.cancel(Request()))
+        assert response.status == 200
+        assert store.status()["batches"][0]["status"] == "pending"
+        assert store.status()["current_batch"] is None
+
+
 def test_reference_upload_rejects_oversized_body_before_reading():
     class NeverRead:
         async def read(self, size=-1):

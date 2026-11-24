@@ -260,6 +260,81 @@ class AnalysisSessionStore:
                         current[field] = deepcopy(value)
         return merged
 
+    def _validate_batch_result(self, batch: dict, result: dict) -> list[dict]:
+        """Validate one persisted batch without changing session state."""
+        shots = result.get("shots") if isinstance(result, dict) else None
+        expected = batch["shot_end"] - batch["shot_start"] + 1
+        if not isinstance(shots, list) or len(shots) != expected:
+            raise ValueError(f"第{batch['batch_index']}批分镜不完整：需要{expected}个，实际返回{len(shots) if isinstance(shots, list) else 0}个")
+        ids = [str(s.get("shot_id") or "") for s in shots]
+        wanted = [f"shot_{n:03d}" for n in range(batch["shot_start"], batch["shot_end"] + 1)]
+        if ids != wanted:
+            raise ValueError(f"第{batch['batch_index']}批分镜编号或顺序错误：需要 {wanted[0]}-{wanted[-1]}")
+        unverified = []
+        for shot in shots:
+            for field in ("scene_assignment_error", "source_validation_error"):
+                value = shot.get(field)
+                if value not in (None, "", [], {}):
+                    unverified.append(f"{shot.get('shot_id', '?')} {field}: {value}")
+        if unverified:
+            raise ValueError("第%d批原文来源未验证，未保存结果：%s" % (batch["batch_index"], "；".join(str(item) for item in unverified[:8])))
+        if not result.get("source_manifest"):
+            raise ValueError(f"第{batch['batch_index']}批缺少 source manifest，未保存不完整结果")
+        expected_units = [(r["source_block_id"], unit) for r in batch.get("source_unit_ranges", []) for unit in r.get("unit_ids", [])]
+        expected_unit_set = set(expected_units)
+        returned_units = set()
+        returned_sequence = []
+        for item in result.get("source_manifest", []):
+            block_id = str(item.get("source_block_id") or "")
+            for unit in item.get("unit_ids", []):
+                key = (block_id, str(unit))
+                if key in returned_units:
+                    raise ValueError(f"第{batch['batch_index']}批 source manifest 重复原文单元：{block_id}/{unit}")
+                returned_units.add(key)
+                returned_sequence.append(key)
+        if expected_units and returned_sequence != expected_units:
+            raise ValueError(f"第{batch['batch_index']}批 source manifest 顺序错误")
+        if expected_units and returned_units != expected_unit_set:
+            missing = sorted(expected_unit_set - returned_units)
+            extra = sorted(returned_units - expected_unit_set)
+            raise ValueError(f"第{batch['batch_index']}批 source manifest 覆盖错误：遗漏{missing[:5]}，多出{extra[:5]}")
+        shot_units = []
+        for shot in shots:
+            block_id = str(shot.get("source_block_id") or "")
+            for unit in shot.get("source_unit_ids") or []:
+                shot_units.append((block_id, str(unit)))
+        if len(shot_units) != len(set(shot_units)):
+            raise ValueError(f"第{batch['batch_index']}批分镜重复覆盖原文单元")
+        if expected_units and set(shot_units) != expected_unit_set:
+            missing = sorted(expected_unit_set - set(shot_units))
+            extra = sorted(set(shot_units) - expected_unit_set)
+            raise ValueError(f"第{batch['batch_index']}批分镜 source_unit_ids 未完整覆盖批次原文：遗漏{missing[:5]}，多出{extra[:5]}")
+        return shots
+
+    def _publish_batch_state(self, state: dict, batch: dict, result: dict, shots: list[dict]) -> dict:
+        index = int(batch["batch_index"])
+        result_path = os.path.join(self.results_dir, f"batch_{index:03d}.json")
+        os.makedirs(self.results_dir, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(prefix=f"batch-{index}-", suffix=".json", dir=self.results_dir, text=True)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                json.dump(result, fh, ensure_ascii=False, indent=2); fh.flush(); os.fsync(fh.fileno())
+            os.replace(tmp, result_path)
+        finally:
+            if os.path.exists(tmp): os.unlink(tmp)
+        batch["status"] = "completed"; batch["error"] = None
+        state["completed_batches"] = sorted(set(state["completed_batches"] + [index]))
+        state["failed_batches"] = [x for x in state["failed_batches"] if x != index]
+        known = {str(item.get("shot_id")) for item in state.get("parsed_shots", [])}
+        state["parsed_shots"] = sorted(
+            state.get("parsed_shots", []) + [deepcopy(shot) for shot in shots if str(shot.get("shot_id")) not in known],
+            key=lambda s: s.get("shot_id", ""))
+        if result.get("cast"):
+            state["cast"] = self._merge_cast(state.get("cast", []), result["cast"])
+        state["current_batch"] = None; state["current_prompt_id"] = None
+        if len(state["completed_batches"]) == len(state["batches"]): state["analysis_status"] = "complete"
+        return self._touch(state)
+
     def commit_batch(self, batch_index: int, result: dict) -> dict:
         state = self.load(); index = int(batch_index)
         batch = next(b for b in state["batches"] if b["batch_index"] == index)
@@ -379,20 +454,44 @@ class AnalysisSessionStore:
             return self._touch(state)
 
     def recover_orphaned_running(self) -> dict:
+        """Reconcile a crash between batch-result and session writes.
+
+        A valid result file is a durable commit marker.  Publish it idempotently
+        instead of turning the batch into a retryable failure; only an absent or
+        invalid result is marked failed.
+        """
         with self._claim_lock():
             state = self.load()
             if not state:
                 return {}
+            changed = False
             for batch in state["batches"]:
-                if batch["status"] == "running":
-                    batch["status"] = "failed"
-                    batch["error"] = "ComfyUI 重启后未找到该批次结果，可重试"
-                    batch["retry_count"] += 1
-                    if batch["batch_index"] not in state["failed_batches"]:
-                        state["failed_batches"].append(batch["batch_index"])
-            state["current_batch"] = None
-            state["current_prompt_id"] = None
-            return self._touch(state)
+                if batch["status"] != "running":
+                    continue
+                result_path = os.path.join(self.results_dir, f"batch_{batch['batch_index']:03d}.json")
+                result = None
+                try:
+                    with open(result_path, encoding="utf-8") as fh:
+                        result = json.load(fh)
+                    shots = self._validate_batch_result(batch, result)
+                except (OSError, ValueError, TypeError, json.JSONDecodeError):
+                    shots = None
+                if shots is not None:
+                    self._publish_batch_state(state, batch, result, shots)
+                    state = self.load() or state
+                    changed = False
+                    continue
+                batch["status"] = "failed"
+                batch["error"] = "ComfyUI 重启后未找到有效的该批次结果，可重试"
+                batch["retry_count"] += 1
+                if batch["batch_index"] not in state["failed_batches"]:
+                    state["failed_batches"].append(batch["batch_index"])
+                state["current_batch"] = None
+                state["current_prompt_id"] = None
+                changed = True
+            if changed:
+                self._touch(state)
+            return state
 
     def status(self) -> dict:
         state = self.load() or {}

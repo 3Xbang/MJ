@@ -257,11 +257,12 @@ async function runStage(stage, part = 'all') {
   return monitorPrompt(run, r.prompt_id, stage, part);
 }
 async function cancelRun() {
-  const persisted = (S.view && S.view.analysis_progress && S.view.analysis_progress.batches || [])
-    .find(b => b.status === 'running' && b.prompt_id);
-  const promptId = (S.run && S.run.promptId) || (persisted && String(persisted.prompt_id));
-  const stage = (S.run && S.run.stage) || (promptId ? 1 : null);
-  if (!promptId || !stage) return;
+  const running = (S.view && S.view.analysis_progress && S.view.analysis_progress.batches || [])
+    .find(b => b.status === 'running');
+  const persisted = running && running.prompt_id ? running : null;
+  const promptId = (S.run && S.run.promptId) || (persisted && String(persisted.prompt_id)) || '';
+  const stage = (S.run && S.run.stage) || (running ? 1 : null);
+  if (!stage) return;
   const r = await api('/afe/api/cancel', {
     project: S.project, stage, prompt_id: promptId,
   });

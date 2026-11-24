@@ -18,10 +18,12 @@ def check(path, expect_full):
     types = {node["type"] for node in nodes.values()}
     parser = next(node for node in nodes.values() if node["type"] == "AFE_ScriptFullParser")
     named = parser.get("widgets_values_named", {})
+    values = parser.get("widgets_values", [])
     batch_end = named.get("batch_end_shot")
-    if batch_end is None:
-        batch_end = parser.get("widgets_values", [None] * 10)[9]
-    assert batch_end == 4
+    if batch_end is None and len(values) > 9:
+        batch_end = values[9]
+    if not expect_full:
+        assert batch_end == 4
     if expect_full:
         required = {
             "AFE_SceneAnalyzer", "AFE_PropsAnalyzer", "AFE_CastAnalyzer",
@@ -41,6 +43,6 @@ def check(path, expect_full):
 
 
 if __name__ == "__main__":
-    check(os.path.join(ROOT, "workflow_templates", "afe_full_pipeline.json"), False)
+    check(os.path.join(ROOT, "workflow_templates", "afe_full_pipeline.json"), True)
     check(os.path.join(ROOT, "workflow_templates", "afe_script_pipeline.json"), False)
     print("PASS workflow graph")
