@@ -340,6 +340,17 @@ class AnalysisSessionStore:
         return self._touch(state)
 
     def commit_batch(self, batch_index: int, result: dict) -> dict:
+        """Validate and publish one batch as one serialized transaction.
+
+        Collection requests can arrive twice after a browser retry.  Keep the
+        lock around loading, validation, the durable batch file, and the
+        session update so the second request observes ``completed`` and
+        returns the already-published state without appending its shots.
+        """
+        with self._claim_lock():
+            return self._commit_batch_locked(batch_index, result)
+
+    def _commit_batch_locked(self, batch_index: int, result: dict) -> dict:
         state = self.load(); index = int(batch_index)
         batch = next(b for b in state["batches"] if b["batch_index"] == index)
         if batch["status"] == "completed": return state

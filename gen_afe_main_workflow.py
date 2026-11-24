@@ -20,18 +20,13 @@ def _load_compat_full_workflow() -> dict:
 
 
 def build_workflow() -> dict:
-    """Build the ComfyUI workflow dict.
+    """Build the safe static parser workflow.
 
-    New layout: single AFE_ScriptFullParser replaces the three-node
-    LLM_local_loader → LLM_local → AFE_ScriptParser chain.
+    Static ComfyUI workflows must never connect a partial parser result to
+    generation nodes. The WebUI owns the persisted-session completion gate
+    and builds stages 2–5 only after every parser batch is complete.
     """
-    # Keep the committed full pipeline contract intact.  The WebUI never uses
-    # this legacy graph for a partial batch; it submits build_batch_workflow()
-    # and opens downstream stages only after the persisted session is complete.
-    template_path = os.path.join(os.path.dirname(__file__), "workflow_templates", "afe_full_pipeline.json")
-    if os.path.isfile(template_path):
-        with open(template_path, encoding="utf-8-sig") as fh:
-            return json.load(fh)
+    return build_batch_workflow()
 
     nodes = []
     links = []
