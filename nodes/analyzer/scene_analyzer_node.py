@@ -1,14 +1,38 @@
 from __future__ import annotations
 import json
+import re
 from ai_film_editor_nodes.lib.utils.logger import get_logger
 
 logger = get_logger("AFE_SceneAnalyzer")
 
 DEFAULT_NEGATIVE = "dark, dirty, crowded, blurry, low quality, people, person, human, character, man, woman, figure"
 DEFAULT_STYLE = "3D CG animation, CGI rendering, cinematic"
-
-# 场景固定词 — 明确排除人物，只拍空场景
 SCENE_PREFIX = "empty scene, no people, no characters, no humans, background only"
+# These checks are intentionally conservative: an empty-scene prompt must be
+# rejected rather than repaired by deleting a few words and possibly retaining
+# an action or a person in the generated reference.
+_ENV_HUMAN_RE = re.compile(
+    r"\b(?:person|people|human|character|man|woman|boy|girl|he|she|they|him|her|them|"
+    r"reaches?|grabs?|holds?|walks?|runs?|looks?|speaks?|talks?|opens?|closes?|"
+    r"turns?|picks?|puts?|places?|stands?|sits?|smiles?|frowns?|touches?)\b|"
+    r"人物|男人|女人|男孩|女孩|他|她|他们|拿起|放下|走向|奔跑|看向|说话|打开|关闭|转身|坐下|站立|微笑|皱眉",
+    re.IGNORECASE,
+)
+
+
+def validate_empty_scene_prompt(prompt: str, characters=()) -> str:
+    """Return a reason when an environment response contains human/action facts."""
+    text = str(prompt or "").strip()
+    if not text:
+        return "environment prompt is empty"
+    for character in characters or ():
+        name = str(character or "").strip()
+        if name and name.lower() in text.lower():
+            return f"contains character name: {name}"
+    match = _ENV_HUMAN_RE.search(text)
+    if match:
+        return f"contains human/action fact: {match.group(0)}"
+    return ""
 
 
 def _get_shots(shot_sequence) -> list:
@@ -190,11 +214,15 @@ class AFE_SceneAnalyzer:
             # Fallback: keyword translation of name + per-shot location.
             scene_name_en = info["scene_name_en"] or base_en
             environment_prompt_en = info["scene_environment_en"] or environment_description_en
-            # Keep environment assets empty: remove named subjects and explicit human terms
-            # before the prompt reaches the scene image generator.
-            for character in info.get("characters", []):
-                environment_prompt_en = environment_prompt_en.replace(str(character), "")
-            environment_prompt_en = " ".join(x for x in environment_prompt_en.split() if x.lower() not in {"person", "people", "human", "character", "man", "woman"})
+            # The environment model is an untrusted summarizer. Do not strip
+            # tokens from a contaminated answer, because that can leave an
+            # action or a different person in the empty-scene asset.
+            contamination = validate_empty_scene_prompt(
+                environment_prompt_en, info.get("characters", []))
+            if contamination:
+                raise ValueError(
+                    f"场景 {info.get('scene_id', key)} 的空场景提示词未通过隔离校验：{contamination}"
+                )
 
             # Use the validated environment text, never the character/action-bearing shot text.
             positive_prompt = f"{SCENE_PREFIX}, {environment_prompt_en}, {suffix}"

@@ -3,6 +3,7 @@ import os
 import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(ROOT))
+from ai_film_editor_nodes.nodes.analyzer.scene_analyzer_node import validate_empty_scene_prompt
 from ai_film_editor_nodes.nodes.video.shot_prompt_contract import build_keyframe_prompt, build_video_prompt, normalize_shot
 
 
@@ -39,7 +40,11 @@ def test_every_required_fact_is_in_both_prompts():
     assert "do not render subtitles" in key.lower()
 
 
-def test_missing_time_weather_stay_empty_and_static_requires_explicit_hold():
+def test_contaminated_empty_scene_response_is_rejected():
+    reason = validate_empty_scene_prompt("Mina reaches for the cup in the kitchen", ["Mina"])
+    assert "character name" in reason or "human/action" in reason
+    assert not validate_empty_scene_prompt("empty kitchen, steel counters, cool overhead light", ["Mina"])
+
     shot = normalize_shot({"shot_id": "s", "camera_motion": "static", "camera_motion_source": "derived",
                            "dialogue": "", "character_names": []})
     assert shot["time_of_day"] == ""

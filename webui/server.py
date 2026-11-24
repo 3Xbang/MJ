@@ -91,17 +91,39 @@ def _text(entry: dict) -> str:
 
 
 def _validate_analysis_payload(analysis: dict) -> None:
-    """Reject a non-empty but structurally incomplete parser result.
-
-    The parser performs source-span coverage before Phase 2. This second guard
-    keeps the web UI from marking an old/custom parser output successful when it
-    lacks the identities needed to isolate scenes and downstream references.
-    """
+    """Reject incomplete, duplicated, or reordered parser results before saving."""
     shots = analysis.get("shots") if isinstance(analysis, dict) else None
     if not isinstance(shots, list) or not shots:
         raise ValueError("剧本分析没有返回分镜，请检查剧本内容是否完整。")
+    if analysis.get("analysis_status") not in (None, "complete"):
+        raise ValueError("剧本分析尚未完成，已阻止保存，请重新运行分析。")
+    expected_count = analysis.get("expected_shot_count")
+    if expected_count is not None:
+        if not isinstance(expected_count, int) or expected_count != len(shots):
+            raise ValueError(
+                f"剧本分析分镜数量不完整：清单要求 {expected_count} 个，实际返回 {len(shots)} 个。"
+            )
+
+    manifest = analysis.get("source_manifest")
+    manifest_ids = {}
+    if manifest is not None:
+        if not isinstance(manifest, list) or not manifest:
+            raise ValueError("剧本分析缺少有效的原文来源清单。")
+        for position, item in enumerate(manifest):
+            if not isinstance(item, dict) or not str(item.get("source_block_id") or "").strip():
+                raise ValueError(f"原文来源清单第 {position + 1} 项无效。")
+            block_id = str(item["source_block_id"])
+            if block_id in manifest_ids:
+                raise ValueError(f"原文来源清单重复：{block_id}")
+            declared_order = item.get("order", position)
+            if declared_order != position:
+                raise ValueError(f"原文来源清单顺序错误：{block_id}")
+            manifest_ids[block_id] = position
+
     errors = []
     seen = set()
+    shot_block_positions = []
+    covered_blocks = set()
     for index, shot in enumerate(shots):
         if not isinstance(shot, dict):
             errors.append(f"shot_{index + 1:03d}: 分镜不是结构化对象")
@@ -116,6 +138,20 @@ def _validate_analysis_payload(analysis: dict) -> None:
             errors.append(f"{shot_id}: 缺少 {', '.join(missing)}")
         if shot.get("scene_assignment_error") or shot.get("source_validation_error"):
             errors.append(f"{shot_id}: 原文来源未验证")
+        block_id = str(shot.get("source_block_id") or "")
+        if manifest_ids:
+            if block_id not in manifest_ids:
+                errors.append(f"{shot_id}: source_block_id 不在原文来源清单中")
+            else:
+                shot_block_positions.append((manifest_ids[block_id], shot_id))
+                covered_blocks.add(block_id)
+
+    if manifest_ids:
+        missing_blocks = [block_id for block_id in manifest_ids if block_id not in covered_blocks]
+        if missing_blocks:
+            errors.append("遗漏原文段：" + ", ".join(missing_blocks[:20]))
+        if shot_block_positions != sorted(shot_block_positions, key=lambda item: item[0]):
+            errors.append("分镜来源顺序与原文来源清单不一致")
     if errors:
         raise ValueError(
             "剧本分析被阻止：返回的分镜未通过来源完整性检查。\n"
@@ -280,8 +316,16 @@ class Api:
         d = os.path.join(pp, "refs")
         if not os.path.isdir(d):
             return ""
-        items = sorted((f, int(os.path.getmtime(os.path.join(d, f)))) for f in os.listdir(d) if f.endswith(".png"))
-        return hashlib.md5(json.dumps(items).encode()).hexdigest()[:10] if items else ""
+        items = []
+        for name in sorted(f for f in os.listdir(d) if f.endswith(".png")):
+            path = os.path.join(d, name)
+            try:
+                with open(path, "rb") as handle:
+                    digest = hashlib.sha256(handle.read()).hexdigest()
+            except OSError:
+                continue
+            items.append((name, digest))
+        return hashlib.sha256(json.dumps(items, separators=(",", ":")).encode()).hexdigest()[:10] if items else ""
 
     def ref_entity_sigs(self, pp: str, analysis: dict | None, scenes: list, props: list) -> dict:
         """Return stable per-asset signatures so callers can invalidate only dependent shots."""

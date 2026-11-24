@@ -45,10 +45,25 @@ def test_a_word_inside_a_sentence_is_not_a_header():
     assert len(names("【场景A：家】\n结尾的时候他笑了，开场很安静。\n【场景B：路】\n走。")) == 2
 
 
-def test_cjk_detection_for_english_rewrite():
-    assert m._mostly_cjk("在昏暗的超市内部，一束强烈的顶光")
-    assert not m._mostly_cjk("A man stands in a dim supermarket")
-    assert not m._mostly_cjk("")
+def test_line_anchored_and_markdown_scene_headings_preserve_locations():
+    sm = m._build_scene_map(
+        "### Scene A - Harbor\nA boat waits.\n"
+        "SCENE 1\nA bell rings.\n"
+        "场景 2 - Warehouse\nA door closes.\n")
+    assert len(sm) == 3, [scene["sample_header"] for scene in sm]
+    assert all(scene["section_type"] == "location_scene" for scene in sm)
+    assert "Harbor" in names("### Scene A - Harbor\nA boat waits.")[0]
+
+
+def test_multi_location_montage_gets_independent_source_blocks():
+    sm = m._build_scene_map(
+        "[QUICK FLASH]\n"
+        "LOCATION: Harbor - NIGHT\nA wet crate.\n"
+        "LOCATION: Rooftop - NIGHT\nA blinking sign.\n")
+    assert len(sm) == 2, [scene["sample_header"] for scene in sm]
+    assert all(scene["section_type"] == "montage" for scene in sm)
+    assert "wet crate" in sm[0]["source_text"] and "blinking sign" not in sm[0]["source_text"]
+    assert "blinking sign" in sm[1]["source_text"]
 
 
 def test_semantic_cues_are_independent_blocks_and_keep_source_order():

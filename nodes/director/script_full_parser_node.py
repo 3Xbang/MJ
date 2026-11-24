@@ -60,6 +60,13 @@ _SCENE_HEADER_PATTERNS = [
     # new section.
     r'^[ \t]*(?:片头|序幕|序章|序言|引子|开场|开篇|尾声|片尾|结尾|彩蛋|预告|'
     r'快速闪切|蒙太奇|黑屏|半剪影|淡出|转场)(?:[ \t]*(?:[：:]|[-—])[^\n]*)?[ \t]*$',
+    # Customer scripts also use plain, line-anchored headings without a colon,
+    # or wrap the same heading in Markdown.  Keep the match line-scoped so a
+    # word such as "scene" inside ordinary prose cannot split the screenplay.
+    r'^[ \t]*#{1,6}[ \t]*(?:SCENE|场景)[ \t]*[A-Za-z0-9一二三四五六七八九十\\d]+'
+    r'(?:[ \t]*(?:[：:.-]|[-—])[ \t]*[^\n]*)?[ \t]*$',
+    r'^[ \t]*(?:SCENE|场景)[ \t]*[A-Za-z0-9一二三四五六七八九十\\d]+'
+    r'(?:[ \t]*(?:[：:.-]|[-—])[ \t]*[^\n]*)?[ \t]*$',
 ]
 _HEADER_RE = re.compile('|'.join(f'(?:{p})' for p in _SCENE_HEADER_PATTERNS),
                          re.IGNORECASE | re.MULTILINE)
@@ -72,6 +79,42 @@ _SEMANTIC_CUE_RE = re.compile(
     r'fade(?:\s*out)?|transition|montage|黑屏|快速闪切|半剪影|淡出|转场|蒙太奇)[^\]】]*(?:\]|】)',
     re.IGNORECASE,
 )
+# A montage may contain several inserts before the next screenplay heading.
+# Split only explicit location-bearing insert lines, never arbitrary prose. This
+# keeps each empty-scene asset tied to one place without hard-coding customer
+# names such as A/B or London/Thailand.
+_FLASH_LOCATION_LINE_RE = re.compile(
+    r'^[ \t]*(?:#{1,6}[ \t]*)?(?:INT|EXT|INT/EXT)[./][^\n]+$|'
+    r'^[ \t]*(?:LOCATION|地点|场景)[ \t]*[:：-][^\n]+$|'
+    r'^[ \t]*\[[^\]\n]+\][ \t]*$|'
+    r'^[ \t]*[^\n]{2,80}[ \t]+[-—][ \t]+(?:DAY|NIGHT|MORNING|EVENING|AFTERNOON|白天|夜|晚上|清晨|黄昏)[^\n]*$',
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def _split_montage_candidates(raw_script: str, candidates: list[tuple]) -> list[tuple]:
+    """Split a multi-location flash-cut into independently scoped blocks."""
+    expanded = []
+    for candidate in candidates:
+        start, end, header, section, key, is_location_header = candidate
+        if section != "montage":
+            expanded.append(candidate)
+            continue
+        next_start = min((item[0] for item in candidates if item[0] > start), default=len(raw_script))
+        body = raw_script[end:next_start]
+        markers = list(_FLASH_LOCATION_LINE_RE.finditer(body))
+        if len(markers) < 2:
+            expanded.append(candidate)
+            continue
+        # The cue remains part of the first insert. Later inserts begin at
+        # their own explicit location marker and receive distinct occurrences.
+        for index, marker in enumerate(markers):
+            marker_start = start if index == 0 else end + marker.start()
+            marker_end = end + marker.end()
+            marker_header = header if index == 0 else marker.group().strip()
+            expanded.append((marker_start, marker_end, marker_header, section,
+                             f"semantic_{section}_{start}_{index + 1:03d}", False))
+    return expanded
 
 SCENE_ENV_SYSTEM = """You are a film production designer. You receive the screenplay text of ONE scene.
 Write the visual description of the PLACE ONLY, so an image model can paint the empty set.
@@ -148,6 +191,7 @@ def _build_scene_map(raw_script: str) -> list[dict]:
         # [内景 - 日], [外景 - 日] and [连续] are annotations, not boundaries.
         candidates.append((match.start(), match.end(), cue, section,
                            f"semantic_{section}_{len(candidates) + 1:03d}", False))
+    candidates = _split_montage_candidates(raw_script, candidates)
     candidates.sort(key=lambda item: item[0])
 
     if not candidates:
@@ -209,8 +253,10 @@ def _header_to_scene_name(header: str) -> str:
     """
     # Strip bracket/punctuation wrapper, keep the descriptive text
     cleaned = re.sub(r'[\[\]【】]', '', header).strip()
-    # Drop leading "场景 X：" / "Scene X:" prefix, keep the location + time part
-    cleaned = re.sub(r'^(场景\s*[A-Za-z0-9]+[：:]|Scene\s*[A-Za-z0-9]+[：:.])\s*', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'^[# \t]+', '', cleaned).strip()
+    # Drop leading "场景 X" / "Scene X" prefixes, with either a colon,
+    # dash, dot, or no delimiter (all are common customer heading forms).
+    cleaned = re.sub(r'^(场景\s*[A-Za-z0-9一二三四五六七八九十\d]+|Scene\s*[A-Za-z0-9]+)\s*(?:[：:.-]|[-—])?\s*', '', cleaned, flags=re.IGNORECASE)
     return cleaned.strip() or header.strip()
 
 
@@ -485,6 +531,23 @@ def _source_units(source_text: str) -> list[str]:
 
 def _compact_source(text: str) -> str:
     return re.sub(r"\s+", " ", str(text or "")).strip()
+
+
+def _phase2_description_compatible(summary: str, phase1: dict, source_text: str) -> bool:
+    """Allow a phase-2 visual rewrite only when it shares source anchors."""
+    candidate = _compact_source(summary).lower()
+    if not candidate:
+        return False
+    anchors = " ".join(str(value or "") for value in (
+        source_text, phase1.get("raw_description"), phase1.get("source_shot_text"),
+        phase1.get("action"), phase1.get("business"), phase1.get("dialogue"),
+        *(phase1.get("props_list") or []), *(phase1.get("character_names") or []),
+    )).lower()
+    if not anchors:
+        return False
+    candidate_tokens = {token for token in re.findall(r"[a-z0-9]{3,}|[\u4e00-\u9fff]{2,}", candidate)}
+    anchor_tokens = {token for token in re.findall(r"[a-z0-9]{3,}|[\u4e00-\u9fff]{2,}", anchors)}
+    return bool(candidate_tokens & anchor_tokens)
 
 
 def _validated_source_fragment(source_block_text: str, raw_desc: str, shot: dict) -> tuple[str, str]:
@@ -1097,18 +1160,27 @@ class AFE_ScriptFullParser:
             )
 
             try:
-                p2_raw  = self._call_llm(PHASE2_SYSTEM, p2_user, model_path, max_new_tokens=768)
+                p2_raw = self._call_llm(PHASE2_SYSTEM, p2_user, model_path, max_new_tokens=768)
                 p2_data = self._parse_llm_json(p2_raw)
-                if not isinstance(p2_data, dict):
-                    p2_data = {}
+                if not isinstance(p2_data, dict) or not p2_data:
+                    raise ValueError("Phase 2 返回为空或不是 JSON 对象")
             except Exception as exc:
-                logger.warning(f"[AFE_ScriptFullParser] Phase 2 failed for {shot_id}: {exc}")
-                p2_data = {}
+                logger.error("[AFE_ScriptFullParser] Phase 2 failed for %s: %s", shot_id, exc)
+                raise ValueError(
+                    f"分镜 {shot_id} 的 Phase 2 深度解析失败：{exc}。"
+                    "已阻止保存不完整分析，请重试剧本分析。"
+                ) from exc
 
             # A phase-2 literal "null" is semantically absent. Keep the full
             # phase-1/source description so no prop, action, or costume detail
             # disappears before the shared prompt contract is built.
-            sd = _first_present(p2_data.get("shot_description"), raw_desc, default="")
+            phase2_description = _first_present(p2_data.get("shot_description"), default="")
+            sd = raw_desc
+            if phase2_description and _phase2_description_compatible(
+                    str(phase2_description), shot, source_shot_text):
+                sd = str(phase2_description)
+            if not sd:
+                sd = phase2_description
             if _mostly_cjk(sd):
                 try:
                     eng = self._call_llm(TO_ENGLISH_SYSTEM, sd, model_path, max_new_tokens=160).strip()
@@ -1121,10 +1193,11 @@ class AFE_ScriptFullParser:
             camera_motion, camera_motion_source, camera_motion_explicit = _camera_motion_from_phases(
                 shot, p2_data, source_shot_text, raw_desc
             )
-            # Phase 2 is an enrichment pass. JSON null/empty values must never
-            # erase a fact already extracted by Phase 1.
+            # Phase 1 is the structured extraction of the exact source moment.
+            # Phase 2 may enrich missing fields, but it must never replace a
+            # source/Phase-1 fact with a contradictory model guess.
             get_fact = lambda key, *fallbacks: _first_present(
-                p2_data.get(key), *(shot.get(k) for k in (key,) + fallbacks)
+                shot.get(key), *(shot.get(k) for k in fallbacks), p2_data.get(key)
             )
             action = get_fact("action")
             business = get_fact("business")
@@ -1135,12 +1208,16 @@ class AFE_ScriptFullParser:
             action_start = get_fact("action_start", "action")
             action_process = get_fact("action_process", "business")
             action_end = get_fact("action_end")
-            prop_interactions = _first_present(p2_data.get("prop_interactions"), shot.get("prop_interactions"), default=[])
+            prop_interactions = _first_present(
+                shot.get("prop_interactions"), p2_data.get("prop_interactions"), default=[]
+            )
             camera_angle = get_fact("camera_angle")
             shot_type = get_fact("shot_type")
             lighting_style = get_fact("lighting_style")
             director_notes = get_fact("director_notes")
-            location = get_fact("location", "scene_name")
+            location = _first_present(
+                shot.get("location"), shot.get("scene_name"), default=scene_name
+            )
             time_of_day = get_fact("time_of_day")
             weather = get_fact("weather")
             lighting = get_fact("lighting")
@@ -1176,8 +1253,8 @@ class AFE_ScriptFullParser:
                     "color_temperature": color_temperature,
                 },
                 "character_names":  char_names,
-                "costume_description": _first_present(p2_data.get("costume_description"), shot.get("costume_description")),
-                "costume_en":          _first_present(p2_data.get("costume_en"), shot.get("costume_en")),
+                "costume_description": _first_present(shot.get("costume_description"), p2_data.get("costume_description")),
+                "costume_en":          _first_present(shot.get("costume_en"), p2_data.get("costume_en")),
                 "props_list":          props_list,
                 "scene_name":          scene_name,
                 "scene_name_en":       scene_env.get(scene_idx, {}).get("scene_name_en", ""),
@@ -1259,12 +1336,33 @@ class AFE_ScriptFullParser:
                     f"{props_count} props, {len(cast_list)} cast")
 
         # 8. Return
+        source_manifest = []
+        for scene in scene_map:
+            for block in scene.get("source_blocks", []):
+                source_manifest.append({
+                    "scene_id": scene.get("scene_id"),
+                    "scene_occurrence_id": block.get("scene_occurrence_id"),
+                    "source_block_id": block.get("source_block_id"),
+                    "section_type": block.get("section_type", scene.get("section_type")),
+                    "unit_ids": [unit["unit_id"] for unit in _source_units_with_offsets(block.get("source_text", ""))],
+                })
+        source_manifest.sort(key=lambda item: int(re.search(r"(\d+)$", item["source_block_id"]).group(1)))
+        for order, item in enumerate(source_manifest):
+            item["order"] = order
+        analysis_payload = {
+            "schema_version": "afe-analysis-v1",
+            "analysis_status": "complete",
+            "expected_shot_count": target_shot_count,
+            "source_manifest": source_manifest,
+            "shots": full_shots,
+            "cast": cast_list,
+        }
         shots_json = json.dumps(full_shots, ensure_ascii=False, indent=2)
         cast_json  = json.dumps(cast_list,  ensure_ascii=False, indent=2)
 
         return {
             "ui": {"text": [report],
-                   "afe_analysis": [json.dumps({"shots": full_shots, "cast": cast_list}, ensure_ascii=False)]},
+                   "afe_analysis": [json.dumps(analysis_payload, ensure_ascii=False)]},
             "result": (
                 full_shots, cast_list,
                 shots_json, cast_json,

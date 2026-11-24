@@ -87,10 +87,44 @@ def test_phase2_nulls_preserve_phase1_facts_in_both_prompts():
         assert value in key and value in video, value
 
 
-def test_phase1_static_without_source_camera_cue_is_derived():
-    shot = _parse(_phase1("static", "script"), _null_phase2())
-    assert shot["camera_motion"] != "static"
-    assert shot["camera_motion_source"] == "derived"
+def test_conflicting_phase2_facts_do_not_replace_phase1_source_facts():
+    phase2 = _null_phase2()
+    phase2.update({
+        "action": "runs away from the workshop",
+        "business": "throws the brass lever across the room",
+        "emotion": "joyful grin",
+        "facial_expression": "joyful grin",
+        "micro_expression": "right eyebrow jumps",
+        "location": "a city street",
+        "lighting": "red neon light",
+        "shot_description": "A woman runs away on a city street.",
+    })
+    shot = _parse(_phase1(), phase2,
+                  "【场景一：Workshop】\nMina reaches for the brass lever.")
+    assert shot["action"] == "reaches for the lever"
+    assert shot["business"] == "thumb rubs the brass label"
+    assert shot["facial_expression"] == "anxious smile"
+    assert shot["micro_expression"] == "left eyelid trembles"
+    assert shot["location"] == "Workshop"
+    assert shot["lighting"] == "cool LEDs"
+    assert "city street" not in build_keyframe_prompt(shot)
+    assert "city street" not in build_video_prompt(shot)
+
+def test_phase2_failure_blocks_nominal_analysis():
+    class Phase2FailureParser(StubParser):
+        def _call_llm(self, system_prompt, user_prompt, model_path, max_new_tokens=2048):
+            if system_prompt == parser_mod.PHASE2_SYSTEM:
+                raise RuntimeError("phase2 service unavailable")
+            return super()._call_llm(system_prompt, user_prompt, model_path, max_new_tokens)
+
+    try:
+        Phase2FailureParser(_phase1(), _null_phase2()).parse_script(
+            "【场景一：Workshop】\nMina reaches for the brass lever.",
+            target_duration_seconds=5, seconds_per_shot=5, model_path="stub")
+    except ValueError as exc:
+        assert "Phase 2" in str(exc) and "已阻止保存" in str(exc)
+    else:
+        raise AssertionError("Phase 2 failure returned a complete analysis")
 
 
 def test_parser_preserves_explicit_locked_camera_cue():

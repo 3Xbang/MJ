@@ -114,7 +114,16 @@ def fake_parser(raw_script, **kw):
             "time_of_day": "afternoon", "weather": "indoor", "duration_seconds": 5.0, "costume_en": "red apron",
         })
     report = f"✅ 剧本解析完成（模拟）\n分镜 {len(shots)}"
-    return {"ui": {"text": [report], "afe_analysis": [json.dumps({"shots": shots, "cast": cast}, ensure_ascii=False)]},
+    source_manifest = [
+        {"order": 0, "scene_id": "scene_001", "scene_occurrence_id": "occurrence_001",
+         "source_block_id": "block_001", "section_type": "location_scene", "unit_ids": ["unit_001"]},
+        {"order": 1, "scene_id": "scene_002", "scene_occurrence_id": "occurrence_002",
+         "source_block_id": "block_002", "section_type": "location_scene", "unit_ids": ["unit_001"]},
+    ]
+    analysis = {"schema_version": "afe-analysis-v1", "analysis_status": "complete",
+                "expected_shot_count": len(shots), "source_manifest": source_manifest,
+                "shots": shots, "cast": cast}
+    return {"ui": {"text": [report], "afe_analysis": [json.dumps(analysis, ensure_ascii=False)]},
             "result": (shots, cast, "", "", len(shots), 2, 3, report)}
 
 
