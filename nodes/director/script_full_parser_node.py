@@ -10,6 +10,7 @@ via transformers, keeping each phase's output budget well under the model limit.
 """
 
 import json
+import math
 import os
 import re
 from ai_film_editor_nodes.lib.utils.logger import get_logger
@@ -1383,9 +1384,12 @@ class AFE_ScriptFullParser:
 
         # 1b. Pre-segment scenes by regex (code-level, not LLM memory)
         scene_map = _build_scene_map(raw_script)
+        batch_metadata = {}
         if batch_mode and batch_context_json.strip():
             try:
                 context = json.loads(batch_context_json)
+                if isinstance(context, dict):
+                    batch_metadata = context.get("batch_metadata") or {}
                 supplied = context.get("scene_map", context) if isinstance(context, dict) else context
                 if isinstance(supplied, list) and supplied:
                     scene_map = supplied
@@ -1809,8 +1813,31 @@ class AFE_ScriptFullParser:
                 shot.get("shot_id", "?") for shot in blocked_shots
             ) + "（原文片段无法验证或场景来源不明确）"
 
-        report = (
-            f"✅ 剧本解析完成\n"
+        # Batch reports must never imply that the whole screenplay is complete.
+        # The WebUI supplies durable session progress in the batch context; the
+        # fallback keeps direct node calls truthful for the default batch size.
+        try:
+            batch_index = int(batch_metadata.get("batch_index") or
+                               ((batch_start_shot - 1) // DEFAULT_DIRECT_BATCH_SIZE + 1))
+            total_batches = int(batch_metadata.get("total_batches") or
+                                math.ceil(total_shot_count / DEFAULT_DIRECT_BATCH_SIZE))
+            completed_before = int(batch_metadata.get("completed_shot_count_before") or
+                                   max(0, batch_start_shot - 1))
+        except (AttributeError, TypeError, ValueError):
+            batch_index = (batch_start_shot - 1) // DEFAULT_DIRECT_BATCH_SIZE + 1
+            total_batches = math.ceil(total_shot_count / DEFAULT_DIRECT_BATCH_SIZE)
+            completed_before = max(0, batch_start_shot - 1)
+        overall_completed = min(total_shot_count, completed_before + shot_count)
+        if batch_mode:
+            report_heading = (
+                f"Batch {batch_index}/{total_batches} completed; screenplay analysis remains partial "
+                f"(analysis_status=partial).\n"
+                f"Overall progress: {overall_completed}/{total_shot_count} shots completed; "
+                f"this batch covers shots {batch_start_shot}-{batch_end_shot}.\n"
+            )
+        else:
+            report_heading = "Screenplay analysis complete\n"
+        report = report_heading + (
             f"📽️ 分镜数量：{shot_count}\n"
             f"🎬 场景数量：{scene_count}\n"
             f"🔧 道具数量：{props_count}\n"

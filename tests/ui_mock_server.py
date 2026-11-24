@@ -100,6 +100,14 @@ def fake_parser(raw_script, **kw):
         raise RuntimeError("temporary parser failure (mock)")
     batch_end = int(kw.get("batch_end_shot") or 0)
     total = batch_end - batch_start + 1 if batch_end >= batch_start else 6
+    try:
+        batch_context = json.loads(kw.get("batch_context_json") or "{}")
+        metadata = batch_context.get("batch_metadata") or {}
+    except (TypeError, ValueError):
+        metadata = {}
+    batch_index = int(metadata.get("batch_index") or ((batch_start - 1) // 4 + 1))
+    total_batches = int(metadata.get("total_batches") or 1)
+    completed_before = int(metadata.get("completed_shot_count_before") or max(0, batch_start - 1))
     cast = [
         {"name": "阿明", "role_type": "lead", "gender": "male", "age_range": "25", "appearance_en": "short black hair, round glasses", "default_costume_en": "red apron"},
         {"name": "小红", "role_type": "supporting", "gender": "female", "age_range": "23", "appearance_en": "long brown hair", "default_costume_en": "blue dress"},
@@ -123,7 +131,12 @@ def fake_parser(raw_script, **kw):
             "lighting": "cold white LED", "lighting_style": "cold white LED", "location": scene,
             "time_of_day": "afternoon", "weather": "indoor", "duration_seconds": 5.0, "costume_en": "red apron",
         })
-    report = f"✅ 剧本解析完成（模拟）\n分镜 {len(shots)}"
+    report = (
+        f"Batch {batch_index}/{total_batches} completed; screenplay analysis remains partial "
+        f"(analysis_status=partial)\n"
+        f"Overall progress: {completed_before + len(shots)}/{metadata.get('target_shot_count', total)} shots completed; "
+        f"this batch covers shots {batch_start}-{batch_end}."
+    )
     source_manifest = []
     if batch_start <= 4:
         source_manifest.append({"order": 0, "scene_id": "scene_001", "scene_occurrence_id": "occurrence_001",

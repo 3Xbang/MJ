@@ -706,7 +706,20 @@ class Api:
                     for block in scene["source_blocks"]
                 )
             scene_subset.sort(key=lambda scene: scene_order.get(id(scene), 10**9))
-            batch["context_json"] = json.dumps({"scene_map": scene_subset}, ensure_ascii=False)
+            completed_before = sum(
+                int(item.get("shot_end", 0)) - int(item.get("shot_start", 0)) + 1
+                for item in session.get("batches", [])
+                if item.get("status") == "completed"
+            )
+            batch["context_json"] = json.dumps({
+                "scene_map": scene_subset,
+                "batch_metadata": {
+                    "batch_index": int(batch["batch_index"]),
+                    "total_batches": int(session.get("total_batches", 0)),
+                    "completed_shot_count_before": completed_before,
+                    "target_shot_count": int(session.get("target_shot_count", target_count)),
+                },
+            }, ensure_ascii=False)
         if stage >= 2:
             current_session = self.session_store(pp).load()
             if current_session:

@@ -43,9 +43,12 @@ def check_full_graph(path):
 
 
 def check_batch_graph(path):
-    _data, nodes, _links = _load(path)
+    _data, nodes, links = _load(path)
     assert {node["type"] for node in nodes.values()} == {"AFE_ScriptFullParser", "show_text_party"}
     parser = next(node for node in nodes.values() if node["type"] == "AFE_ScriptFullParser")
+    show = next(node_id for node_id, node in nodes.items() if node["type"] == "show_text_party")
+    assert any(link[1] == parser["id"] and link[2] == 7 and link[3] == show and link[4] == 0
+               for link in links), "batch report must reach show_text_party"
     values = parser.get("widgets_values", [])
     assert values[9] == 4
 

@@ -249,7 +249,36 @@ def test_batch_environment_analysis_keeps_full_repeated_scene_context():
     assert "Mina walks between the aisles" in parser.environment_prompts[0]
 
 
-def test_environment_prompt_failure_blocks_analysis_instead_of_fallback():
+
+
+def test_batch_report_marks_partial_progress_for_show_text_party():
+    script = (
+        "【场景一：Workshop】 "
+        "Mina in a red wool coat reaches for the brass lever, anxious smile tight, "
+        "left eyelid trembling, gaze toward the window, shoulders tense; hand approaches "
+        "the lever, grips the brass lever, thumb rubs the brass label, she pulls the lever; "
+        "under cool LEDs."
+    )
+    context = {
+        "scene_map": parser_mod._build_scene_map(script),
+        "batch_metadata": {
+            "batch_index": 2,
+            "total_batches": 9,
+            "completed_shot_count_before": 4,
+            "target_shot_count": 36,
+        },
+    }
+    result = StubParser(_phase1(), _null_phase2()).parse_script(
+        script, target_duration_seconds=180, seconds_per_shot=5, model_path="stub",
+        batch_start_shot=1, batch_end_shot=1,
+        batch_context_json=json.dumps(context, ensure_ascii=False),
+    )
+    report = result["result"][-1]
+    assert "Batch 2/9 completed" in report
+    assert "analysis_status=partial" in report
+    assert "Overall progress: 5/36 shots completed" in report
+    assert "Screenplay analysis complete" not in report
+
     class EnvFailureParser(StubParser):
         def _call_llm(self, system_prompt, user_prompt, model_path, max_new_tokens=2048):
             if system_prompt == parser_mod.SCENE_ENV_SYSTEM:
