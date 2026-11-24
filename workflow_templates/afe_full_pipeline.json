@@ -109,7 +109,10 @@
         "seconds_per_shot": 5,
         "lighting_mood": "auto (from script)",
         "color_palette": "auto (from style)",
-        "model_path": "LLM/Qwen2.5-7B-Instruct"
+        "model_path": "LLM/Qwen2.5-7B-Instruct",
+        "batch_start_shot": 1,
+        "batch_end_shot": 0,
+        "batch_context_json": ""
       }
     },
     {

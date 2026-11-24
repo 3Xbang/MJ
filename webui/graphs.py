@@ -65,7 +65,7 @@ def _max_shots(s: dict) -> int:
 
 
 def build_prompt(stage: int, project: str, settings: dict | None, project_path: str,
-                 part: str = "all") -> tuple[dict, dict]:
+                 part: str = "all", batch: dict | None = None) -> tuple[dict, dict]:
     """Returns (api_prompt, labels). labels maps node id -> text shown while that node runs.
 
     part: for step 2 only. "all" = scenes + props + characters, "cast" = characters only
@@ -99,12 +99,17 @@ def build_prompt(stage: int, project: str, settings: dict | None, project_path: 
         labels["6"] = "绘制角色参考图"
 
     if stage == 1:
-        g["1"] = _n("AFE_ScriptFullParser", raw_script=s["script"], render_style=style,
-                    episode_format=s["episode"], target_duration_seconds=int(s["duration"]),
-                    seconds_per_shot=int(s["seconds_per_shot"]), lighting_mood="auto (from script)",
-                    color_palette="auto (from style)", model_path="LLM/Qwen2.5-7B-Instruct")
-        labels["1"] = "分析剧本（第一次要载入语言模型，需要几分钟）"
-        analyzers()
+        inputs = dict(raw_script=s["script"], render_style=style,
+                      episode_format=s["episode"], target_duration_seconds=int(s["duration"]),
+                      seconds_per_shot=int(s["seconds_per_shot"]), lighting_mood="auto (from script)",
+                      color_palette="auto (from style)", model_path="LLM/Qwen2.5-7B-Instruct")
+        if batch:
+            inputs.update(batch_start_shot=int(batch["shot_start"]),
+                          batch_end_shot=int(batch["shot_end"]),
+                          batch_context_json=batch.get("context_json", ""))
+        g["1"] = _n("AFE_ScriptFullParser", **inputs)
+        labels["1"] = (f"分析剧本第{batch['batch_index']}批（{batch['shot_start']}-{batch['shot_end']}镜头）"
+                        if batch else "分析剧本（第一次要载入语言模型，需要几分钟）")
 
     elif stage == 2:
         loader()

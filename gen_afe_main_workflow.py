@@ -84,6 +84,9 @@ def build_workflow() -> dict:
             "auto (from script)",                            # lighting_mood (COMBO)
             "auto (from style)",                             # color_palette (COMBO)
             "LLM/Qwen2.5-7B-Instruct",                      # model_path
+            1,                                               # batch_start_shot (WebUI controls this)
+            0,                                               # batch_end_shot (0 = legacy full parse)
+            "",                                              # batch_context_json
         ],
     })
 

@@ -23,6 +23,8 @@ from urllib.parse import quote
 from aiohttp import ClientSession, ClientTimeout, web
 
 from ai_film_editor_nodes.webui import graphs
+from ai_film_editor_nodes.nodes.director.script_analysis_session import AnalysisSessionStore, DEFAULT_BATCH_SIZE
+from ai_film_editor_nodes.nodes.director.script_full_parser_node import _build_scene_map
 
 logger = logging.getLogger("AFE_WebUI")
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
@@ -285,6 +287,27 @@ class Api:
     def save_state(self, project_path: str, st: dict) -> None:
         write_json(os.path.join(project_path, "ui_state.json"), st)
 
+    def session_store(self, project_path: str) -> AnalysisSessionStore:
+        return AnalysisSessionStore(os.path.join(project_path, "analysis_session"), DEFAULT_BATCH_SIZE)
+
+    def analysis_status(self, project_path: str) -> dict:
+        store = self.session_store(project_path)
+        state = store.status()
+        if not state:
+            return {"analysis_status": "none", "completed_shot_count": 0}
+        return {
+            "analysis_status": state.get("analysis_status", "partial"),
+            "target_shot_count": state.get("target_shot_count", 0),
+            "batch_size": state.get("batch_size", DEFAULT_BATCH_SIZE),
+            "total_batches": state.get("total_batches", 0),
+            "current_batch": state.get("current_batch"),
+            "completed_batches": state.get("completed_batches", []),
+            "failed_batches": state.get("failed_batches", []),
+            "batches": state.get("batches", []),
+            "completed_shot_count": state.get("completed_shot_count", 0),
+            "error": next((b.get("error") for b in state.get("batches", []) if b.get("status") == "failed"), None),
+        }
+
     # views
     def project_view(self, name: str) -> dict:
         pp = self.project_path(name)
@@ -299,6 +322,7 @@ class Api:
                                        for p in assets.get("props_files", [])]}
         view = {"project": pname, "settings": graphs.merged(st.get("settings")), "done": st.get("done", {}),
                 "has_analysis": bool(analysis), "analysis": None, "assets": assets,
+                "analysis_progress": self.analysis_status(pp),
                 "kf_manifest": st.get("kf_manifest", []), "reports": st.get("reports", {}),
                 "used": st.get("used", {}),
                 "keyframes": {}, "clips": {}, "movie": None}
@@ -483,6 +507,30 @@ class Api:
         s = st["settings"]
         if stage == 1 and not str(s.get("script", "")).strip():
             return web.json_response({"error": "请先在上面粘贴剧本。"}, status=400)
+        batch = None
+        session_store = None
+        if stage == 1:
+            target_count = max(1, round(int(s.get("duration", 180)) / int(s.get("seconds_per_shot", 5))))
+            session_store = self.session_store(pp)
+            session = session_store.ensure(
+                script=s["script"], target_shot_count=target_count,
+                seconds_per_shot=int(s["seconds_per_shot"]),
+                episode_format=s.get("episode", ""), scene_map=_build_scene_map(s["script"]),
+            )
+            batch = session_store.claim_next()
+            if batch.get("status") == "complete":
+                return web.json_response({"ok": True, "complete": True,
+                                          "session": self.analysis_status(pp)})
+            # Send only the current contiguous source range to the parser.
+            source_ids = set(batch.get("source_block_ids", []))
+            scene_subset = []
+            for scene in session.get("scene_map", []):
+                blocks = [b for b in scene.get("source_blocks", []) if b.get("source_block_id") in source_ids]
+                if blocks:
+                    item = dict(scene); item["source_blocks"] = blocks
+                    item["source_text"] = "\n".join(b.get("source_text", "") for b in blocks)
+                    scene_subset.append(item)
+            batch["context_json"] = json.dumps({"scene_map": scene_subset}, ensure_ascii=False)
         if stage >= 2 and not os.path.exists(os.path.join(pp, "analysis.json")):
             return web.json_response({"error": "请先完成第 ① 步「分析剧本」。"}, status=400)
         os.makedirs(pp, exist_ok=True)
@@ -493,7 +541,7 @@ class Api:
         self.save_state(pp, st)
 
         part = "cast" if body.get("part") == "cast" and stage == 2 else "all"
-        prompt, labels = graphs.build_prompt(stage, project, s, pp, part)
+        prompt, labels = graphs.build_prompt(stage, project, s, pp, part, batch=batch)
         classes = self._node_classes() if callable(self._node_classes) else self._node_classes
         if classes:
             problems = graphs.validate_prompt(prompt, classes)
@@ -510,7 +558,12 @@ class Api:
                         return web.json_response({"error": friendly_error(detail), "details": detail}, status=400)
         except Exception as e:
             return web.json_response({"error": f"无法连接 ComfyUI：{e}"}, status=502)
-        return web.json_response({"prompt_id": data.get("prompt_id"), "labels": labels})
+        if stage == 1 and session_store and batch:
+            session_store.set_prompt(batch["batch_index"], data.get("prompt_id", ""))
+            st["analysis_run"] = {"batch_index": batch["batch_index"], "prompt_id": data.get("prompt_id", "")}
+            self.save_state(pp, st)
+        return web.json_response({"prompt_id": data.get("prompt_id"), "labels": labels,
+                                  "batch": batch, "session": self.analysis_status(pp)})
 
     async def collect(self, request):
         body = await request.json()
@@ -533,15 +586,81 @@ class Api:
 
         status = entry.get("status", {})
         if any(m and m[0] == "execution_interrupted" for m in status.get("messages", [])):
-            return web.json_response({"ok": False, "cancelled": True, "error": "已取消。已完成的部分都保留着，重新点击按钮会接着做。"})
+            if stage == 1:
+                self.session_store(pp).cancel()
+            return web.json_response({"ok": False, "cancelled": True, "error": "已取消。已完成的批次都保留着，继续分析会从未完成批次开始。",
+                                      "session": self.analysis_status(pp)})
         if status.get("status_str") == "error":
             err = next((m[1] for m in status.get("messages", []) if m and m[0] == "execution_error"), {})
-            return web.json_response({"ok": False, "error": friendly_error(
-                err.get("exception_message", ""), err.get("node_type", "")), "details": err.get("exception_message", "")[:800]})
-        try:
-            res = extract_results(stage, entry.get("outputs", {}), part)
-        except ValueError as e:
-            return web.json_response({"ok": False, "error": str(e)})
+            message = friendly_error(err.get("exception_message", ""), err.get("node_type", ""))
+            if stage == 1:
+                session = self.session_store(pp).load()
+                if session and session.get("current_batch"):
+                    self.session_store(pp).fail_batch(session["current_batch"], message)
+            return web.json_response({"ok": False, "error": message, "details": err.get("exception_message", "")[:800],
+                                      "session": self.analysis_status(pp)})
+        outputs = entry.get("outputs", {})
+        if stage == 1:
+            try:
+                raw_analysis = _first_json(outputs.get("1", {}), "afe_analysis") or {}
+                if raw_analysis.get("analysis_status") == "complete" and not self.session_store(pp).load():
+                    # Compatibility for direct legacy parser calls.
+                    _validate_analysis_payload(raw_analysis)
+                    res = {"analysis": raw_analysis, "scenes": [], "props": [], "reports": {"parse": _text(outputs.get("1", {}))}}
+                else:
+                    store = self.session_store(pp)
+                    session = store.load()
+                    if not session:
+                        raise ValueError("分析会话不存在，请重新开始分析。")
+                    batch_index = (self.state(pp).get("analysis_run") or {}).get("batch_index") or session.get("current_batch")
+                    if not batch_index:
+                        raise ValueError("没有可提交的当前分析批次。")
+                    store.commit_batch(int(batch_index), raw_analysis)
+                    session = store.status()
+                    if session.get("analysis_status") != "complete":
+                        self.save_state(pp, {**self.state(pp), "analysis_progress": session})
+                        return web.json_response({"ok": True, "partial": True,
+                                                  "session": self.analysis_status(pp)})
+                    analysis = {"schema_version": "afe-analysis-v1", "analysis_status": "complete",
+                                "expected_shot_count": session["target_shot_count"],
+                                "source_manifest": [{k: v for k, v in item.items() if k != "source_text"}
+                                                     for item in session["source_manifest"]],
+                                "shots": session["parsed_shots"], "cast": session.get("cast", [])}
+                    _validate_analysis_payload(analysis)
+                    scenes = []
+                    for shot in session.get("parsed_shots", []):
+                        scene_id = shot.get("scene_id")
+                        if scene_id and not any(item.get("scene_id") == scene_id for item in scenes):
+                            scenes.append({"scene_id": scene_id,
+                                           "scene_name": shot.get("scene_name", scene_id),
+                                           "scene_name_en": shot.get("scene_name_en", ""),
+                                           "shot_appearances": [],
+                                           "environment_prompt_en": shot.get("scene_environment_en", "")})
+                    if not scenes:
+                        scenes = [{"scene_id": scene.get("scene_id"),
+                                   "scene_name": scene.get("sample_header", scene.get("scene_id", "")),
+                                   "scene_name_en": scene.get("sample_header", ""),
+                                   "shot_appearances": [], "environment_prompt_en": ""}
+                                  for scene in session.get("scene_map", [])]
+                    props = []
+                    for shot in session.get("parsed_shots", []):
+                        for name in shot.get("props_list", []) or []:
+                            if name and not any(p.get("name") == name for p in props):
+                                props.append({"name": name, "shot_appearances": []})
+                    res = {"analysis": analysis, "scenes": scenes, "props": props,
+                           "reports": {"parse": "✅ 所有分析批次已完成"}}
+            except (ValueError, KeyError, TypeError) as exc:
+                session = self.session_store(pp).load()
+                batch_index = (self.state(pp).get("analysis_run") or {}).get("batch_index") or (session or {}).get("current_batch")
+                if session and batch_index:
+                    self.session_store(pp).fail_batch(int(batch_index), str(exc))
+                return web.json_response({"ok": False, "error": str(exc),
+                                          "session": self.analysis_status(pp)})
+        else:
+            try:
+                res = extract_results(stage, entry.get("outputs", {}), part)
+            except ValueError as e:
+                return web.json_response({"ok": False, "error": str(e)})
 
         st = self.state(pp)
         st.setdefault("done", {})[str(stage)] = int(time.time())
@@ -568,13 +687,30 @@ class Api:
         self.save_state(pp, st)
         return web.json_response({"ok": True})
 
+    async def analysis_status_api(self, request):
+        project = safe_project_name(request.query.get("name", "afe_project"))
+        return web.json_response(self.analysis_status(self.project_path(project)))
+
+    async def retry_analysis_batch(self, request):
+        body = await request.json()
+        project = safe_project_name(body.get("project", "afe_project"))
+        try:
+            state = self.session_store(self.project_path(project)).retry(int(body.get("batch_index")))
+            return web.json_response({"ok": True, "session": self.analysis_status(self.project_path(project))})
+        except (ValueError, TypeError, KeyError) as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+
     async def cancel(self, request):
+        body = await request.json() if request.can_read_body else {}
+        project = safe_project_name(body.get("project", "afe_project"))
         try:
             async with ClientSession(timeout=ClientTimeout(total=10)) as sess:
                 await sess.post(f"{self.comfy()}/interrupt")
         except Exception as e:
             return web.json_response({"ok": False, "error": str(e)}, status=502)
-        return web.json_response({"ok": True})
+        store = self.session_store(self.project_path(project))
+        if store.load(): store.cancel()
+        return web.json_response({"ok": True, "session": self.analysis_status(self.project_path(project))})
 
     async def file(self, request):
         pp = os.path.realpath(self.project_path(request.query.get("project", "")))
@@ -589,6 +725,8 @@ class Api:
         routes.get("/afe/static/{name}")(self.static)
         routes.get("/afe/api/options")(self.options)
         routes.get("/afe/api/project")(self.get_project)
+        routes.get("/afe/api/analysis/status")(self.analysis_status_api)
+        routes.post("/afe/api/analysis/retry")(self.retry_analysis_batch)
         routes.post("/afe/api/settings")(self.save_settings)
         routes.post("/afe/api/run")(self.run)
         routes.post("/afe/api/collect")(self.collect)

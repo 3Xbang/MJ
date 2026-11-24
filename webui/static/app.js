@@ -165,6 +165,7 @@ async function runStage(stage, part = 'all') {
   const run = S.run;
   const r = await api('/afe/api/run', { project: S.project, stage, part, client_id: S.clientId, settings: S.settings });
   if (r.error) { S.run = null; render(); showError(r.error, r.details); return; }
+  if (r.complete) { S.run = null; await loadProject(S.project, true); showOk('剧本分析已完成，可以进行下一步'); return; }
   run.promptId = r.prompt_id; run.labels = r.labels || {}; run.label = '已提交，排队中…';
   renderDock();
   const pid = r.prompt_id;
@@ -215,7 +216,7 @@ async function runStage(stage, part = 'all') {
   }
 }
 async function cancelRun() {
-  const r = await api('/afe/api/cancel', {});
+  const r = await api('/afe/api/cancel', { project: S.project });
   if (r.error) {
     S.run = null;
     render();
@@ -328,10 +329,22 @@ function card(n, title, bodyHtml) {
 const runBtn = n => `<button class="primary" data-act="run" data-stage="${n}" ${(S.run || !prereqOk(n)) ? 'disabled' : ''}>${STEPS[n - 1].verb}</button>`;
 const opt = (v, t, cur) => `<option value="${esc(v)}" ${String(v) === String(cur) ? 'selected' : ''}>${esc(t)}</option>`;
 
-/* step 1 ─ script */
+function renderAnalysisProgress() {
+  const p = S.view.analysis_progress;
+  if (!p || p.analysis_status === 'none') return '';
+  const current = p.current_batch ? `第 ${p.current_batch} 批` : (p.failed_batches || []).length ? '等待重试' : '等待继续';
+  const completed = `${p.completed_shot_count || 0}/${p.target_shot_count || 0}`;
+  const failed = (p.batches || []).filter(b => b.status === 'failed');
+  return `<div class="batch-progress"><div class="batch-head"><b>${esc(current)} / 共 ${p.total_batches || 0} 批</b><span>已完成镜头 ${completed}</span></div>
+    <div class="batch-list">${(p.batches || []).map(b => `<span class="batch-chip ${esc(b.status)}">第${b.batch_index}批 ${b.status === 'completed' ? '✓' : b.status === 'failed' ? '失败' : b.status === 'running' ? '运行中' : '待处理'}</span>`).join('')}</div>
+    ${failed.map(b => `<div class="batch-error">第${b.batch_index}批（镜头${b.shot_start}-${b.shot_end}）：${esc(b.error || '未知错误')} <button class="small" data-act="retry-batch" data-batch="${b.batch_index}" ${S.run ? 'disabled' : ''}>重试此批</button></div>`).join('')}
+    <div class="row batch-actions"><button class="primary small" data-act="continue-analysis" ${S.run || p.analysis_status === 'complete' ? 'disabled' : ''}>继续分析</button>
+      <button class="small" data-act="cancel-analysis" ${S.run ? '' : 'disabled'}>取消</button></div></div>`;
+}
+/* step 1 — script */
 function renderStep1() {
   const s = S.settings, a = S.view.analysis;
-  let result = '';
+  let result = renderAnalysisProgress();
   if (a) {
     const shots = a.shots || [];
     const chips = `<div class="chips"><span class="chip">🎬 ${shots.length} 个分镜</span><span class="chip">🏞 ${(a.scenes || []).length} 个场景</span>
@@ -531,6 +544,13 @@ document.addEventListener('click', async ev => {
   if (!el) return;
   const act = el.dataset.act;
   if (act === 'run') return runStage(Number(el.dataset.stage));
+  if (act === 'continue-analysis') return runStage(1);
+  if (act === 'retry-batch') {
+    const r = await api('/afe/api/analysis/retry', { project: S.project, batch_index: Number(el.dataset.batch) });
+    if (r.error) return showError('批次重试失败', r.error);
+    await loadProject(S.project, true); return runStage(1);
+  }
+  if (act === 'cancel-analysis') return cancelRun();
   if (act === 'cancel') return cancelRun();
   if (act === 'close-dock') { S.dock = null; return renderDock(); }
   if (act === 'goto' || act === 'toggle') {

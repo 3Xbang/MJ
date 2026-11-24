@@ -27,6 +27,8 @@ else
 fi
 pip install loguru json_repair imageio-ffmpeg -q
 # CPU-only regression and graph check: confirms structured prompts and generated props are connected.
+python3 -m compileall -q nodes webui tests
+python3 tests/test_analysis_session.py
 python3 tests/test_scene_map.py
 python3 tests/test_prompt_fidelity.py
 python3 tests/test_reference_dependencies.py

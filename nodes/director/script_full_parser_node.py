@@ -1195,6 +1195,9 @@ class AFE_ScriptFullParser:
                     "default": "LLM/Qwen2.5-7B-Instruct",
                     "tooltip": "Qwen LLM 模型路径（相对于 models/ 目录）",
                 }),
+                "batch_start_shot": ("INT", {"default": 1, "min": 1, "max": 100000}),
+                "batch_end_shot": ("INT", {"default": 0, "min": 0, "max": 100000}),
+                "batch_context_json": ("STRING", {"default": "", "multiline": True}),
             },
         }
 
@@ -1214,7 +1217,10 @@ class AFE_ScriptFullParser:
                      seconds_per_shot: int = 5,
                      lighting_mood: str = "auto (from script)",
                      color_palette: str = "auto (from style)",
-                     model_path: str = "LLM/Qwen2.5-7B-Instruct"):
+                     model_path: str = "LLM/Qwen2.5-7B-Instruct",
+                     batch_start_shot: int = 1,
+                     batch_end_shot: int = 0,
+                     batch_context_json: str = ""):
 
         if not raw_script.strip():
             raise ValueError("raw_script 不能为空")
@@ -1229,6 +1235,17 @@ class AFE_ScriptFullParser:
         # 目标镜头数 = 总时长 / 每镜时长
         target_shot_count = max(1, round(target_duration_seconds / seconds_per_shot))
 
+        # A WebUI run supplies one inclusive global shot range.  The default
+        # keeps the legacy ComfyUI node contract for direct/manual callers.
+        batch_mode = int(batch_end_shot or 0) >= int(batch_start_shot or 1)
+        if batch_mode:
+            batch_start_shot = max(1, int(batch_start_shot))
+            batch_end_shot = int(batch_end_shot)
+            target_shot_count = batch_end_shot - batch_start_shot + 1
+        else:
+            batch_start_shot = 1
+            batch_end_shot = target_shot_count
+
         # 1. Resolve model_path to absolute
         if not os.path.isabs(model_path):
             try:
@@ -1240,6 +1257,14 @@ class AFE_ScriptFullParser:
 
         # 1b. Pre-segment scenes by regex (code-level, not LLM memory)
         scene_map = _build_scene_map(raw_script)
+        if batch_mode and batch_context_json.strip():
+            try:
+                context = json.loads(batch_context_json)
+                supplied = context.get("scene_map", context) if isinstance(context, dict) else context
+                if isinstance(supplied, list) and supplied:
+                    scene_map = supplied
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"批次上下文不是有效 JSON：{exc}") from exc
         scene_map_text = _scene_map_to_prompt_text(scene_map)
         logger.info("[AFE_ScriptFullParser] Pre-segmented %d unique scene(s) from screenplay",
                     len(scene_map))
@@ -1250,12 +1275,15 @@ class AFE_ScriptFullParser:
         logger.info("[AFE_ScriptFullParser] Phase 1: parsing script (target %d shots × %ds = %ds)...",
                     target_shot_count, seconds_per_shot, target_duration_seconds)
         phase1_user = (
-            f"Generate EXACTLY {target_shot_count} shots "
-            f"(total {target_duration_seconds}s at {seconds_per_shot}s each). "
+            f"Generate EXACTLY {target_shot_count} shots for global shot IDs "
+            f"shot_{batch_start_shot:03d} through shot_{batch_end_shot:03d} "
+            f"(total {target_shot_count * seconds_per_shot}s at {seconds_per_shot}s each). "
+            f"This is one contiguous batch; do not describe shots outside this range. "
             f"Episode format: {episode_format}. "
             f"Break scenes and dialogue into individual {seconds_per_shot}-second moments.\n\n"
             f"{scene_map_text}\n\n"
-            f"Screenplay:\n{raw_script}"
+            f"Screenplay source for this batch:\n"
+            f"{raw_script if not batch_mode else chr(10).join(s.get('source_text', '') for s in scene_map)}"
         )
         phase1_raw = self._call_llm(
             PHASE1_SYSTEM,
@@ -1269,8 +1297,14 @@ class AFE_ScriptFullParser:
 
         cast_list    = phase1_data.get("cast", [])
         minimal_shots = phase1_data.get("shots", [])
+        # Models often restart numbering inside a small request. Canonicalise
+        # only the requested contiguous range, never inventing missing shots.
+        for local_index, item in enumerate(minimal_shots):
+            if isinstance(item, dict):
+                item["shot_id"] = f"shot_{batch_start_shot + local_index:03d}"
         _validate_cast_against_script(cast_list, raw_script)
-        minimal_shots = _normalize_durations(minimal_shots, target_duration_seconds, seconds_per_shot)
+        batch_duration = target_shot_count * seconds_per_shot if batch_mode else target_duration_seconds
+        minimal_shots = _normalize_durations(minimal_shots, batch_duration, seconds_per_shot)
         logger.info(f"[AFE_ScriptFullParser] Phase 1 done: {len(cast_list)} cast, {len(minimal_shots)} shots")
 
         # Do not let Phase 2 make a truncated or reordered Phase 1 result look
@@ -1673,8 +1707,10 @@ class AFE_ScriptFullParser:
             item["order"] = order
         analysis_payload = {
             "schema_version": "afe-analysis-v1",
-            "analysis_status": "complete",
+            "analysis_status": "partial" if batch_mode else "complete",
             "expected_shot_count": target_shot_count,
+            "batch_start_shot": batch_start_shot,
+            "batch_end_shot": batch_end_shot,
             "source_manifest": source_manifest,
             "shots": full_shots,
             "cast": cast_list,

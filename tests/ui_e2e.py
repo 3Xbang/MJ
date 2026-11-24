@@ -83,11 +83,19 @@ def main():
             check("backend failure -> friendly message", "显存不足" in page.inner_text("#dockMsg"), page.inner_text("#dockMsg"))
             page.click("#dockClose")
 
-            page.fill("textarea[data-set=script]", "【场景A：超市】阿明在柜台整理货物。\n【场景B：公寓】小红在看电视。")
+            page.fill("input[data-set=duration]", "30")
+            page.fill("textarea[data-set=script]", "【场景 A：超市】阿明整理货物。阿明放下箱子。阿明查看手机。阿明继续工作。\n【场景 B：公寓】小红看电视。小红关掉电视。")
             page.click("button[data-act=run][data-stage='1']")
             page.wait_for_selector("#dock:not(.hidden)")
             check("progress dock appears while running", page.locator("#dock").is_visible() and page.inner_text("#dockMsg").strip() != "")
             wait_idle(page)
+            # Batch analysis pauses after each small batch. Continue until the
+            # server publishes the complete analysis, without re-running done batches.
+            for _ in range(4):
+                if page.locator(".chips .chip").count():
+                    break
+                page.click("button[data-act=continue-analysis]")
+                wait_idle(page)
             page.wait_for_selector(".chips .chip")
             chips = page.inner_text(".chips")
             check("analysis summary shown", "6 个分镜" in chips and "2 个角色" in chips, chips.replace("\n", " "))
@@ -211,7 +219,7 @@ def main():
             check("after reload: movie + picks restored",
                   page.evaluate("() => S.settings.scene_view_picks") == "1:2" and
                   page.locator("#stepper .step-chip.done").count() == 5)
-            check("after reload: script restored", "小红在看电视" in page.input_value("textarea[data-set=script]"))
+            check("after reload: script restored", "小红看电视" in page.input_value("textarea[data-set=script]"))
 
             # upstream change makes downstream stale: redraw a first frame after video + movie exist
             page.evaluate("() => { S.open[3] = true; render(); }")

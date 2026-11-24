@@ -90,7 +90,10 @@
         5,
         "auto (from script)",
         "auto (from style)",
-        "LLM/Qwen2.5-7B-Instruct"
+        "LLM/Qwen2.5-7B-Instruct",
+        1,
+        0,
+        ""
       ]
     },
     {

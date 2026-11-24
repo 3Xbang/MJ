@@ -199,5 +199,19 @@ cd /workspace/runpod-slim/ComfyUI/custom_nodes/ai_film_editor_nodes && python3 -
 
 视频渲染失败时会删除该镜头的旧 `clips/<shot_id>.mp4`、音视频副本和元数据，并阻止第④步完成。第⑤步合成还会核对当前首帧和结构化剧本事实签名，发现旧视频会明确要求重新渲染，不会静默拼入旧结果。无角色或无道具的有效剧本会跳过对应素材图节点，首帧继续走无人物/无道具路径。
 
+## 分批解析与 RunPod 验收
+
+客户只使用 `/afe/`，不要编辑 JSON 或手工连线。第 ① 步默认每批 4 个镜头，36 镜头会依次执行 9 批。页面显示当前批次、已完成镜头、失败原因，并提供继续、只重试失败批次和取消。每批结果保存在项目的 `analysis_session/`，重启后继续；未完成全部批次前不会发布 `analysis.json`，也不会进入 Krea、Qwen Image、Wan 或成片阶段。参考图可上传也可不上传，空角色/空道具会走空数组路径。
+
+部署后验收：打开 `/afe/`，粘贴 180 秒/36 镜头剧本，先完成第 1 批，刷新页面确认进度，再取消并继续；让一批失败，确认只重试该批且已完成批次不重复；重启 ComfyUI 后确认 running 批次变为可重试状态。全部批次完成后确认第 ② 至第 ⑤ 步按素材、首帧、Wan、成片顺序执行，并检查有/无参考图和试跑模式。查看 `/tmp/comfyui.log`，确认没有 `IMPORT FAILED`。CPU/mock 测试不能替代 GPU、真实 ComfyUI 或视觉质量验收。
+
+本地 CPU 检查：
+
+```bash
+cd /workspace/runpod-slim/ComfyUI/custom_nodes/ai_film_editor_nodes
+python3 -m compileall -q nodes webui tests
+python3 tests/test_analysis_session.py && python3 tests/test_scene_map.py && python3 tests/test_parser_merge.py && python3 tests/test_prompt_fidelity.py && python3 tests/test_reference_dependencies.py && python3 tests/test_shot_contract.py && python3 tests/test_webui_validation.py && python3 tests/test_workflow_graph.py && python3 tests/check_graphs.py && python3 tests/ui_e2e.py
+```
+
 成片输出位置：`ComfyUI/output/afe_projects/<project_name>/`
 （`keyframes/` 首帧，`clips/` 每个分镜的视频，`final_movie.mp4` 成片）

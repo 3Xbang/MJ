@@ -93,17 +93,22 @@ wn.render_shot = _fake_render_shot
 def fake_parser(raw_script, **kw):
     if "FAIL" in raw_script:
         raise RuntimeError("CUDA out of memory (mock)")
+    batch_start = int(kw.get("batch_start_shot") or 1)
+    batch_end = int(kw.get("batch_end_shot") or 0)
+    total = batch_end - batch_start + 1 if batch_end >= batch_start else 6
     cast = [
         {"name": "阿明", "role_type": "lead", "gender": "male", "age_range": "25", "appearance_en": "short black hair, round glasses", "default_costume_en": "red apron"},
         {"name": "小红", "role_type": "supporting", "gender": "female", "age_range": "23", "appearance_en": "long brown hair", "default_costume_en": "blue dress"},
     ]
     shots = []
-    for i in range(6):
+    for offset in range(total):
+        i = batch_start - 1 + offset
         scene = "超市外卖厨房" if i < 4 else "公寓客厅"
+        source_unit = i + 1 if i < 4 else i - 3
         shots.append({
             "shot_id": f"shot_{i + 1:03d}", "scene_id": "scene_001" if i < 4 else "scene_002",
             "scene_occurrence_id": "occurrence_001" if i < 4 else "occurrence_002",
-            "source_block_id": "block_001" if i < 4 else "block_002", "source_unit_ids": [f"unit_{(i + 1 if i < 4 else i - 3):03d}"], "section_type": "location_scene",
+            "source_block_id": "block_001" if i < 4 else "block_002", "source_unit_ids": [f"unit_{source_unit:03d}"], "section_type": "location_scene",
             "scene_name": scene, "scene_name_en": "Supermarket" if i < 4 else "Apartment",
             "scene_environment_en": "bright interior, steel counter" if i < 4 else "warm living room, sofa",
             "environment_scope": "place_only", "environment_people": [], "environment_props": [],
@@ -115,14 +120,20 @@ def fake_parser(raw_script, **kw):
             "time_of_day": "afternoon", "weather": "indoor", "duration_seconds": 5.0, "costume_en": "red apron",
         })
     report = f"✅ 剧本解析完成（模拟）\n分镜 {len(shots)}"
-    source_manifest = [
-        {"order": 0, "scene_id": "scene_001", "scene_occurrence_id": "occurrence_001",
-         "source_block_id": "block_001", "section_type": "location_scene", "unit_ids": ["unit_001", "unit_002", "unit_003", "unit_004"]},
-        {"order": 1, "scene_id": "scene_002", "scene_occurrence_id": "occurrence_002",
-         "source_block_id": "block_002", "section_type": "location_scene", "unit_ids": ["unit_001", "unit_002"]},
-    ]
-    analysis = {"schema_version": "afe-analysis-v1", "analysis_status": "complete",
-                "expected_shot_count": len(shots), "source_manifest": source_manifest,
+    source_manifest = []
+    if batch_start <= 4:
+        source_manifest.append({"order": 0, "scene_id": "scene_001", "scene_occurrence_id": "occurrence_001",
+                               "source_block_id": "block_001", "section_type": "location_scene",
+                               "unit_ids": [f"unit_{i:03d}" for i in range(max(1, batch_start), min(4, batch_end) + 1)]})
+    if batch_end > 4:
+        source_manifest.append({"order": len(source_manifest), "scene_id": "scene_002", "scene_occurrence_id": "occurrence_002",
+                               "source_block_id": "block_002", "section_type": "location_scene",
+                               "unit_ids": [f"unit_{i - 4:03d}" for i in range(max(5, batch_start), batch_end + 1)]})
+    if not source_manifest:
+        source_manifest = [{"order": 0, "scene_id": "scene_001", "scene_occurrence_id": "occurrence_001",
+                            "source_block_id": "block_001", "section_type": "location_scene", "unit_ids": ["unit_001"]}]
+    analysis = {"schema_version": "afe-analysis-v1", "analysis_status": "partial",
+                "expected_shot_count": total, "source_manifest": source_manifest,
                 "shots": shots, "cast": cast}
     return {"ui": {"text": [report], "afe_analysis": [json.dumps(analysis, ensure_ascii=False)]},
             "result": (shots, cast, "", "", len(shots), 2, 3, report)}
