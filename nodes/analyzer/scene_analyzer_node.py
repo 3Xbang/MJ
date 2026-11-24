@@ -12,23 +12,32 @@ SCENE_PREFIX = "empty scene, no people, no characters, no humans, background onl
 # rejected rather than repaired by deleting a few words and possibly retaining
 # an action or a person in the generated reference.
 _ENV_HUMAN_RE = re.compile(
-    r"\b(?:person|people|human|character|man|woman|boy|girl|he|she|they|him|her|them|"
-    r"reaches?|grabs?|holds?|walks?|runs?|looks?|speaks?|talks?|opens?|closes?|"
-    r"turns?|picks?|puts?|places?|stands?|sits?|smiles?|frowns?|touches?)\b|"
-    r"人物|男人|女人|男孩|女孩|他|她|他们|拿起|放下|走向|奔跑|看向|说话|打开|关闭|转身|坐下|站立|微笑|皱眉",
+    r"\b(?:person|people|human|character|man|woman|boy|girl|worker|employee|customer|chef|driver|child|"
+    r"he|she|they|him|her|them|someone|somebody|figure|silhouette|"
+    r"reaches?|grabs?|holds?|holding|carries?|carrying|walks?|runs?|looks?|speaks?|talks?|"
+    r"opens?|closes?|turns?|picks?|puts?|places?|stands?|sits?|smiles?|frowns?|touches?|"
+    r"drinks?|eats?|writes?|waits?|moves?|gestures?|working|"
+    r"cup|mug|phone|smartphone|box|bag|tool|object|prop)\b|"
+    r"人物|男人|女人|男孩|女孩|工人|员工|顾客|厨师|司机|孩子|他|她|他们|拿起|放下|走向|奔跑|"
+    r"看向|说话|打开|关闭|转身|坐下|站立|微笑|皱眉|拿着|握着|杯子|手机|箱子|道具",
     re.IGNORECASE,
 )
 
 
-def validate_empty_scene_prompt(prompt: str, characters=()) -> str:
-    """Return a reason when an environment response contains human/action facts."""
+def validate_empty_scene_prompt(prompt: str, characters=(), forbidden_facts=()) -> str:
+    """Return a reason when an environment response is not provably place-only."""
     text = str(prompt or "").strip()
     if not text:
         return "environment prompt is empty"
+    lowered = text.lower()
     for character in characters or ():
         name = str(character or "").strip()
-        if name and name.lower() in text.lower():
+        if name and name.lower() in lowered:
             return f"contains character name: {name}"
+    for fact in forbidden_facts or ():
+        fact_text = str(fact or "").strip()
+        if fact_text and fact_text.lower() in lowered:
+            return f"contains screenplay fact: {fact_text}"
     match = _ENV_HUMAN_RE.search(text)
     if match:
         return f"contains human/action fact: {match.group(0)}"
@@ -152,6 +161,7 @@ class AFE_SceneAnalyzer:
                     "location": location,
                     "scene_name_en": name_en,
                     "scene_environment_en": env_en,
+                    "forbidden_facts": [],
                 }
             scene_map[key]["shots"].append(shot_id)
             if scene_occurrence_id and scene_occurrence_id not in scene_map[key]["scene_occurrences"]:
@@ -161,6 +171,10 @@ class AFE_SceneAnalyzer:
             for character in shot.get("character_names") or []:
                 if character and character not in info["characters"]:
                     info["characters"].append(str(character))
+            for fact in list(shot.get("props_list") or []) + [shot.get("action"), shot.get("business")]:
+                fact_text = str(fact or "").strip()
+                if fact_text and fact_text not in info["forbidden_facts"]:
+                    info["forbidden_facts"].append(fact_text)
             if not info["lighting_style"] and lighting:
                 info["lighting_style"] = lighting
             if not info["time_of_day"] and time_of_day:
@@ -218,7 +232,8 @@ class AFE_SceneAnalyzer:
             # tokens from a contaminated answer, because that can leave an
             # action or a different person in the empty-scene asset.
             contamination = validate_empty_scene_prompt(
-                environment_prompt_en, info.get("characters", []))
+                environment_prompt_en, info.get("characters", []), info.get("forbidden_facts", [])
+            )
             if contamination:
                 raise ValueError(
                     f"场景 {info.get('scene_id', key)} 的空场景提示词未通过隔离校验：{contamination}"

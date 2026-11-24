@@ -174,7 +174,25 @@ def test_ascii_bracketed_title_sequence_does_not_swallow_location():
     assert sm[1]["section_type"] == "location_scene"
 
 
-if __name__ == "__main__":
+def test_generic_open_on_and_intercut_cues_preserve_alternating_locations():
+    sm = m._build_scene_map(
+        "OPEN ON: EXT. HARBOR - NIGHT\nA boat waits.\n"
+        "SMASH CUT TO:\nINT. WORKSHOP - DAY\nA lever turns.\n"
+        "INTERCUT\nEXT. HARBOR - NIGHT\nThe boat moves.\n")
+    assert len(sm) == 5, [scene["sample_header"] for scene in sm]
+    assert [scene["section_type"] for scene in sm] == [
+        "location_scene", "transition", "location_scene", "transition", "location_scene"
+    ]
+    assert "HARBOR" in sm[0]["sample_header"]
+    assert "WORKSHOP" in sm[2]["source_text"]
+    assert "HARBOR" in sm[4]["source_text"]
+
+
+def test_scene_environment_rejects_generic_worker_contamination():
+    from ai_film_editor_nodes.nodes.analyzer.scene_analyzer_node import validate_empty_scene_prompt
+    assert validate_empty_scene_prompt("a worker holding a cup in a kitchen")
+
+
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for f in fns:
         f()

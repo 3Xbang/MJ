@@ -36,8 +36,9 @@ _SCENE_HEADER_PATTERNS = [
     r'【场景\s*[A-Za-z0-9]+[：:].*?】',          # 【场景 A：XXX - YYY】
     r'场景[一二三四五六七八九十\d]+[：:][^\n]{0,40}',  # 场景一：XXX
     r'第[一二三四五六七八九十\d]+场[：:]?[^\n]{0,40}', # 第一场：XXX
-    r'(?:INT|EXT)[./]\s*[^\n]{0,60}',           # INT. XXX - DAY
-    r'Scene\s*[A-Za-z0-9]+[：:.][^\n]{0,40}',    # Scene 1: XXX
+    r'^[ \\t]*(?:(?:OPEN\s+ON|SMASH\s+CUT\s+TO|CUT\s+TO)\\s*:\\s*)?(?:INT|EXT|INT/EXT)[./]\\s*[^\\n]{0,100}$',
+    r'^[ \\t]*(?:INT|EXT|INT/EXT)[./]\\s*[^\\n]{0,100}$',           # INT. XXX - DAY
+    r'Scene\\s*[A-Za-z0-9]+[：:.][^\\n]{0,40}',    # Scene 1: XXX
     # Common screenplay headings/cues are often unbracketed and line-anchored.
     # Treat them as semantic blocks before a following location heading.
     r'^[ \t]*(?:TITLE\s+SEQUENCE|TITLE\s+CARD|OPENING\s+TITLES?|END\s+CREDITS?|CREDITS|'
@@ -78,6 +79,11 @@ _SEMANTIC_CUE_RE = re.compile(
     r'(?:\[|【)(black\s*screen|quick\s*flash(?:es)?|flash\s*cut|silhouette|half\s*silhouette|'
     r'fade(?:\s*out)?|transition|montage|黑屏|快速闪切|半剪影|淡出|转场|蒙太奇)[^\]】]*(?:\]|】)',
     re.IGNORECASE,
+)
+_SCREENPLAY_CUE_LINE_RE = re.compile(
+    r'^[ \\t]*(?:SMASH\\s+CUT\\s+TO|INTERCUT(?:\\s+WITH)?|MATCH\\s+CUT\\s+TO|JUMP\\s+CUT\\s+TO|'
+    r'CUT\\s+TO|FADE\\s+(?:IN|OUT)|DISSOLVE\\s+TO|WIPE\\s+TO)\\b[^\\n]*$',
+    re.IGNORECASE | re.MULTILINE,
 )
 # A montage may contain several inserts before the next screenplay heading.
 # Split only explicit location-bearing insert lines, never arbitrary prose. This
@@ -159,7 +165,7 @@ def _section_type(header: str) -> str:
         return "prologue"
     if re.search(r"尾声|结尾|epilogue|ending", text):
         return "epilogue"
-    if re.search(r"黑屏|black\s*screen|转场|transition|淡出|fade|cut\s+to", text):
+    if re.search(r"黑屏|black\s*screen|转场|transition|淡出|fade|cut\s+to|smash\s+cut|intercut|match\s+cut|jump\s+cut|dissolve|wipe", text):
         return "transition"
     if re.search(r"快速闪切|montage|闪切|quick\s+flash|flash\s*cut", text):
         return "montage"
@@ -191,8 +197,25 @@ def _build_scene_map(raw_script: str) -> list[dict]:
         # [内景 - 日], [外景 - 日] and [连续] are annotations, not boundaries.
         candidates.append((match.start(), match.end(), cue, section,
                            f"semantic_{section}_{len(candidates) + 1:03d}", False))
+    for match in _SCREENPLAY_CUE_LINE_RE.finditer(raw_script):
+        if any(start <= match.start() < end for start, end in header_ranges):
+            continue
+        cue = match.group().strip()
+        section = _section_type(cue)
+        candidates.append((match.start(), match.end(), cue, section,
+                           f"semantic_{section}_{len(candidates) + 1:03d}", False))
     candidates = _split_montage_candidates(raw_script, candidates)
     candidates.sort(key=lambda item: item[0])
+    # The generic location grammar intentionally overlaps the legacy INT/EXT
+    # rule. Keep one boundary for each exact source range.
+    deduped = []
+    seen_ranges = set()
+    for candidate in candidates:
+        marker = (candidate[0], candidate[1])
+        if marker not in seen_ranges:
+            deduped.append(candidate)
+            seen_ranges.add(marker)
+    candidates = deduped
 
     if not candidates:
         return [{"scene_index": 1, "scene_id": "scene_001", "sample_header": "Unnamed Location",
@@ -533,21 +556,57 @@ def _compact_source(text: str) -> str:
     return re.sub(r"\s+", " ", str(text or "")).strip()
 
 
-def _phase2_description_compatible(summary: str, phase1: dict, source_text: str) -> bool:
-    """Allow a phase-2 visual rewrite only when it shares source anchors."""
-    candidate = _compact_source(summary).lower()
-    if not candidate:
-        return False
-    anchors = " ".join(str(value or "") for value in (
-        source_text, phase1.get("raw_description"), phase1.get("source_shot_text"),
-        phase1.get("action"), phase1.get("business"), phase1.get("dialogue"),
-        *(phase1.get("props_list") or []), *(phase1.get("character_names") or []),
-    )).lower()
-    if not anchors:
-        return False
-    candidate_tokens = {token for token in re.findall(r"[a-z0-9]{3,}|[\u4e00-\u9fff]{2,}", candidate)}
-    anchor_tokens = {token for token in re.findall(r"[a-z0-9]{3,}|[\u4e00-\u9fff]{2,}", anchors)}
-    return bool(candidate_tokens & anchor_tokens)
+def _source_tokens(value: str) -> set[str]:
+    return {token for token in re.findall(r"[a-z0-9]{3,}|[\\u4e00-\\u9fff]{2,}", _compact_source(value).lower())}
+
+
+def _phase1_fact_validation_errors(shot: dict, source_fragment: str, source_block_text: str) -> list[str]:
+    """Reject structured facts that contradict the verified screenplay span.
+
+    Phase 1 is an extractor, not an author. Facts that name a subject, action,
+    prop, or explicit lighting cue must have concrete evidence in the source
+    span. Unverifiable enrichment is reported on the shot and is therefore
+    rejected by the persistence gate instead of reaching an image model.
+    """
+    source = _source_tokens(source_fragment)
+    block = _source_tokens(source_block_text)
+    errors = []
+    names = [str(value).strip() for value in (shot.get("character_names") or []) if str(value).strip()]
+    for name in names:
+        if _source_tokens(name) - source:
+            errors.append(f"character fact not found in verified source: {name}")
+    for prop in (shot.get("props_list") or []):
+        prop_tokens = _source_tokens(str(prop))
+        if prop_tokens and not prop_tokens.intersection(source):
+            errors.append(f"prop fact not found in verified source: {prop}")
+    action = str(shot.get("action") or "").strip()
+    if action and not _source_tokens(action).intersection(source):
+        errors.append(f"action fact not found in verified source: {action}")
+    location = str(shot.get("location") or "").strip()
+    if location and block and not _source_tokens(location).intersection(block):
+        errors.append(f"location fact not found in source block: {location}")
+    # Lighting conflicts are checked when the screenplay contains an explicit
+    # cue. Generic style fields are allowed only when the source has no cue.
+    lighting = _source_tokens(str(shot.get("lighting") or ""))
+    source_lighting = source.intersection({"led", "neon", "fluorescent", "sunlight", "daylight", "moonlight",
+                                           "candle", "cool", "warm", "white", "amber", "blue", "red", "natural"})
+    if lighting and source_lighting and not lighting.intersection(source_lighting):
+        errors.append("lighting fact contradicts the verified source")
+    return errors
+
+
+def _validate_cast_against_script(cast_list: list, raw_script: str) -> None:
+    source = _source_tokens(raw_script)
+    unknown = []
+    for entry in cast_list or []:
+        if not isinstance(entry, dict) or not str(entry.get("name") or "").strip():
+            unknown.append("<missing name>")
+            continue
+        name = str(entry["name"]).strip()
+        if not _source_tokens(name).intersection(source):
+            unknown.append(name)
+    if unknown:
+        raise ValueError("剧本分镜解析被阻止：角色清单包含原文未出现的人物：" + ", ".join(unknown))
 
 
 def _validated_source_fragment(source_block_text: str, raw_desc: str, shot: dict) -> tuple[str, str]:
@@ -1008,6 +1067,7 @@ class AFE_ScriptFullParser:
 
         cast_list    = phase1_data.get("cast", [])
         minimal_shots = phase1_data.get("shots", [])
+        _validate_cast_against_script(cast_list, raw_script)
         minimal_shots = _normalize_durations(minimal_shots, target_duration_seconds, seconds_per_shot)
         logger.info(f"[AFE_ScriptFullParser] Phase 1 done: {len(cast_list)} cast, {len(minimal_shots)} shots")
 
@@ -1129,10 +1189,19 @@ class AFE_ScriptFullParser:
             source_shot_text, source_validation_error = _validated_source_fragment(
                 source_block_text, raw_desc, shot
             )
+            fact_validation_errors = _phase1_fact_validation_errors(
+                shot, source_shot_text, source_block_text
+            ) if not source_validation_error else []
+            if fact_validation_errors:
+                assignment_errors.extend(
+                    f"{shot_id}: {error}" for error in fact_validation_errors
+                )
             if source_validation_error:
                 assignment_errors.append(f"{shot_id}: {source_validation_error}")
             dialogue   = _first_present(shot.get("dialogue"), default="")
             props_list = _clean_semantic(shot.get("props_list")) or []
+
+            fact_validation_error = "; ".join(fact_validation_errors)
 
             logger.info(f"[AFE_ScriptFullParser] Phase 2: shot {i + 1}/{total} ({shot_id})")
 
@@ -1171,16 +1240,14 @@ class AFE_ScriptFullParser:
                     "已阻止保存不完整分析，请重试剧本分析。"
                 ) from exc
 
-            # A phase-2 literal "null" is semantically absent. Keep the full
-            # phase-1/source description so no prop, action, or costume detail
-            # disappears before the shared prompt contract is built.
-            phase2_description = _first_present(p2_data.get("shot_description"), default="")
-            sd = raw_desc
-            if phase2_description and _phase2_description_compatible(
-                    str(phase2_description), shot, source_shot_text):
-                sd = str(phase2_description)
+            # Keep the verified Phase 1/source description canonical. Phase 2
+            # may populate structured fields, but its prose cannot introduce a
+            # second location or contradictory action into either renderer.
+            sd = _first_present(raw_desc, source_shot_text, default="")
             if not sd:
-                sd = phase2_description
+                raise ValueError(
+                    f"分镜 {shot_id} 缺少可验证的原文描述，已阻止生成。"
+                )
             if _mostly_cjk(sd):
                 try:
                     eng = self._call_llm(TO_ENGLISH_SYSTEM, sd, model_path, max_new_tokens=160).strip()
@@ -1241,9 +1308,9 @@ class AFE_ScriptFullParser:
                 "source_unit_ids":   _clean_semantic(shot.get("source_unit_ids")) or [],
                 "source_start":      shot.get("source_start"),
                 "source_end":        shot.get("source_end"),
-                "source_validation_error": source_validation_error,
+                "source_validation_error": "; ".join(filter(None, [source_validation_error, fact_validation_error])),
                 "raw_description":   raw_desc,
-                "scene_assignment_error": shot.get("scene_assignment_error") or source_validation_error,
+                "scene_assignment_error": shot.get("scene_assignment_error") or source_validation_error or fact_validation_error,
                 "environment": {
                     "description": scene_env.get(scene_idx, {}).get("environment_prompt_en", ""),
                     "location": location,
@@ -1266,7 +1333,7 @@ class AFE_ScriptFullParser:
                 "shot_type":           shot_type,
                 "lighting_style":      lighting_style,
                 "director_notes":      director_notes,
-                "shot_description":    p2_data.get("shot_description") or raw_desc,
+                "shot_description":    sd,
                 "negative_prompt":     _first_present(p2_data.get("negative_prompt"), shot.get("negative_prompt"), default="ugly, blurry, low quality, distorted"),
                 "dialogue":            dialogue if dialogue else "（无）",
                 "location":            location or scene_name,

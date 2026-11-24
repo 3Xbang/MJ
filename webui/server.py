@@ -91,39 +91,51 @@ def _text(entry: dict) -> str:
 
 
 def _validate_analysis_payload(analysis: dict) -> None:
-    """Reject incomplete, duplicated, or reordered parser results before saving."""
-    shots = analysis.get("shots") if isinstance(analysis, dict) else None
+    """Reject incomplete, duplicated, or reordered current-schema parser results."""
+    if not isinstance(analysis, dict) or analysis.get("schema_version") != "afe-analysis-v1":
+        raise ValueError("剧本分析缺少当前版本的结构化来源清单，请重新运行分析。")
+    shots = analysis.get("shots")
     if not isinstance(shots, list) or not shots:
         raise ValueError("剧本分析没有返回分镜，请检查剧本内容是否完整。")
-    if analysis.get("analysis_status") not in (None, "complete"):
+    if analysis.get("analysis_status") != "complete":
         raise ValueError("剧本分析尚未完成，已阻止保存，请重新运行分析。")
     expected_count = analysis.get("expected_shot_count")
-    if expected_count is not None:
-        if not isinstance(expected_count, int) or expected_count != len(shots):
-            raise ValueError(
-                f"剧本分析分镜数量不完整：清单要求 {expected_count} 个，实际返回 {len(shots)} 个。"
-            )
+    if not isinstance(expected_count, int) or expected_count <= 0 or expected_count != len(shots):
+        raise ValueError(
+            f"剧本分析分镜数量不完整：清单要求 {expected_count} 个，实际返回 {len(shots)} 个。"
+        )
 
     manifest = analysis.get("source_manifest")
+    if not isinstance(manifest, list) or not manifest:
+        raise ValueError("剧本分析缺少有效的原文来源清单。")
     manifest_ids = {}
-    if manifest is not None:
-        if not isinstance(manifest, list) or not manifest:
-            raise ValueError("剧本分析缺少有效的原文来源清单。")
-        for position, item in enumerate(manifest):
-            if not isinstance(item, dict) or not str(item.get("source_block_id") or "").strip():
-                raise ValueError(f"原文来源清单第 {position + 1} 项无效。")
-            block_id = str(item["source_block_id"])
-            if block_id in manifest_ids:
-                raise ValueError(f"原文来源清单重复：{block_id}")
-            declared_order = item.get("order", position)
-            if declared_order != position:
-                raise ValueError(f"原文来源清单顺序错误：{block_id}")
-            manifest_ids[block_id] = position
+    manifest_units = {}
+    all_units = set()
+    for position, item in enumerate(manifest):
+        if not isinstance(item, dict) or not str(item.get("source_block_id") or "").strip():
+            raise ValueError(f"原文来源清单第 {position + 1} 项无效。")
+        block_id = str(item["source_block_id"])
+        if block_id in manifest_ids:
+            raise ValueError(f"原文来源清单重复：{block_id}")
+        if item.get("order") != position:
+            raise ValueError(f"原文来源清单顺序错误：{block_id}")
+        unit_ids = item.get("unit_ids")
+        if not isinstance(unit_ids, list) or not unit_ids or any(not str(unit).strip() for unit in unit_ids):
+            raise ValueError(f"原文来源清单 {block_id} 缺少完整原文单元。")
+        normalized_units = [str(unit).strip() for unit in unit_ids]
+        if len(set(normalized_units)) != len(normalized_units):
+            raise ValueError(f"原文来源清单重复原文单元：{block_id}")
+        overlap = {(block_id, unit) for unit in normalized_units}.intersection(all_units)
+        if overlap:
+            raise ValueError(f"原文来源清单重复原文单元：{block_id}")
+        manifest_ids[block_id] = position
+        manifest_units[block_id] = normalized_units
+        all_units.update((block_id, unit) for unit in normalized_units)
 
     errors = []
     seen = set()
-    shot_block_positions = []
-    covered_blocks = set()
+    covered_units = set()
+    evidence_positions = []
     for index, shot in enumerate(shots):
         if not isinstance(shot, dict):
             errors.append(f"shot_{index + 1:03d}: 分镜不是结构化对象")
@@ -139,19 +151,38 @@ def _validate_analysis_payload(analysis: dict) -> None:
         if shot.get("scene_assignment_error") or shot.get("source_validation_error"):
             errors.append(f"{shot_id}: 原文来源未验证")
         block_id = str(shot.get("source_block_id") or "")
-        if manifest_ids:
-            if block_id not in manifest_ids:
-                errors.append(f"{shot_id}: source_block_id 不在原文来源清单中")
-            else:
-                shot_block_positions.append((manifest_ids[block_id], shot_id))
-                covered_blocks.add(block_id)
+        if block_id not in manifest_ids:
+            errors.append(f"{shot_id}: source_block_id 不在原文来源清单中")
+            continue
+        unit_ids = shot.get("source_unit_ids")
+        if not isinstance(unit_ids, list) or not unit_ids:
+            errors.append(f"{shot_id}: 缺少可验证的 source_unit_ids")
+            continue
+        normalized_units = [str(unit).strip() for unit in unit_ids]
+        if len(set(normalized_units)) != len(normalized_units):
+            errors.append(f"{shot_id}: source_unit_ids 重复")
+            continue
+        unknown = [unit for unit in normalized_units if unit not in manifest_units[block_id]]
+        if unknown:
+            errors.append(f"{shot_id}: source_unit_ids 不属于 {block_id}")
+            continue
+        unit_positions = [manifest_units[block_id].index(unit) for unit in normalized_units]
+        if unit_positions != sorted(unit_positions):
+            errors.append(f"{shot_id}: source_unit_ids 未按原文顺序排列")
+            continue
+        duplicate = [(block_id, unit) for unit in normalized_units if (block_id, unit) in covered_units]
+        if duplicate:
+            errors.append(f"{shot_id}: 重复覆盖原文单元 {', '.join(unit for _, unit in duplicate)}")
+        covered_units.update((block_id, unit) for unit in normalized_units)
+        evidence_positions.append((manifest_ids[block_id], manifest_units[block_id].index(normalized_units[0]), shot_id))
 
-    if manifest_ids:
-        missing_blocks = [block_id for block_id in manifest_ids if block_id not in covered_blocks]
-        if missing_blocks:
-            errors.append("遗漏原文段：" + ", ".join(missing_blocks[:20]))
-        if shot_block_positions != sorted(shot_block_positions, key=lambda item: item[0]):
-            errors.append("分镜来源顺序与原文来源清单不一致")
+    missing_units = sorted(all_units - covered_units)
+    if missing_units:
+        errors.append("遗漏原文单元：" + ", ".join(f"{block}:{unit}" for block, unit in missing_units[:20]))
+    if covered_units - all_units:
+        errors.append("出现清单外原文单元：" + ", ".join(f"{block}:{unit}" for block, unit in sorted(covered_units - all_units)[:20]))
+    if evidence_positions != sorted(evidence_positions):
+        errors.append("分镜来源顺序与原文来源清单不一致")
     if errors:
         raise ValueError(
             "剧本分析被阻止：返回的分镜未通过来源完整性检查。\n"

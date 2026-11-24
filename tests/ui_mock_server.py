@@ -103,7 +103,7 @@ def fake_parser(raw_script, **kw):
         shots.append({
             "shot_id": f"shot_{i + 1:03d}", "scene_id": "scene_001" if i < 4 else "scene_002",
             "scene_occurrence_id": "occurrence_001" if i < 4 else "occurrence_002",
-            "source_block_id": "block_001" if i < 4 else "block_002", "section_type": "location_scene",
+            "source_block_id": "block_001" if i < 4 else "block_002", "source_unit_ids": [f"unit_{(i + 1 if i < 4 else i - 3):03d}"], "section_type": "location_scene",
             "scene_name": scene, "scene_name_en": "Supermarket" if i < 4 else "Apartment",
             "scene_environment_en": "bright interior, steel counter" if i < 4 else "warm living room, sofa",
             "character_names": ["阿明"] if i % 2 == 0 else ["阿明", "小红"],
@@ -116,9 +116,9 @@ def fake_parser(raw_script, **kw):
     report = f"✅ 剧本解析完成（模拟）\n分镜 {len(shots)}"
     source_manifest = [
         {"order": 0, "scene_id": "scene_001", "scene_occurrence_id": "occurrence_001",
-         "source_block_id": "block_001", "section_type": "location_scene", "unit_ids": ["unit_001"]},
+         "source_block_id": "block_001", "section_type": "location_scene", "unit_ids": ["unit_001", "unit_002", "unit_003", "unit_004"]},
         {"order": 1, "scene_id": "scene_002", "scene_occurrence_id": "occurrence_002",
-         "source_block_id": "block_002", "section_type": "location_scene", "unit_ids": ["unit_001"]},
+         "source_block_id": "block_002", "section_type": "location_scene", "unit_ids": ["unit_001", "unit_002"]},
     ]
     analysis = {"schema_version": "afe-analysis-v1", "analysis_status": "complete",
                 "expected_shot_count": len(shots), "source_manifest": source_manifest,
