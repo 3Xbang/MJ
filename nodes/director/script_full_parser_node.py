@@ -751,6 +751,157 @@ def _fact_is_supported(value: object, source_text: str) -> bool:
     return False
 
 
+# A prop alias may enrich a current shot only when the detailed declaration is
+# already present in a verified context unit. Chinese prop phrases are
+# head-final (modifiers precede the noun), so a shot that only names a prop
+# by its short form still contains the tail of its full verified declaration.
+# No fixed noun vocabulary is used here, so this generalizes to any
+# screenplay's own props instead of only the ones seen during development.
+_PROP_DECLARATION_SPLIT_RE = re.compile(r"[\s，,。；;：:、/（）()\[\]【】<>《》]+")
+_MIN_PROP_ALIAS_LEN = 2
+_MAX_PROP_DECLARATION_LEN = 40
+
+
+def _verified_prop_context_texts(scene_map: list[dict] | None) -> list[str]:
+    """Return only persisted global/context declarations.
+
+    ``batch_context_only`` blocks are source-manifest context and therefore
+    may be read in full.  In a normal shot block only units explicitly marked
+    ``is_context`` are eligible.  In particular, never fall back to a scene's
+    aggregated ``source_text`` because it can contain sibling shot bodies.
+    """
+    texts = []
+    for _scene, block in _ordered_scene_blocks(scene_map or []):
+        block_text = str(block.get("source_text") or "")
+        units = _source_units_for_block(block)
+        if block.get("batch_context_only"):
+            candidates = units or ([{"text": block_text}] if block_text.strip() else [])
+        else:
+            candidates = [unit for unit in units if unit.get("is_context")]
+            # Session manifests may persist context units separately from the
+            # reconstructed batch units.  They are still verified declarations.
+            candidates.extend(unit for unit in block.get("context_units", [])
+                              if isinstance(unit, dict))
+        for unit in candidates:
+            text = str(unit.get("text") or "").strip()
+            if text and text not in texts:
+                texts.append(text)
+    return texts
+
+
+def _build_verified_prop_registry(scene_map: list[dict] | None) -> list[str]:
+    """Collect candidate prop declarations from same-script context only.
+
+    Every punctuation-delimited clause of a verified context unit is a
+    candidate canonical prop description. The registry has no access to any
+    shot's own text: whether a declaration is actually used as an alias for
+    the current shot, and which short form it expands, is resolved per-shot
+    in ``_prop_alias_for_fragment`` from that shot's exact source fragment.
+    """
+    declarations: list[str] = []
+    seen = set()
+    for context in _verified_prop_context_texts(scene_map):
+        for part in _PROP_DECLARATION_SPLIT_RE.split(context):
+            phrase = part.strip("-*_`#>")
+            if not phrase or len(phrase) > _MAX_PROP_DECLARATION_LEN:
+                continue
+            if not re.search(r"[\u4e00-\u9fffA-Za-z0-9]", phrase):
+                continue
+            # Keep the declaration verbatim: a canonical value is only ever
+            # accepted when it is literally present in verified context.
+            canonical = _compact_source(phrase)
+            if len(canonical) < _MIN_PROP_ALIAS_LEN or canonical in seen:
+                continue
+            seen.add(canonical)
+            declarations.append(canonical)
+    return declarations
+
+
+def _prop_registry_entries(registry: list[str] | None) -> list[str]:
+    return sorted(set(registry or []))
+
+
+def _prop_alias_for_fragment(canonical: str, source_text: str) -> str:
+    """Return the longest trailing alias of ``canonical`` actually present in
+    this shot's exact source fragment, or '' when the declaration is not
+    referenced by this shot.
+
+    Chinese noun phrases place the head noun last, so trimming characters
+    from the front of a verified declaration recovers the short form a shot
+    may use, without requiring a per-noun vocabulary.
+    """
+    text = str(source_text or "")
+    if not text or not canonical:
+        return ""
+    best = ""
+    for cut in range(len(canonical) - _MIN_PROP_ALIAS_LEN + 1):
+        alias = canonical[cut:]
+        if len(alias) < _MIN_PROP_ALIAS_LEN:
+            continue
+        if len(alias) > len(best) and _fact_is_supported(alias, text):
+            best = alias
+    return best
+
+
+def _canonicalize_prop_value(value: object, source_text: str,
+                             registry: list[str] | None):
+    """Canonicalize one validated prop or prop interaction.
+
+    A value already grounded in the exact fragment is a fact on its own; a
+    short value in the current fragment, or a detailed value declared only
+    in verified context, is upgraded to the registered canonical declaration
+    whose alias this shot's own fragment actually supports.
+    """
+    if not _present(value) or not registry:
+        return value
+    text = str(value).strip()
+    matches = []
+    for canonical in registry:
+        alias = _prop_alias_for_fragment(canonical, source_text)
+        if not alias:
+            continue
+        if canonical in text:
+            # Already the verified detailed form, whole or embedded in a
+            # longer interaction sentence. Nothing to rewrite.
+            matches.append((canonical, text))
+        elif text == alias:
+            matches.append((canonical, canonical))
+        elif alias in text:
+            matches.append((canonical, text.replace(alias, canonical)))
+    if not matches:
+        return value
+    # Prefer the most descriptive verified declaration; ties are deterministic.
+    matches.sort(key=lambda item: (-len(item[0]), item[0]))
+    return matches[0][1]
+
+
+def _prop_fact_is_supported(value: object, source_text: str,
+                            registry: list[str] | None) -> bool:
+    """Accept a prop/prop-interaction fact against the exact fragment first,
+    then against a same-script verified declaration whose alias is present
+    in the current fragment.  An object absent from both remains unverified.
+    """
+    if _fact_is_supported(value, source_text):
+        return True
+    text = str(value or "")
+    if not text or not registry:
+        return False
+    # A detailed value may stand alone, or a Phase-1/Phase-2 interaction may
+    # wrap it in prose. Replace only a registered canonical declaration with
+    # its alias for this shot, then validate the rewritten text against the
+    # exact current-shot fragment.
+    rewritten = text
+    replaced = False
+    for canonical in registry:
+        if canonical not in rewritten:
+            continue
+        alias = _prop_alias_for_fragment(canonical, source_text)
+        if alias and alias != canonical:
+            rewritten = rewritten.replace(canonical, alias)
+            replaced = True
+    return replaced and _fact_is_supported(rewritten, source_text)
+
+
 # These are screenplay facts, not free-form visual decoration.  A missing
 # Phase-1 value may only be filled by Phase 2 when the exact source fragment
 # supports it. Camera framing remains a deterministic production direction;
@@ -801,7 +952,8 @@ def _direction_provenance(field: str, value, source_fragment: str) -> str:
 
 
 def _fact_validation_errors(data: dict, source_fragment: str, source_block_text: str,
-                            phase: str = "structured") -> list[str]:
+                            phase: str = "structured",
+                            prop_registry: list[str] | None = None) -> list[str]:
     errors = []
     source = str(source_fragment or "")
     block = str(source_block_text or "")
@@ -812,7 +964,10 @@ def _fact_validation_errors(data: dict, source_fragment: str, source_block_text:
             if not _present(item):
                 continue
             evidence = block if field == "location" and not source else source
-            if not _fact_is_supported(item, evidence):
+            supported = (_prop_fact_is_supported(item, source, prop_registry)
+                         if field in {"props_list", "prop_interactions"}
+                         else _fact_is_supported(item, evidence))
+            if not supported:
                 errors.append(f"{phase} {field} fact is not supported by the exact source: {item}")
     for field in ("character_names",):
         for item in data.get(field) or []:
@@ -821,9 +976,10 @@ def _fact_validation_errors(data: dict, source_fragment: str, source_block_text:
     return errors
 
 
-def _phase1_fact_validation_errors(shot: dict, source_fragment: str, source_block_text: str) -> list[str]:
+def _phase1_fact_validation_errors(shot: dict, source_fragment: str, source_block_text: str,
+                                   prop_registry: list[str] | None = None) -> list[str]:
     """Reject every Phase-1 fact that is not grounded in its verified span."""
-    return _fact_validation_errors(shot, source_fragment, source_block_text, "Phase 1")
+    return _fact_validation_errors(shot, source_fragment, source_block_text, "Phase 1", prop_registry)
 
 
 def _validate_cast_against_script(cast_list: list, raw_script: str) -> None:
@@ -1470,6 +1626,7 @@ class AFE_ScriptFullParser:
             scene_map = _select_batch_scene_map(
                 scene_map, total_shot_count, batch_start_shot, batch_end_shot
             )
+        verified_prop_registry = _build_verified_prop_registry(scene_map)
         scene_map_text = _scene_map_to_prompt_text(scene_map)
         logger.info("[AFE_ScriptFullParser] Pre-segmented %d unique scene(s) from screenplay",
                     len(scene_map))
@@ -1667,8 +1824,19 @@ class AFE_ScriptFullParser:
                 source_units=_source_units_for_block(source_block) if source_block else None,
             )
             fact_validation_errors = _phase1_fact_validation_errors(
-                shot, source_shot_text, fact_source_block_text
+                shot, source_shot_text, fact_source_block_text, verified_prop_registry
             ) if not source_validation_error else []
+            # Keep the exact source fragment untouched while canonicalizing
+            # only verified prop aliases for downstream prompts/dependencies.
+            if not source_validation_error:
+                shot["props_list"] = [
+                    _canonicalize_prop_value(value, source_shot_text, verified_prop_registry)
+                    for value in (_clean_semantic(shot.get("props_list")) or [])
+                ]
+                shot["prop_interactions"] = [
+                    _canonicalize_prop_value(value, source_shot_text, verified_prop_registry)
+                    for value in (_clean_semantic(shot.get("prop_interactions")) or [])
+                ]
             invalid_phase1_fields = set()
             if fact_validation_errors:
                 assignment_errors.extend(
@@ -1706,6 +1874,7 @@ class AFE_ScriptFullParser:
                 f"Source block ID: {source_block_id or 'unverified'}; occurrence: {occurrence_id or 'unverified'}\n"
                 f"Exact source fragment for THIS shot (canonical visual facts; do not add sibling moments):\n{source_shot_text or 'unverified'}\n"
                 f"Current block context unit (environment/structure only; do not copy other shots):\n{source_context_text or 'none'}\n"
+                f"Verified prop aliases from global/context declarations only: {json.dumps(_prop_registry_entries(verified_prop_registry), ensure_ascii=False)}\n"
                 f"Phase 1 shot description (use only to enrich the exact fragment): {raw_desc}\n"
                 f"Dialogue fact: {dialogue or 'null'}; Props fact: {json.dumps(props_list, ensure_ascii=False)}\n"
                 f"Requested structured facts: expression={shot.get('facial_expression','')}; micro_expression={shot.get('micro_expression','')}; gaze={shot.get('gaze','')}; body_language={shot.get('body_language','')}; action_start={shot.get('action_start','')}; action_process={shot.get('action_process','')}; action_end={shot.get('action_end','')}; prop_interactions={shot.get('prop_interactions','')}\n"
@@ -1729,8 +1898,18 @@ class AFE_ScriptFullParser:
             # Phase-1 field from becoming a hallucinated action, person,
             # location, prop, expression, dialogue, light, or weather cue.
             phase2_fact_errors = _fact_validation_errors(
-                p2_data, source_shot_text, fact_source_block_text, "Phase 2"
+                p2_data, source_shot_text, fact_source_block_text, "Phase 2",
+                verified_prop_registry
             )
+            if not phase2_fact_errors:
+                p2_data["props_list"] = [
+                    _canonicalize_prop_value(value, source_shot_text, verified_prop_registry)
+                    for value in (_clean_semantic(p2_data.get("props_list")) or [])
+                ]
+                p2_data["prop_interactions"] = [
+                    _canonicalize_prop_value(value, source_shot_text, verified_prop_registry)
+                    for value in (_clean_semantic(p2_data.get("prop_interactions")) or [])
+                ]
             if phase2_fact_errors:
                 assignment_errors.extend(f"{shot_id}: {error}" for error in phase2_fact_errors)
                 for field in _FACT_FIELDS:

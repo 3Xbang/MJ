@@ -350,6 +350,117 @@ def test_complete_36_shot_screenplay_batches_bind_and_publish():
         assert first["scene_occurrence_id"] == block["scene_occurrence_id"]
 
 
+class Batch1PropAliasParser(parser_mod.AFE_ScriptFullParser):
+    """Mimic a model that expands shot_002's short prop names (佛珠/金链) to
+    their detailed form, which is only declared verbatim in the screenplay's
+    verified global/character context, never in a sibling shot body."""
+
+    def __init__(self, extra_props=None):
+        self.extra_props = list(extra_props or [])
+
+    def _call_llm(self, system_prompt, user_prompt, model_path, max_new_tokens=2048):
+        if system_prompt == parser_mod.PHASE1_SYSTEM:
+            marker = "Screenplay source for this batch:\n"
+            source = user_prompt.split(marker, 1)[1]
+            units = [
+                unit for unit in parser_mod._source_units_with_offsets(source)
+                if unit.get("is_explicit_shot")
+            ]
+            shots = []
+            for unit in units:
+                text = unit["text"]
+                props = []
+                if text.startswith("### 镜头002"):
+                    props = ["深棕色小叶紫檀佛珠", "粗金链"] + self.extra_props
+                shots.append({
+                    "shot_id": "model-local-id", "scene_index": 999,
+                    "source_block_id": "model-invented-block", "raw_description": text,
+                    "props_list": props,
+                })
+            return json.dumps({"cast": [], "shots": shots}, ensure_ascii=False)
+        if system_prompt == parser_mod.SCENE_ENV_SYSTEM:
+            return json.dumps({
+                "scene_name_en": "Verified screenplay location",
+                "environment_prompt_en": "screenplay location, empty set",
+                "subject_scope": "place_only", "people": [], "props": [],
+            })
+        if system_prompt == parser_mod.PHASE2_SYSTEM:
+            return json.dumps({"camera_motion": None, "action": None})
+        if system_prompt == parser_mod.TO_ENGLISH_SYSTEM:
+            return "verified source fragment"
+        raise AssertionError(f"unexpected LLM phase: {system_prompt}")
+
+
+def test_first_batch_canonicalizes_shot_002_prop_aliases_and_publishes():
+    with open(SCRIPT_PATH, encoding="utf-8") as handle:
+        screenplay = handle.read()
+    scene_map = parser_mod._build_scene_map(screenplay)
+    explicit_units = _ordered_units(scene_map)
+
+    with tempfile.TemporaryDirectory() as root:
+        store = AnalysisSessionStore(root, batch_size=BATCH_SIZE)
+        store.create(screenplay, len(explicit_units), SECONDS_PER_SHOT, scene_map, cast=[])
+        session = store.status()
+        batch = store.claim_next()
+        assert batch["batch_index"] == 1
+        context_json = _batch_context(session, batch)
+
+        parser = Batch1PropAliasParser()
+        parsed = parser.parse_script(
+            screenplay, target_duration_seconds=180, seconds_per_shot=SECONDS_PER_SHOT,
+            model_path="cpu-stub", batch_start_shot=batch["shot_start"],
+            batch_end_shot=batch["shot_end"], batch_context_json=context_json,
+        )
+        result = _parser_result(parsed)
+        shots = result["shots"]
+        assert [shot["shot_id"] for shot in shots] == ["shot_001", "shot_002", "shot_003", "shot_004"]
+        shot_002 = shots[1]
+        assert not shot_002.get("scene_assignment_error")
+        assert not shot_002.get("source_validation_error")
+        assert "深棕色小叶紫檀佛珠" in shot_002["props_list"]
+        assert "粗金链" in shot_002["props_list"]
+        # The exact current-shot fragment stays authoritative evidence.
+        assert "佛珠" in shot_002["source_shot_text"] and "金链" in shot_002["source_shot_text"]
+
+        committed = store.commit_batch(batch["batch_index"], result)
+        assert committed["completed_batches"] == [1]
+
+
+def test_first_batch_still_blocks_a_prop_not_declared_anywhere_in_the_script():
+    with open(SCRIPT_PATH, encoding="utf-8") as handle:
+        screenplay = handle.read()
+    scene_map = parser_mod._build_scene_map(screenplay)
+    explicit_units = _ordered_units(scene_map)
+
+    with tempfile.TemporaryDirectory() as root:
+        store = AnalysisSessionStore(root, batch_size=BATCH_SIZE)
+        store.create(screenplay, len(explicit_units), SECONDS_PER_SHOT, scene_map, cast=[])
+        session = store.status()
+        batch = store.claim_next()
+        context_json = _batch_context(session, batch)
+
+        parser = Batch1PropAliasParser(extra_props=["神秘法杖"])
+        parsed = parser.parse_script(
+            screenplay, target_duration_seconds=180, seconds_per_shot=SECONDS_PER_SHOT,
+            model_path="cpu-stub", batch_start_shot=batch["shot_start"],
+            batch_end_shot=batch["shot_end"], batch_context_json=context_json,
+        )
+        result = _parser_result(parsed)
+        shot_002 = result["shots"][1]
+        assert shot_002.get("scene_assignment_error") or shot_002.get("source_validation_error")
+
+        try:
+            store.commit_batch(batch["batch_index"], result)
+        except ValueError as exc:
+            assert "未验证" in str(exc)
+        else:
+            raise AssertionError("a prop absent from the script and its context must block batch 1")
+
+
 if __name__ == "__main__":
     test_complete_36_shot_screenplay_batches_bind_and_publish()
     print("PASS test_complete_36_shot_screenplay_batches_bind_and_publish")
+    test_first_batch_canonicalizes_shot_002_prop_aliases_and_publishes()
+    print("PASS test_first_batch_canonicalizes_shot_002_prop_aliases_and_publishes")
+    test_first_batch_still_blocks_a_prop_not_declared_anywhere_in_the_script()
+    print("PASS test_first_batch_still_blocks_a_prop_not_declared_anywhere_in_the_script")

@@ -168,6 +168,43 @@ def test_camera_uses_exact_source_when_phase_summary_omits_pan():
     assert result == ("pan_left", "script", True)
 
 
+def test_canonical_prop_alias_renders_without_sibling_leakage():
+    import importlib.util
+    path = os.path.join(ROOT, "nodes", "director", "script_full_parser_node.py")
+    spec = importlib.util.spec_from_file_location("full_parser_for_prop_alias", path)
+    parser = importlib.util.module_from_spec(spec); spec.loader.exec_module(parser)
+
+    context_text = "- **胖叔**：粗金链，深棕色小叶紫檀佛珠。"
+    shot_text = "画面事实：佛珠与金链在顶光下晃动。"
+    sibling_text = "画面事实：外卖箱放在街边，橙色箱体反光。"
+    scene_map = [
+        {"scene_index": 1, "scene_id": "scene_context", "source_blocks": [
+            {"source_block_id": "block_context", "scene_occurrence_id": "occurrence_context",
+             "section_type": "title_sequence", "source_text": context_text,
+             "batch_context_only": True},
+        ]},
+        {"scene_index": 2, "scene_id": "scene_shot", "source_blocks": [
+            {"source_block_id": "block_shot", "scene_occurrence_id": "occurrence_shot",
+             "section_type": "location_scene", "source_text": shot_text},
+        ]},
+    ]
+    registry = parser._build_verified_prop_registry(scene_map)
+    canonical_props = [
+        parser._canonicalize_prop_value(value, shot_text, registry)
+        for value in ("佛珠", "金链")
+    ]
+    assert canonical_props == ["深棕色小叶紫檀佛珠", "粗金链"]
+
+    shot = normalize_shot({
+        "shot_id": "shot_002", "character_names": [], "props_list": canonical_props,
+        "source_text": shot_text, "source_block_text": shot_text,
+        "prop_interactions": ["指尖拨弄深棕色小叶紫檀佛珠"],
+    })
+    for prompt in (build_keyframe_prompt(shot), build_video_prompt(shot)):
+        assert "深棕色小叶紫檀佛珠" in prompt and "粗金链" in prompt
+        assert "外卖箱" not in prompt and sibling_text not in prompt
+
+
 def test_chinese_person_stillness_does_not_lock_camera():
     shot = normalize_shot({"camera_motion": "static", "camera_motion_source": "script",
                            "source_text": "人物静止不动地看向门。", "action": "看向门"})

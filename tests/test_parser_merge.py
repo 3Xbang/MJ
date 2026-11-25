@@ -303,6 +303,92 @@ def test_explicit_zoom_out_is_preserved_as_pull_back():
     assert (motion, source, explicit) == ("slow_pull_back", "script", True)
 
 
+def _context_scene_map(context_text, shot_text, sibling_shot_text=None):
+    """Minimal scene map: one verified global/context-only block plus one
+    ordinary shot block. ``sibling_shot_text`` is concatenated into the same
+    shot block as a neighboring, non-context fragment so a test can prove it
+    never becomes alias evidence."""
+    shot_block_text = shot_text if not sibling_shot_text else f"{sibling_shot_text}\n{shot_text}"
+    return [
+        {"scene_index": 1, "scene_id": "scene_context", "source_blocks": [
+            {"source_block_id": "block_context", "scene_occurrence_id": "occurrence_context",
+             "section_type": "title_sequence", "source_text": context_text,
+             "batch_context_only": True},
+        ]},
+        {"scene_index": 2, "scene_id": "scene_shot", "source_blocks": [
+            {"source_block_id": "block_shot", "scene_occurrence_id": "occurrence_shot",
+             "section_type": "location_scene", "source_text": shot_block_text},
+        ]},
+    ]
+
+
+def test_verified_prop_registry_resolves_same_script_alias_without_sibling_shots():
+    context_text = "- **胖叔**：纯白重磅棉T恤，粗金链，深棕色小叶紫檀佛珠。性格从容。"
+    shot_text = "佛珠与金链在顶光下晃动。"
+    # Only a neighboring shot states the finer measurement; it must stay
+    # invisible to the registry so Phase 2 isolation guarantees still hold.
+    sibling_text = "手腕戴着2厘米宽的实心粗金链，一颗佛珠停在指尖。"
+    scene_map = _context_scene_map(context_text, shot_text, sibling_text)
+    registry = parser_mod._build_verified_prop_registry(scene_map)
+
+    assert parser_mod._prop_fact_is_supported("深棕色小叶紫檀佛珠", shot_text, registry)
+    assert parser_mod._prop_fact_is_supported("粗金链", shot_text, registry)
+    assert not parser_mod._prop_fact_is_supported("2厘米宽实心粗金链", shot_text, registry)
+    assert not parser_mod._prop_fact_is_supported("神秘法杖", shot_text, registry)
+
+    assert parser_mod._canonicalize_prop_value("佛珠", shot_text, registry) == "深棕色小叶紫檀佛珠"
+    assert parser_mod._canonicalize_prop_value("金链", shot_text, registry) == "粗金链"
+    # A value with no verified alias in this shot's own fragment is untouched.
+    assert parser_mod._canonicalize_prop_value("神秘法杖", shot_text, registry) == "神秘法杖"
+
+
+def test_verified_prop_registry_generalizes_to_an_unrelated_screenplays_props():
+    # No fixed noun vocabulary: any customer screenplay's own short/detailed
+    # prop pair must resolve the same way without code changes.
+    context_text = "- **老陈**：磨损的棕色皮革公文包，一把锈迹斑斑的黄铜怀表。"
+    shot_text = "老陈打开公文包，怀表从里面滑出来。"
+    scene_map = _context_scene_map(context_text, shot_text)
+    registry = parser_mod._build_verified_prop_registry(scene_map)
+
+    assert parser_mod._prop_fact_is_supported("磨损的棕色皮革公文包", shot_text, registry)
+    assert parser_mod._prop_fact_is_supported("一把锈迹斑斑的黄铜怀表", shot_text, registry)
+    assert not parser_mod._prop_fact_is_supported("祖传金怀表", shot_text, registry)
+
+
+def test_prop_interaction_sentence_is_canonicalized_around_its_alias():
+    context_text = "道具设定：深棕色小叶紫檀佛珠。"
+    shot_text = "他用右手捏住佛珠，缓缓转动。"
+    scene_map = _context_scene_map(context_text, shot_text)
+    registry = parser_mod._build_verified_prop_registry(scene_map)
+
+    assert parser_mod._prop_fact_is_supported("右手捏住深棕色小叶紫檀佛珠", shot_text, registry)
+    assert parser_mod._canonicalize_prop_value(
+        "右手捏住深棕色小叶紫檀佛珠", shot_text, registry
+    ) == "右手捏住深棕色小叶紫檀佛珠"
+
+
+def test_phase1_props_list_accepts_verified_alias_and_blocks_hallucinated_prop():
+    context_text = "- **胖叔**：粗金链，深棕色小叶紫檀佛珠。"
+    shot_text = "画面事实：佛珠与金链在顶光下晃动。"
+    scene_map = _context_scene_map(context_text, shot_text)
+    registry = parser_mod._build_verified_prop_registry(scene_map)
+
+    accepted = parser_mod._phase1_fact_validation_errors(
+        {"props_list": ["深棕色小叶紫檀佛珠", "粗金链"]}, shot_text, shot_text, registry
+    )
+    assert accepted == []
+
+    blocked = parser_mod._phase1_fact_validation_errors(
+        {"props_list": ["深棕色小叶紫檀佛珠", "神秘法杖"]}, shot_text, shot_text, registry
+    )
+    assert any("神秘法杖" in error for error in blocked)
+
+    unsupported_action = parser_mod._phase1_fact_validation_errors(
+        {"action": "他突然飞起来"}, shot_text, shot_text, registry
+    )
+    assert unsupported_action
+
+
 def test_rule_derived_directions_are_kept_with_provenance():
     source = "Mina reaches for the lever."
     assert not parser_mod._fact_validation_errors(
