@@ -17,7 +17,17 @@ df -h /workspace | tail -1 | awk '{print "磁盘：已用 "$3" / 总共 "$2"，�
 
 echo ""
 echo "== 1/6 更新 ComfyUI 本体（Krea 2 / Wan 2.2 需要较新版本）"
-cd "$COMFY" && git pull && pip install -r requirements.txt -q
+# Pull by explicit remote/branch instead of a bare `git pull`: a Pod's ComfyUI
+# checkout may have no upstream tracking configured, which makes a bare
+# `git pull` fail with "There is no tracking information for the current
+# branch". Each command below is its own statement (not chained with &&) so a
+# real failure here is NOT swallowed by the `&&`-chain errexit quirk and
+# aborts the deployment with a clear message instead of silently skipping the
+# ComfyUI core pip install.
+cd "$COMFY"
+COMFY_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+git pull origin "$COMFY_BRANCH"
+pip install -r requirements.txt -q
 
 echo ""
 echo "== 2/6 安装或更新 AFE 节点和依赖"
@@ -32,7 +42,21 @@ pip install loguru json_repair imageio-ffmpeg accelerate -q
 # command validates the code that was just pulled.  A failure stops deployment.
 cd "$CN/ai_film_editor_nodes"
 python3 -m compileall -q nodes webui tests
-node --check webui/static/app.js
+# Node.js is not part of the base ComfyUI Pod image, so don't hard-depend on
+# it: try to install it via apt if missing, and if that isn't possible,
+# degrade with a clearly visible warning instead of failing the whole
+# deployment or silently skipping with no trace. Every other check below
+# remains mandatory and still stops deployment on failure.
+if ! command -v node >/dev/null 2>&1; then
+  echo "⚠️  未检测到 Node.js，尝试通过 apt 自动安装以检查 webui/static/app.js..."
+  apt-get update -y >/dev/null 2>&1 || true
+  apt-get install -y nodejs >/dev/null 2>&1 || true
+fi
+if command -v node >/dev/null 2>&1; then
+  node --check webui/static/app.js
+else
+  echo "⚠️  Node.js 不可用，已跳过 webui/static/app.js 语法检查（其余 CPU/图/UI 检查仍然执行，任一失败都会停止部署）。"
+fi
 python3 tests/test_webui_registration.py
 python3 tests/test_analysis_session.py
 python3 tests/test_scene_map.py
