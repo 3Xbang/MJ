@@ -1,0 +1,23 @@
+{
+  "id": "FEAT-001",
+  "type": "fix",
+  "description": "让显式镜头批次使用 session/server 已持久化的 source catalog 绑定 Phase 1 结果，并隔离 Phase 2 的兄弟镜头上下文。现有 session ranges、恢复协议和严格事实门禁保持不变。",
+  "status": "completed",
+  "steps": [
+    "在 nodes/director/script_full_parser_node.py 增加按 screenplay source order 展开的当前 batch catalog，显式模式要求每个 Phase 1 返回项按位置绑定一个 heading+body unit；普通无显式标题剧本继续使用现有 source evidence 分支。",
+    "在 Phase 1 coverage 校验前把 scene_index、source_block_id、scene_occurrence_id、section_type、source_unit_ids、source_start、source_end、source_shot_text 统一写成 canonical unit 元数据；保留 Phase 1/Phase 2 事实检查，任何动作、角色、对白、道具、情绪或地点无法由 exact fragment 支持时仍阻止批次。",
+    "在 Phase 2 prompt 中只传当前 shot 的 exact fragment 和当前 block 的 context unit，不把同一 block 的 sibling shot 当作事实来源；输出 source_text/source_shot_text/offsets 使用同一 canonical slice，保留 place-only environment_source_text 路径。",
+    "补充 parser stub 断言，证明模型缺失或错误的 source 元数据不会导致 shot_001 无证据，也不会放宽 sibling fact、重复或乱序保护。"
+  ],
+  "acceptance_criteria": [
+    "显式镜头标题和正文仍是不可拆分 source unit，批次 1 的 shot_001 可验证且 Phase 2 不接收 shot_002/shot_003 作为 shot context。",
+    "source_block_id、scene_occurrence_id、source_unit_ids、source_start/end、source_shot_text 和 source_text 指向同一个逐字原文范围。",
+    "无显式镜头标题、片头/闪切、A/B/A、无角色/无道具路径和严格幻觉阻止行为保持通过。"
+  ],
+  "verification": [
+    "python3 tests/test_parser_merge.py",
+    "python3 tests/test_explicit_shot_batch_boundaries.py"
+  ],
+  "blocked_reason": null,
+  "findings": "已完成：script_full_parser_node.py 现在从当前 scene_map 的持久化 batch units 按 screenplay source order 建立显式镜头 canonical catalog，并在 Phase 1 coverage 前覆盖模型提供的 scene/source IDs、unit IDs、offsets、source_text/source_shot_text；heading+body 仍为单一不可拆分 unit。Phase 2 对显式镜头只发送当前 exact fragment 与由完整原文重建的 context unit，不发送同 block 的 sibling shot；环境分析仍使用既有 environment_source_text。普通无显式标题路径保持原分支，严格 source/fact validation、重复/乱序覆盖门禁未放宽。FEAT-002 可继续使用现有 parser output/session/server contracts；本步骤未修改 screenplay_source_units.py、script_analysis_session.py、server.py 或 UI/workflow 行为。验证：python tests/test_parser_merge.py、python tests/test_scene_map.py、python tests/test_prompt_fidelity.py、python tests/test_reference_dependencies.py、python tests/test_shot_contract.py、python tests/test_webui_validation.py、python tests/test_analysis_session.py、python tests/test_workflow_graph.py、python tests/check_graphs.py、python -m compileall -q nodes webui tests 和 python gen_afe_main_workflow.py 均通过；python tests/test_explicit_shot_batch_boundaries.py 仍仅完成模块加载（无 __main__ runner）。Convergence iteration 2：在 tests/test_full_script_batch_regression.py 增加同一 persisted source block 跨 batch 2/3 边界的断言，并让 Phase 2 isolation 同时拒绝当前批次前后相邻 shot；python tests/test_full_script_batch_regression.py PASS，覆盖 9 批×4、shot_001 canonical source binding、source IDs/offsets/scene occurrence、跨边界 sibling isolation、取消/重试、durable recovery 和发布校验。workflow generator 生成文件无 diff。ui_e2e.py 首次并行运行受本机 8197 端口占用影响，端口释放后单独重试被本地 Windows Python runner 以 r_nodes> ^C/exit -1 中断；未据此修改用户代码或测试。真实 Qwen/Krea/Wan、ComfyUI/RunPod smoke 仍未在本环境验证；需用户新 Pod 部署后补跑 shot_001。"
+}

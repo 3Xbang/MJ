@@ -1,0 +1,25 @@
+﻿HEAD: 2085c7bc7d6f5170c0bbfe4b59b83e5678d52a58
+Branch: main
+Tracking: main...origin/main
+Initial status summary: clean source checkout with pre-existing modified review/task/log/cache artifacts and pre-existing untracked task directories; no source files changed by this step.
+Pre-existing modified paths:
+ M .agents/tasks/review.json
+ M .agents/tasks/review.md
+ M __pycache__/__init__.cpython-313.pyc
+ M logs/app.log
+ M nodes/analyzer/__pycache__/cast_analyzer_node.cpython-313.pyc
+ M nodes/analyzer/__pycache__/costume_analyzer_node.cpython-313.pyc
+ M nodes/analyzer/__pycache__/props_analyzer_node.cpython-313.pyc
+ M nodes/analyzer/__pycache__/scene_analyzer_node.cpython-313.pyc
+ M nodes/director/__pycache__/script_parser_node.cpython-313.pyc
+ M nodes/video/__pycache__/cast_ref_generator_node.cpython-313.pyc
+ M nodes/video/__pycache__/movie_assembler_node.cpython-313.pyc
+ M nodes/video/__pycache__/shot_keyframe_node.cpython-313.pyc
+ M nodes/video/__pycache__/wan_shot_renderer_node.cpython-313.pyc
+Pre-existing untracked task directories:
+?? .agents/tasks/afe-batched-script-parser-refactor/
+?? .agents/tasks/afe-new-nodes/
+?? .agents/tasks/afe-script-full-parser/
+?? .agents/tasks/ai-film-editor-detail/
+?? .agents/tasks/scene-image-generator/
+?? .agents/tasks/wan-optimizer-nodes-2025-07-15/

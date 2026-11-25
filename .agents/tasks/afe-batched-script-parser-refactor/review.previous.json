@@ -1,0 +1,10 @@
+{
+  "verdict": "CHANGES_REQUESTED",
+  "findings": [
+    "B1：批次提示仍会破坏 A/B 交替场景的原文顺序。nodes/director/script_full_parser_node.py:288-327 按首次出现的物理地点分组 source_blocks，webui/server.py:661-678 按该分组顺序构造 batch scene_subset，script_full_parser_node.py:372-397、1354-1355 按 scene_map 顺序写入 prompt，而不是按 source_order 全局排序；script_analysis_session.py:908-1000 又按全局 source unit 顺序校验。对 A/B/A 剧本，Qwen 会看到错误来源顺序，批次可能被 coverage gate 拒绝或把另一地点事实放入镜头。修正为保留地点分组 identity，但在每批 prompt、source text 和 manifest 投递前按 source_order/source_block_id 全局排序，并增加 A/B/A batch prompt 顺序回归测试。",
+    "B2：首个可识别场景标题之前的非空剧本文本没有进入 source manifest。nodes/director/script_full_parser_node.py:231-238、288-293 在存在 header 时从第一个候选 header 开始建 block，丢弃 raw_script[:first_header.start()]；nodes/director/script_analysis_session.py:34-75 只从这些 source_blocks 生成持久化 units。当前测试剧本前的标题/视觉风格前言及普通剧本首场前的片头事实因此没有精确 source unit，coverage gate 也无法发现遗漏。修正为建立有序 preamble/title source block，保留原文和 offsets，并让批次规划、prompt、coverage、最终 manifest 覆盖它，补充含前言镜头事实的回归测试。",
+    "B3：要求的 36 镜头逐批持久化/重启恢复模拟验证没有实际覆盖全部批次。tests/test_analysis_session.py:74-87 只创建 9 批、提交第 1 批并读取一次状态；tests/ui_e2e.py:102-109 只用 6 镜头并在第 1 批后刷新。现有证据没有证明 36 镜头每个批次完成后都能持久化、重启恢复且不重复。修正为增加 CPU/mock 测试，遍历 36 镜头的 9 批，在每批 commit 后重新实例化 store 并校验完成批次、解析镜头和 source manifest，再模拟中断/恢复直至 complete，并断言已完成批次不再次提交。",
+    "B4：提交尚未推送到要求的 origin/main。仓库证据 git rev-list --left-right --count origin/main...HEAD 为 0 5，origin/main 仍停在 3042079，而当前实现位于 HEAD 404de3b。RunPod 更新命令从 origin/main 获取不到这 5 个实现提交，客户部署不会包含当前批次解析修复。修正为在保留用户未提交文件的前提下将当前提交推送到 origin/main，并记录推送后的远端 commit。"
+  ],
+  "reviewDoc": "E:\\MJ\\afe-batched-parser-review.md"
+}

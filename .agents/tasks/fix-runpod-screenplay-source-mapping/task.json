@@ -1,0 +1,7 @@
+{
+  "task_id": "task-fix-runpod-screenplay-source-mapping",
+  "task_description": "修复 RunPod 分批剧本解析中 Phase 1/Phase 2 source unit 映射不一致，确保完整 36 镜头剧本按 9 批发布。",
+  "status": "pending",
+  "feature_order": ["FEAT-001", "FEAT-002"],
+  "blocked_reason": null
+}

@@ -1,0 +1,26 @@
+{
+  "id": "FEAT-002",
+  "type": "test",
+  "description": "用完整三岩两语 36 镜头剧本覆盖真实批次 parser/session/publish 链路，证明 9 个连续批次均可提交并最终发布；本 feature 依赖 FEAT-001。",
+  "status": "completed",
+  "steps": [
+    "创建 tests/test_full_script_batch_regression.py，直接读取 test_scripts/san_yan_liang_yu_ep01_fidelity_test.md，使用 CPU stub LLM 运行每个 4-shot batch 的 parser，不加载 Qwen/GPU。",
+    "从现有 scene map 和 batch source ranges 构造与 webui/server.py 等价的 batch_context_json，逐批调用 parser 并提交 AnalysisSessionStore；断言 9 批、每批 4 个显式 unit、shot IDs 连续、第一批 shot_001 的逐字 fragment/IDs/offsets/scene occurrence 一致，并检查 Phase 2 prompt 不含兄弟镜头。",
+    "完成全部批次后通过 Api._assembled_analysis() 和 _validate_analysis_payload() 验证完整分析可发布，另外保留现有 session、WebUI、graph 和 UI E2E 测试作为恢复/门禁/后续五步保护。"
+  ],
+  "acceptance_criteria": [
+    "完整测试剧本产生 9 个批次，每批恰好 4 个显式镜头，shot_001 到 shot_036 顺序连续且无 source unit 重复/遗漏。",
+    "第一批 shot_001 通过 source 验证，最终完整 session 的 analysis payload 通过当前 schema 和发布校验。",
+    "取消、重试、重启恢复、完整 session gate、show_text_party、参考图可选及阶段 2-5 的既有 CPU/mock/UI 回归没有回归。"
+  ],
+  "verification": [
+    "python3 tests/test_full_script_batch_regression.py",
+    "python3 tests/test_analysis_session.py",
+    "python3 tests/test_webui_validation.py",
+    "python3 tests/ui_e2e.py",
+    "python3 -m compileall -q nodes webui tests",
+    "python3 tests/test_workflow_graph.py && python3 tests/check_graphs.py && python3 gen_afe_main_workflow.py"
+  ],
+  "blocked_reason": null,
+  "findings": "已完成：新增 tests/test_full_script_batch_regression.py，直接读取 test_scripts/san_yan_liang_yu_ep01_fidelity_test.md，以 CPU stub LLM 逐批运行 parser，并用与 server 等价的 batch context 构造验证 9 个连续 4-shot 批次。测试故意让 Phase 1 返回错误/缺失 source 元数据，断言 FEAT-001 canonical binding 修复 shot_001；断言每批 source unit、逐字 source_text/source_shot_text、source_start/end、scene occurrence 一致，Phase 2 prompt 只包含当前 exact fragment、不包含兄弟镜头；覆盖取消/重试、batch 005 durable result 重启恢复、AnalysisSessionStore 顺序提交和最终 Api._assembled_analysis/_validate_analysis_payload 发布门禁。生成的 full/batch workflow JSON 无 diff。Convergence iteration 2：修复 review finding 3，在同一 persisted source block 跨 batch 2/3 边界的 shot_008/shot_009 上断言 Phase 2 prompt 不泄漏前后相邻 shot；python tests/test_full_script_batch_regression.py PASS，9 批×4、shot_001、恢复、严格 source gate、跨边界隔离和发布校验均通过。Compatibility verification：python tests/test_analysis_session.py、python tests/test_scene_map.py、python tests/test_parser_merge.py、python tests/test_prompt_fidelity.py、python tests/test_reference_dependencies.py、python tests/test_shot_contract.py、python tests/test_webui_validation.py、python tests/test_workflow_graph.py、python tests/check_graphs.py、python -m compileall -q nodes webui tests 和 python gen_afe_main_workflow.py 均通过。python tests/ui_e2e.py 首次并行运行因本机 8197 端口占用失败，端口释放后单独重试又被本地 Windows Python runner 以 r_nodes> ^C/exit -1 中断；未改变 UI/workflow 行为。审查要求的真实 Qwen/Krea/Wan、ComfyUI/RunPod screenplay smoke 仍无法在本 Windows checkout 执行，因为目标 RunPod 环境和本地模型路径不可用；需用户新 Pod 部署后补跑 shot_001。未据此伪造通过结果，也未修改 gate verdict。"
+}
