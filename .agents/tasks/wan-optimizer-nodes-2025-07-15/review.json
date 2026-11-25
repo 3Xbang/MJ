@@ -1,0 +1,30 @@
+{
+  "verdict": "APPROVED",
+  "findings": [
+    {
+      "severity": "MEDIUM",
+      "file": "workflow_templates/03_single_shot_production.json",
+      "issue": "AFE_ShotPromptComposer (node 3) has no outgoing links — its composed_prompt output reaches nothing. AFE_WanPromptOptimizer has no input port for a pre-composed prompt, so the two nodes cannot be chained at all with the current API. The afe_description field claims a 'ShotPromptComposer → WanPromptOptimizer' pipeline that does not exist in the links array.",
+      "suggestion": "Either add a composed_prompt optional input to AFE_WanPromptOptimizer and wire [3, 0] → [5, composed_prompt] in the template, or update afe_description to document that the two nodes run in parallel and serve different purposes."
+    },
+    {
+      "severity": "LOW",
+      "file": "nodes/director/shot_editor_node.py",
+      "issue": "The edit_report entry for negative_prompt records only '- 负面提示词: 已更新' without showing the old value. The old value is captured in a local variable but dropped before being appended to the report string. All other changed fields show old→new.",
+      "suggestion": "Append the old value: changes.append(f'- 负面提示词: {old} → (已更新)')"
+    },
+    {
+      "severity": "LOW",
+      "file": "nodes/dam/reference_image_manager_node.py",
+      "issue": "When source_type='file_path' and file_path is empty with fallback_to_blank=False, the raised error reads 'FileNotFoundError: 参考图不存在: None'. 'None' gives no indication that the root cause is a missing input rather than a missing file on disk.",
+      "suggestion": "Before resolving the path, add: if source_type == 'file_path' and not file_path.strip(): raise ValueError('file_path is required when source_type=file_path')"
+    },
+    {
+      "severity": "LOW",
+      "file": "nodes/adapters/wan_prompt_optimizer_node.py",
+      "issue": "When outfit is provided but outfit_prompt is empty, the code evaluates _get(shot_data, 'costume_per_character', {}).get('default', ''). If costume_per_character exists in shot_data as a non-dict value (list or string), .get() will throw AttributeError.",
+      "suggestion": "Guard the fallback: val = _get(shot_data, 'costume_per_character', {}); outfit_desc = _asset(outfit, 'outfit_prompt') or (val.get('default', '') if isinstance(val, dict) else '')"
+    }
+  ],
+  "reviewDoc": "e:/MJ/ai_film_editor_nodes/.agents/tasks/wan-optimizer-nodes-2025-07-15/review.md"
+}

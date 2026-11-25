@@ -1,0 +1,27 @@
+{
+  "id": "FEAT-002",
+  "type": "test",
+  "description": "Add CPU coverage for shot_002 prop aliases, first-batch canonicalize/publish, Phase 2 sibling isolation, and the complete 36-shot nine-batch session.",
+  "status": "pending",
+  "steps": [
+    "Update E:/MJ/ai_film_editor_nodes/tests/test_parser_merge.py and tests/test_prompt_fidelity.py with focused positive and negative parser/prompt cases for both detailed prop aliases, an undefined object, unsupported action/expression/location facts, and sibling exclusion.",
+    "Update E:/MJ/ai_film_editor_nodes/tests/test_full_script_batch_regression.py to drive the unchanged san_yan_liang_yu_ep01_fidelity_test.md fixture with a CPU stub that exercises shot_002's short prop names, asserts four first-batch shots are source-valid and publishable, and checks canonical props in both prompts.",
+    "Run all nine four-shot batches through AnalysisSessionStore and Api validation, asserting ordered shot_001..shot_036 coverage, source manifest order/no duplication, and that negative unverified output cannot commit or publish; keep the screenplay fixture unchanged."
+  ],
+  "acceptance_criteria": [
+    "The first batch has exactly four shots, including shot_002's two canonical detailed props, and passes session commit and assembled-analysis validation.",
+    "All 36 shots publish in source order across exactly nine batches, with no source-unit reuse or missing unit and no Phase 2 sibling leakage.",
+    "Undefined props and hallucinated non-prop facts are rejected by CPU tests.",
+    "Existing prompt, reference identity, session, workflow graph, and UI mock gates remain passing."
+  ],
+  "verification": [
+    "python tests/test_parser_merge.py",
+    "python tests/test_prompt_fidelity.py",
+    "python tests/test_full_script_batch_regression.py",
+    "python -m compileall -q nodes webui tests",
+    "python tests/test_analysis_session.py && python tests/test_scene_map.py && python tests/test_reference_dependencies.py && python tests/test_shot_contract.py && python tests/test_webui_validation.py && python tests/test_workflow_graph.py && python tests/check_graphs.py",
+    "python tests/ui_e2e.py when Playwright and Chrome are available"
+  ],
+  "blocked_reason": null,
+  "findings": "README.md and DEPLOY.md document the CPU/graph/UI commands. Real Qwen/GPU/ComfyUI smoke remains a user action after code-only update and restart on a new Pod."
+}

@@ -1,0 +1,10 @@
+{
+  "verdict": "APPROVED",
+  "findings": [
+    "\u91d1\u94fe canonicalizes to \u7c97\u91d1\u94fe, not 2\u5398\u7c73\u5bbd\u5b9e\u5fc3\u7c97\u91d1\u94fe \u2014 the fuller phrase is only in sibling shot_001's body, so resolving it would violate sibling isolation; this is intentional and documented in the commit, but confirm this is the behavior the user actually wants published, since the task text names the fuller phrase explicitly.",
+    "Prop registry draws from all context-block prose, not prop-specific clauses \u2014 non-prop boilerplate (titles, runtime notes, personality traits) becomes \"aliasable\" canonical text for other screenplays. Consider scoping the registry to clauses from character/prop-labeled declarations rather than the entire context-only block.",
+    "Compound prop values only partially canonicalized \u2014 _canonicalize_prop_value applies only its single best-scoring match, while _prop_fact_is_supported chains all applicable alias substitutions. A value naming two distinct short-form props (e.g. \"\u4f5b\u73e0\u4e0e\u91d1\u94fe\", which matches this screenplay's own shot_002 phrasing) ends up half-upgraded. Make canonicalization chain replacements the same way validation does, and add a regression case for it.",
+    "Phase 2 props_list canonicalization is dead code \u2014 p2_data[\"props_list\"] is computed but the final merged shot always sources props_list from Phase 1 only, never from p2_data. Either wire it as a fallback (matching prop_interactions) or drop the unused computation."
+  ],
+  "reviewDoc": "e:\\MJ\\ai_film_editor_nodes\\.agents\\tasks\\runpod-batch1-props\\review.md"
+}

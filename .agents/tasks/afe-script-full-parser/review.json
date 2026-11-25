@@ -1,0 +1,11 @@
+{
+  "verdict": "APPROVED",
+  "findings": [
+    "Phase 1 silent truncation — max_new_tokens=2048 fits roughly 20-25 shots in minimal form; scripts with more shots produce a partial shots array after json_repair with no warning. Add a post-Phase-1 log comparing len(minimal_shots) against a rough estimate to surface this.",
+    "CastAnalyzer output disconnected — Node 4 (AFE_CastAnalyzer) has no outgoing connections in afe_script_pipeline.json and no display node in gen_afe_main_workflow.py. Confirm whether intentional; if not, add a show_text_party for characters_json at node 4 slot 0.",
+    "Model hotswap VRAM leak — _ensure_model overwrites cls._model and cls._tokenizer without del or cuda.empty_cache first. Add del cls._model; del cls._tokenizer; torch.cuda.empty_cache() before the new from_pretrained call.",
+    "trust_remote_code=True without source verification — both tokenizer and model execute arbitrary Python from the model repo on load. Document the expected source (official Qwen HuggingFace repo) in a comment or README.",
+    "Docstring / code mismatch — class docstring says 'Phase 1 (~750 tokens output)' but the call uses max_new_tokens=2048. Fix the class docstring to match the actual budget."
+  ],
+  "reviewDoc": "e:/MJ/ai_film_editor_nodes/.agents/tasks/afe-script-full-parser/review.md"
+}

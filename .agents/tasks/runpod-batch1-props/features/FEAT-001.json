@@ -1,0 +1,23 @@
+{
+  "id": "FEAT-001",
+  "type": "fix",
+  "description": "Add a script-scoped verified prop alias resolver to the two-phase parser while keeping the exact current-shot source fragment authoritative and all non-prop facts strict.",
+  "status": "pending",
+  "steps": [
+    "In E:/MJ/ai_film_editor_nodes/nodes/director/script_full_parser_node.py, extend the existing fact-evidence path around _fact_is_supported and _fact_validation_errors with a deterministic registry built only from verified context/global declarations in the supplied scene map/source manifest; do not derive evidence from sibling shot units.",
+    "Validate exact current-shot evidence first, then allow only a current-fragment short prop such as 佛珠 or 金链 to resolve to a detailed declaration from the same script; canonicalize accepted prop values to 深棕色小叶紫檀佛珠 and 2厘米宽实心粗金链 while retaining source_text/source_shot_text, source_unit_ids, offsets, block and occurrence unchanged.",
+    "Apply the scoped resolution to Phase 1 and Phase 2 props and prop interactions only, pass the approved catalog to the current Phase 2 prompt without sibling shot bodies, and preserve source-validation rejection for undefined props and unsupported actions, expressions, locations, lighting, dialogue, and camera facts."
+  ],
+  "acceptance_criteria": [
+    "The shot_002 current fragment can use 佛珠 and 金链 while the same screenplay's verified global declarations canonicalize them to 深棕色小叶紫檀佛珠 and 2厘米宽实心粗金链.",
+    "source_text and source_shot_text remain the verbatim current-shot fragment and source-unit/block/occurrence binding is unchanged.",
+    "A prop absent from both the current exact fragment and the verified same-script context, or an unsupported non-prop fact, remains unverified and cannot be published.",
+    "Phase 2 receives no sibling shot body or sibling prop facts."
+  ],
+  "verification": [
+    "python tests/test_parser_merge.py",
+    "python tests/test_prompt_fidelity.py"
+  ],
+  "blocked_reason": null,
+  "findings": "Current code validates every props_list item only against source_shot_text, while explicit batch context already carries global/context units. Existing exact source, source manifest, and sibling-isolation helpers must remain the boundaries."
+}

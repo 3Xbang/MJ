@@ -1,0 +1,7 @@
+{
+  "task_id": "task-runpod-batch1-props",
+  "task_description": "Fix strict RunPod batch-1 prop fact validation so verified screenplay abbreviations resolve to same-script global detailed prop settings without admitting hallucinated facts.",
+  "status": "pending",
+  "feature_order": ["FEAT-001", "FEAT-002"],
+  "blocked_reason": null
+}

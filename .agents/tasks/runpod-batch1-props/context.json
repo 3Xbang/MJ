@@ -1,0 +1,31 @@
+{
+  "project_type": "ComfyUI custom-node repository with a Python two-phase screenplay parser, persistent WebUI batch sessions, and JSON workflow graphs",
+  "language": "Python 3.10+ with JavaScript browser UI tests",
+  "build_system": "No package build step; importable Python modules and ComfyUI workflow JSON. requirements.txt supplies runtime packages. Compile validation is python -m compileall.",
+  "test_framework": "Standalone Python regression scripts, with some tests also runnable under pytest; tests/ui_e2e.py uses Playwright against tests/ui_mock_server.py.",
+  "build_command": "python -m compileall -q nodes webui tests",
+  "test_command": "python tests/test_analysis_session.py && python tests/test_scene_map.py && python tests/test_parser_merge.py && python tests/test_prompt_fidelity.py && python tests/test_reference_dependencies.py && python tests/test_shot_contract.py && python tests/test_webui_validation.py && python tests/test_workflow_graph.py && python tests/test_full_script_batch_regression.py && python tests/check_graphs.py; run python tests/ui_e2e.py when Playwright and Chrome are available",
+  "verification_instructions": "Use the unchanged test_scripts/san_yan_liang_yu_ep01_fidelity_test.md fixture. Verify short props in shot_002 resolve only through verified global context, exact source fragments and source-unit bindings remain unchanged, Phase 2 prompts exclude sibling shot bodies, first batch has four publishable shots, and the complete session publishes shot_001 through shot_036 across nine batches. Run compileall, all focused scripts, check_graphs, and the available UI mock. CPU/mock validation cannot claim real Qwen, GPU, or ComfyUI smoke success.",
+  "snapshot_or_generated_files": null,
+  "environment_constraints": "Worktree is E:/MJ/ai_film_editor_nodes on Windows PowerShell. The working tree already contains unrelated review/log/cache/task changes; do not clean, delete, or stage them. Relative paths used by delegated coders can land in the parent workspace, so use absolute paths. Do not download models. Real GPU/ComfyUI validation requires a new RunPod click of batch 1 after code-only update and ComfyUI restart.",
+  "contribution_requirements": "Plan and implement the minimum change. Preserve strict source/manifest validation and existing source mapping, session publish gates, canonical prompt contract, and sibling isolation. Do not require script edits. Commit locally on main; the publish step handles pushing origin/main. Never stage user review/log/cache/task files.",
+  "key_patterns": "script_full_parser.py keeps exact current-shot source_shot_text/source_text as canonical evidence, uses persisted explicit source-unit catalogs for positional batch binding, and marks unsupported facts as source_validation_error/scene_assignment_error so AnalysisSessionStore rejects publication. Global/context units are retained in scene maps for environment and structure. shot_prompt_contract.py normalizes props_list and renders only canonical shot facts. AnalysisSessionStore requires exact shot IDs, manifest coverage, source order, and complete 36-shot publication.",
+  "relevant_files": [
+    "E:/MJ/ai_film_editor_nodes/nodes/director/script_full_parser_node.py",
+    "E:/MJ/ai_film_editor_nodes/nodes/director/screenplay_source_units.py",
+    "E:/MJ/ai_film_editor_nodes/nodes/director/script_analysis_session.py",
+    "E:/MJ/ai_film_editor_nodes/nodes/video/shot_prompt_contract.py",
+    "E:/MJ/ai_film_editor_nodes/webui/server.py",
+    "E:/MJ/ai_film_editor_nodes/tests/test_parser_merge.py",
+    "E:/MJ/ai_film_editor_nodes/tests/test_prompt_fidelity.py",
+    "E:/MJ/ai_film_editor_nodes/tests/test_full_script_batch_regression.py",
+    "E:/MJ/ai_film_editor_nodes/tests/test_analysis_session.py",
+    "E:/MJ/ai_film_editor_nodes/tests/test_reference_dependencies.py",
+    "E:/MJ/ai_film_editor_nodes/tests/test_webui_validation.py",
+    "E:/MJ/ai_film_editor_nodes/tests/test_workflow_graph.py",
+    "E:/MJ/ai_film_editor_nodes/tests/check_graphs.py",
+    "E:/MJ/ai_film_editor_nodes/tests/ui_e2e.py",
+    "E:/MJ/ai_film_editor_nodes/test_scripts/san_yan_liang_yu_ep01_fidelity_test.md"
+  ],
+  "directory_structure": "nodes/director contains source segmentation, parser, and durable analysis session code; nodes/video contains canonical prompt and downstream identity contracts; webui contains API/session publication and graph construction; tests contains standalone CPU, graph, session, reference, and UI mock regressions; test_scripts contains screenplay fixtures; .agents/tasks/runpod-batch1-props contains workflow artifacts outside the code commit."
+}
