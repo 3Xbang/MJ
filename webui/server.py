@@ -1,6 +1,6 @@
 """
 Web UI backend. Registers /afe/* routes on ComfyUI's own web server, so the UI is reachable at the
-same address as ComfyUI (no extra port):    http://<pod>:8188/afe/
+same address as ComfyUI (no extra port):    http://<pod>:<comfyui-port>/afe/
 
 The browser talks to these routes; the routes queue ComfyUI API prompts built by graphs.py through
 ComfyUI's normal /prompt endpoint, then read the results back from /history and save a compact

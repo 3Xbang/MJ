@@ -32,6 +32,8 @@ pip install loguru json_repair imageio-ffmpeg accelerate -q
 # command validates the code that was just pulled.  A failure stops deployment.
 cd "$CN/ai_film_editor_nodes"
 python3 -m compileall -q nodes webui tests
+node --check webui/static/app.js
+python3 tests/test_webui_registration.py
 python3 tests/test_analysis_session.py
 python3 tests/test_scene_map.py
 python3 tests/test_parser_merge.py
@@ -117,10 +119,24 @@ cp "$CN"/ai_film_editor_nodes/assets/poses/*.png "$COMFY/input/poses/" 2>/dev/nu
 
 echo ""
 echo "== 5/6 重启 ComfyUI =="
+ACTIVE_PID="$(pgrep -f '[p]ython.*main.py' | head -n1 || true)"
+if [ -z "${COMFY_PORT:-}" ] && [ -n "$ACTIVE_PID" ] && [ -r "/proc/$ACTIVE_PID/cmdline" ]; then
+  mapfile -d '' ACTIVE_ARGS < "/proc/$ACTIVE_PID/cmdline"
+  for ((i = 0; i < ${#ACTIVE_ARGS[@]}; i++)); do
+    if [ "${ACTIVE_ARGS[$i]}" = "--port" ] && [ $((i + 1)) -lt ${#ACTIVE_ARGS[@]} ]; then
+      COMFY_PORT="${ACTIVE_ARGS[$((i + 1))]}"
+      break
+    fi
+  done
+fi
+if [ -z "${COMFY_PORT:-}" ]; then
+  echo "❌ 未配置 ComfyUI 端口，且没有可读取 --port 的现有进程。请先设置 COMFY_PORT。"
+  exit 1
+fi
+echo "使用 ComfyUI 端口：$COMFY_PORT"
 pkill -f "python main.py" 2>/dev/null || true
 sleep 3
 cd "$COMFY"
-COMFY_PORT="${COMFY_PORT:-8188}"
 nohup python main.py --listen 0.0.0.0 --port "$COMFY_PORT" --enable-cors-header "*" > /tmp/comfyui.log 2>&1 &
 
 echo ""

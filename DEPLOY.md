@@ -46,6 +46,15 @@ curl -fsS "http://127.0.0.1:${PORT}/afe/" >/dev/null && echo "AFE /afe/ 已更�
 COMFY=/workspace/runpod-slim/ComfyUI
 CN=$COMFY/custom_nodes
 
+# Read the active Pod port instead of assuming a fixed ComfyUI port.
+PID="$(pgrep -f '[p]ython.*main.py' | head -n1)"
+[ -n "$PID" ] || { echo "找不到正在运行的 ComfyUI，请显式设置 COMFY_PORT"; exit 1; }
+mapfile -d '' ARGV < "/proc/$PID/cmdline"
+for ((i = 0; i < ${#ARGV[@]}; i++)); do
+  if [ "${ARGV[$i]}" = "--port" ] && [ $((i + 1)) -lt ${#ARGV[@]} ]; then COMFY_PORT="${ARGV[$((i + 1))]}"; break; fi
+done
+[ -n "${COMFY_PORT:-}" ] || { echo "当前 ComfyUI 参数没有 --port，请显式设置 COMFY_PORT"; exit 1; }
+
 # ── Step 0: 升级 ComfyUI 本体（Krea 2 需要较新版本，CLIPLoader 才有 krea2 类型）──
 cd $COMFY && git pull && pip install -r requirements.txt -q
 
@@ -161,7 +170,7 @@ cp $CN/ai_film_editor_nodes/assets/poses/*.png $COMFY/input/poses/
 pkill -f "python main.py" || true
 sleep 3
 cd $COMFY
-nohup python main.py --listen 0.0.0.0 --port 8188 --enable-cors-header "*" > /tmp/comfyui.log 2>&1 &
+nohup python main.py --listen 0.0.0.0 --port "$COMFY_PORT" --enable-cors-header "*" > /tmp/comfyui.log 2>&1 &
 echo "✅ 部署完成！等30秒后访问 ComfyUI"
 ```
 

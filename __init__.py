@@ -316,9 +316,9 @@ NODE_DISPLAY_NAME_MAPPINGS = {
 try:
     from ai_film_editor_nodes.webui import server as _afe_webui
     _afe_webui.register()
-    print("[AFE] web UI registered at /afe/")
+    print("[AFE] web UI registered at /afe/", flush=True)
 except Exception as _afe_err:  # the UI must never stop the nodes from loading
-    print(f"[AFE] web UI registration FAILED: {type(_afe_err).__name__}: {_afe_err}")
+    print(f"[AFE] web UI registration FAILED: {type(_afe_err).__name__}: {_afe_err}", flush=True)
 
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]
 
