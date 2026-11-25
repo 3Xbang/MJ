@@ -1,0 +1,12 @@
+{
+  "verdict": "APPROVED",
+  "findings": [
+    "asyncio.run() in API mode — _call_api wraps AsyncOpenAI in asyncio.run(); raises RuntimeError if the thread already owns an event loop. Use synchronous OpenAI client or loop.run_until_complete() with loop detection.",
+    "Chinese prop names in English prompts — _prop_to_english returns original Chinese when ASCII ratio < 0.4; that string lands in English image-generation prompts. Add a logger.warning or neutral placeholder for untranslatable props.",
+    "json_repair not in requirements.txt — used as a silent fallback for truncated LLM JSON; add json-repair as an optional dependency.",
+    "Slot-shift migration — ScriptParser (slots 2–8) and ShotPromptBuilder (slots 2–5) changed; old saved workflows silently wire wrong outputs. MIGRATION.md and v2 display names added in fix commit.",
+    "environment_3view_prompt pipe format is an implicit contract — the downstream 3-view generator must split on ' | '; document this in the node tooltip or docstring.",
+    "API key stored in plaintext workflow JSON — llm_api_key is a plain STRING widget; use os.getenv('AFE_LLM_API_KEY', '') as default to keep keys out of saved files."
+  ],
+  "reviewDoc": "e:/MJ/.agents/tasks/afe-script-pipeline/review.md"
+}
