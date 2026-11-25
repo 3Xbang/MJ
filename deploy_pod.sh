@@ -116,21 +116,34 @@ cp "$CN"/ai_film_editor_nodes/assets/poses/*.png "$COMFY/input/" 2>/dev/null
 cp "$CN"/ai_film_editor_nodes/assets/poses/*.png "$COMFY/input/poses/" 2>/dev/null
 
 echo ""
-echo "== 5/6 重启 ComfyUI"
+echo "== 5/6 重启 ComfyUI =="
 pkill -f "python main.py" 2>/dev/null || true
 sleep 3
 cd "$COMFY"
-nohup python main.py --listen 0.0.0.0 --port 8188 --enable-cors-header "*" > /tmp/comfyui.log 2>&1 &
+COMFY_PORT="${COMFY_PORT:-8188}"
+nohup python main.py --listen 0.0.0.0 --port "$COMFY_PORT" --enable-cors-header "*" > /tmp/comfyui.log 2>&1 &
 
 echo ""
-echo "== 6/6 检查 AFE 节点是否加载成功（等待 50 秒）"
+echo "== 6/6 检查 AFE 注册（等待 50 秒）=="
 sleep 50
-grep -E "ai_film_editor_nodes" /tmp/comfyui.log | tail -3
-if grep -E "ai_film_editor_nodes" /tmp/comfyui.log | grep -q "IMPORT FAILED"; then
-  echo "❌ AFE 节点加载失败。请把下面这段发给我："
-  grep -n -i -B2 -A12 "ai_film_editor" /tmp/comfyui.log | tail -40
-else
-  echo "✅ 部署完成。"
-  echo "   给客户用的网页界面：在 ComfyUI 网址后面加 /afe/ （例如 https://xxxx-8188.proxy.runpod.net/afe/ ）"
-  echo "AFE customer entry: use /afe/ only; do not queue legacy now-02.json/now-03.json"
+if [ ! -f /tmp/comfyui.log ]; then
+  echo "❌ 无法确认 AFE 注册：日志文件不存在。"
+  exit 1
 fi
+if grep -Eq "IMPORT FAILED|web UI registration FAILED" /tmp/comfyui.log; then
+  echo "❌ AFE 节点或 Web UI 注册失败："
+  grep -n -i -B2 -A12 -E "ai_film_editor|web UI registration" /tmp/comfyui.log | tail -60
+  exit 1
+fi
+if ! grep -q "\[AFE\] web UI registered at /afe/" /tmp/comfyui.log; then
+  echo "❌ 未找到 AFE Web UI 注册成功日志："
+  grep -n -i -B2 -A12 -E "ai_film_editor|web UI" /tmp/comfyui.log | tail -60
+  exit 1
+fi
+if ! curl -fsS "http://127.0.0.1:${COMFY_PORT}/afe/" >/dev/null; then
+  echo "❌ ComfyUI 已启动，但 /afe/ 没有返回页面。"
+  tail -80 /tmp/comfyui.log
+  exit 1
+fi
+echo "✅ 部署完成，/afe/ 可访问。"
+echo "AFE customer entry: use /afe/ only; do not queue legacy now-02.json/now-03.json"

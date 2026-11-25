@@ -10,6 +10,31 @@ cd /workspace/runpod-slim/ComfyUI/custom_nodes && { [ -d ai_film_editor_nodes/.g
 
 脚本内容在仓库根目录 `deploy_pod.sh`。脚本会先切换到 `ai_film_editor_nodes` 根目录，执行完整的 CPU/图/UI 回归；任一检查失败都会停止部署，不会报告成功。下面是它的分步版本，仅供参考。
 
+## 仅更新 AFE 代码并重启现有 ComfyUI
+
+已有 Pod 不需要重新下载模型时，使用下面的命令。它从当前 `python main.py` 进程读取完整启动参数，先只更新 AFE 仓库，再用同一组参数重启原进程。命令不启动第二个服务，也不执行模型下载。
+
+```bash
+COMFY=/workspace/runpod-slim/ComfyUI
+CN="$COMFY/custom_nodes"
+PID="$(pgrep -f '[p]ython.*main.py' | head -n1)"
+[ -n "$PID" ] || { echo "找不到正在运行的 ComfyUI"; exit 1; }
+mapfile -d '' ARGV < "/proc/$PID/cmdline"
+PYTHON_BIN="${ARGV[0]}"
+ARGS=("${ARGV[@]:1}")
+for ((i=0; i<${#ARGS[@]}; i++)); do
+  if [ "${ARGS[$i]}" = "--port" ] && [ $((i + 1)) -lt ${#ARGS[@]} ]; then PORT="${ARGS[$((i + 1))]}"; fi
+done
+[ -n "${PORT:-}" ] || { echo "当前 ComfyUI 参数没有 --port"; exit 1; }
+git -C "$CN/ai_film_editor_nodes" pull --ff-only origin main
+kill "$PID"
+for _ in {1..30}; do kill -0 "$PID" 2>/dev/null || break; sleep 1; done
+cd "$COMFY"
+nohup "$PYTHON_BIN" "${ARGS[@]}" > /tmp/comfyui.log 2>&1 &
+sleep 5
+curl -fsS "http://127.0.0.1:${PORT}/afe/" >/dev/null && echo "AFE /afe/ 已更新并可访问"
+```
+
 ---
 
 # AFE 新 Pod 完整部署命令（分步版）

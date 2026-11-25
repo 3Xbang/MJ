@@ -1091,10 +1091,90 @@ class Api:
         raise web.HTTPFound("/afe/")
 
 
+
+def _is_route_table(value) -> bool:
+    return (value is not None and callable(getattr(value, "get", None))
+            and callable(getattr(value, "post", None)))
+
+
+def _route_table_has_afe_routes(routes) -> bool:
+    if getattr(routes, "_afe_routes_registered", False):
+        return True
+    items = getattr(routes, "_items", ())
+    return any(getattr(item, "path", None) == "/afe/" for item in items)
+
+
+def _runtime_objects(prompt_server, comfy_server) -> list[object]:
+    objects = []
+    instance = getattr(prompt_server, "instance", None)
+    if instance is not None:
+        objects.append(instance)
+    for candidate in (getattr(comfy_server, "server", None),
+                      getattr(comfy_server, "prompt_server", None),
+                      prompt_server, comfy_server):
+        if candidate is not None and candidate not in objects:
+            objects.append(candidate)
+    return objects
+
+
+def _resolve_comfy_runtime(prompt_server, comfy_server):
+    objects = _runtime_objects(prompt_server, comfy_server)
+    route_candidates = []
+    for owner in objects:
+        routes = getattr(owner, "routes", None)
+        if _is_route_table(routes):
+            route_candidates.append((owner, routes))
+    if not route_candidates:
+        raise RuntimeError(
+            "no usable ComfyUI route table found; checked PromptServer.instance.routes, "
+            "PromptServer.routes, server.routes, and server module routes"
+        )
+
+    _, routes = route_candidates[0]
+    port = None
+    for owner in objects:
+        value = getattr(owner, "port", None)
+        if value is not None:
+            try:
+                port = int(value)
+            except (TypeError, ValueError):
+                port = None
+            if port:
+                break
+        args = getattr(owner, "args", None)
+        value = getattr(args, "port", None)
+        if value is not None:
+            try:
+                port = int(value)
+            except (TypeError, ValueError):
+                port = None
+            if port:
+                break
+    if port is None:
+        try:
+            from comfy.cli_args import args as cli_args
+            port = int(getattr(cli_args, "port"))
+        except (ImportError, AttributeError, TypeError, ValueError):
+            pass
+    if not port:
+        raise RuntimeError(
+            "no usable ComfyUI port found; checked server.port, server.args.port, "
+            "and comfy.cli_args.args.port"
+        )
+    return routes, port
+
+
 def register() -> None:
-    """Called once from the package __init__ when running inside ComfyUI."""
-    from server import PromptServer
+    """Register AFE routes on ComfyUI's existing server without starting another one."""
+    from importlib import import_module
+
+    comfy_server = import_module("server")
+    prompt_server = getattr(comfy_server, "PromptServer", None)
+    if prompt_server is None:
+        raise RuntimeError("ComfyUI server module has no PromptServer")
     import folder_paths
+
+    routes, port = _resolve_comfy_runtime(prompt_server, comfy_server)
 
     def classes():
         import nodes
@@ -1104,8 +1184,15 @@ def register() -> None:
         from ai_film_editor_nodes.nodes.director.script_full_parser_node import AFE_ScriptFullParser as P
         return {"styles": P.RENDER_STYLES, "episodes": P.EPISODE_FORMATS}
 
+    if _route_table_has_afe_routes(routes):
+        logger.info("AFE web UI already registered at /afe/")
+        return
     api = Api(out_dir=folder_paths.get_output_directory,
-              comfy_base=lambda: f"http://127.0.0.1:{getattr(PromptServer.instance, 'port', 8188)}",
+              comfy_base=lambda: f"http://127.0.0.1:{port}",
               node_classes=classes, options=options)
-    api.attach(PromptServer.instance.routes)
+    api.attach(routes)
+    try:
+        routes._afe_routes_registered = True
+    except AttributeError:
+        pass
     logger.info("AFE web UI available at /afe/")
