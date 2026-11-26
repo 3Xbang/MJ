@@ -34,7 +34,7 @@ from ai_film_editor_nodes.nodes.video import user_refs
 from ai_film_editor_nodes.nodes.video._common import (
     align_batch, auto_all_input, call, check_interrupt, clamp, closed_result, files_differ,
     fit_to_canvas, gate_input, gate_is_open, get_node, get_shots, label_image, load_png, make_progress, md5,
-    parse_shot_numbers, project_dir, save_png, scene_names_in_order, shot_id_of, split_items,
+    parse_link_prompts, parse_shot_numbers, project_dir, save_png, scene_names_in_order, shot_id_of, split_items,
     split_pair, sub_dir, tensor_sig,
 )
 
@@ -174,6 +174,10 @@ class AFE_ShotKeyframeGenerator:
                                               "tooltip": "每个分镜首帧画几个版本供挑选"}),
                 "picks": ("STRING", {"default": "",
                                      "tooltip": "选用哪个版本。例：shot_005:2, 7:3  （分镜号:版本号）。不写=都用 1 号"}),
+                "link_prompts": ("STRING", {
+                    "default": "",
+                    "multiline": True,
+                    "tooltip": "每镜一条衔接提示词。例：shot_002: 接上一镜的手部特写，镜头继续缓慢推近"}),
                 "redo_shots": ("STRING", {"default": "",
                                           "tooltip": "不满意要重画的分镜。例：shot_007, 12:2  （再次重画把冒号后的数字加 1）"}),
                 "scene_view_picks": ("STRING", {"default": "",
@@ -198,7 +202,7 @@ class AFE_ShotKeyframeGenerator:
 
     def generate(self, shot_sequence, cast_data, scene_images, character_refs, project_name,
                  render_style, max_shots=0, overwrite=False, resolution=1024, seed=42,
-                 variants_per_shot=1, picks="", redo_shots="", scene_view_picks="", approved=False,
+                 variants_per_shot=1, picks="", link_prompts="", redo_shots="", scene_view_picks="", approved=False,
                  scene_images_medium=None, scene_images_atmosphere=None, props_images=None,
                  props_manifest="", auto_all=False):
         if not gate_is_open(approved, auto_all):
@@ -216,6 +220,7 @@ class AFE_ShotKeyframeGenerator:
         view_picks = parse_scene_view_picks(scene_view_picks)
         pick_map = parse_shot_numbers(picks, default_value=1)
         redo_map = parse_shot_numbers(redo_shots, default_value=1)
+        link_map = parse_link_prompts(link_prompts)
         K = clamp(int(variants_per_shot), 1, 4)
 
         proj = project_dir(project_name)
@@ -291,6 +296,8 @@ class AFE_ShotKeyframeGenerator:
             for k, p in enumerate(in_props):
                 images[f"image_{len(in_shot) + k + 2}"] = prop_refs[p]
             prompt = build_keyframe_prompt(shot, in_shot, render_style, in_props)
+            if link_map.get(sid):
+                prompt += " Continuity direction: " + link_map[sid]
             base_sig = md5(prompt, resolution, KEYFRAME_NEGATIVE,
                            *[tensor_sig(t) for t in images.values()])
             salt = redo_map.get(sid, 0)

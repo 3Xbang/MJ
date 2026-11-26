@@ -28,7 +28,7 @@ import torch
 
 from ai_film_editor_nodes.nodes.video._common import (
     auto_all_input, call, check_interrupt, closed_result, gate_input, gate_is_open, get_node,
-    get_shots, has_dialogue, load_png, make_progress, md5, parse_shot_numbers, shot_id_of,
+    get_shots, has_dialogue, load_png, make_progress, md5, parse_link_prompts, parse_shot_numbers, shot_id_of,
     sub_dir, write_mp4,
 )
 
@@ -241,6 +241,10 @@ class AFE_WanShotRenderer:
                 "overwrite": ("BOOLEAN", {"default": False,
                                           "tooltip": "False = skip clips already on disk"}),
                 "seed": ("INT", {"default": 42, "min": 0, "max": 2147483647}),
+                "link_prompts": ("STRING", {
+                    "default": "",
+                    "multiline": True,
+                    "tooltip": "每镜一条衔接提示词，会接进这一镜的视频提示词。例：shot_002: 承接上一镜，不要切走"}),
                 "long_take_overrides": ("STRING", {
                     "default": "",
                     "tooltip": "Make chosen shots longer than 5 s (one continuous take, no cut). "
@@ -266,7 +270,7 @@ class AFE_WanShotRenderer:
     def render(self, shot_sequence, project_dir, render_style,
                shots_to_render="all", max_shots=0, width=832, height=480,
                fast_4step=True, overwrite=False, seed=42,
-               long_take_overrides="", anchor_identity=False, redo_shots="",
+               long_take_overrides="", link_prompts="", anchor_identity=False, redo_shots="",
                approved=False, auto_all=False):
         if not gate_is_open(approved, auto_all):
             return closed_result("分镜视频渲染（渲染前请确认首帧）", "dr")
@@ -277,6 +281,7 @@ class AFE_WanShotRenderer:
         redo_map = parse_shot_numbers(redo_shots, default_value=1)
 
         overrides = parse_duration_overrides(long_take_overrides)
+        link_map = parse_link_prompts(link_prompts)
         if overrides:
             shots = [dict(s, duration_seconds=overrides[shot_id_of(s, i)])
                      if shot_id_of(s, i) in overrides else s
@@ -330,6 +335,8 @@ class AFE_WanShotRenderer:
             duration = float(shot.get("duration_seconds") or 5.0)
             n_segs = len(plan_segments(duration)[0])
             prompt = build_video_prompt(shot, render_style, speaking)
+            if link_map.get(sid):
+                prompt += " Continuity direction: " + link_map[sid]
             salt = redo_map.get(sid, 0)
             seed_eff = seed + i + salt * 9973
             with open(kf_path, "rb") as f:

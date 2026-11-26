@@ -19,7 +19,7 @@ DEFAULTS = {
     "style": "3D cartoon Pixar animation style, vibrant colors, 8k",
     "episode": "迷你剧集 Mini Episode (5-10 min)",
     "duration": 180,
-    "seconds_per_shot": 5,
+    "seconds_per_shot": 15,
     "seed": 42,
     # test mode: only the first N shots go through keyframes / video
     "test_mode": True,
@@ -39,6 +39,7 @@ DEFAULTS = {
     "video_width": 832,
     "video_height": 480,
     "long_takes": "",
+    "shot_links": "",
     "video_redo": "",
     # step 5
     "skip_shots": "",
@@ -108,8 +109,11 @@ def build_prompt(stage: int, project: str, settings: dict | None, project_path: 
                           batch_end_shot=int(batch["shot_end"]),
                           batch_context_json=batch.get("context_json", ""))
         g["1"] = _n("AFE_ScriptFullParser", **inputs)
-        labels["1"] = (f"分析剧本第{batch['batch_index']}批（{batch['shot_start']}-{batch['shot_end']}镜头）"
-                        if batch else "分析剧本（第一次要载入语言模型，需要几分钟）")
+        if batch and int(batch.get("shot_start") or 0) == int(batch.get("shot_end") or 0):
+            labels["1"] = f"分析镜头 {int(batch['shot_start'])}"
+        else:
+            labels["1"] = (f"分析剧本第{batch['batch_index']}批（{batch['shot_start']}-{batch['shot_end']}镜头）"
+                            if batch else "分析剧本（第一次要载入语言模型，需要几分钟）")
 
     elif stage == 2:
         loader()
@@ -130,7 +134,7 @@ def build_prompt(stage: int, project: str, settings: dict | None, project_path: 
                      scene_images=["4", 0], character_refs=["6", 0], project_name=project,
                      render_style=style, max_shots=_max_shots(s), overwrite=False, resolution=1024,
                      seed=int(s["seed"]), variants_per_shot=int(s["kf_variants"]),
-                     picks=s["kf_picks"], redo_shots=s["kf_redo"],
+                     picks=s["kf_picks"], link_prompts=s["shot_links"], redo_shots=s["kf_redo"],
                      scene_view_picks=s["scene_view_picks"], approved=True,
                      scene_images_medium=["4", 1], scene_images_atmosphere=["4", 2])
         if "5" in g:
@@ -144,7 +148,8 @@ def build_prompt(stage: int, project: str, settings: dict | None, project_path: 
                      render_style=style, shots_to_render="all", max_shots=_max_shots(s),
                      width=int(s["video_width"]), height=int(s["video_height"]),
                      fast_4step=bool(s["fast"]), overwrite=False, seed=int(s["seed"]),
-                     long_take_overrides=s["long_takes"], anchor_identity=False,
+                     long_take_overrides=s["long_takes"], link_prompts=s["shot_links"],
+                     anchor_identity=False,
                      redo_shots=s["video_redo"], approved=True)
         labels["12"] = "渲染分镜视频（每个分镜约几分钟，请耐心等待）"
 

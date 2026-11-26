@@ -21,7 +21,7 @@ const S = {
   settings: {},
   sel: { cast: {}, scene: {}, kf: {} },
   redo: { cast: {}, kf: {}, video: {} },
-  long: {}, skip: new Set(),
+  long: {}, links: {}, skip: new Set(),
   open: {}, tab: 'shots',
   run: null, dock: null,
   clientId: 'afe-' + Math.random().toString(36).slice(2),
@@ -38,6 +38,19 @@ function parsePairs(text) {
   return out;
 }
 const composePairs = obj => Object.entries(obj).filter(([, v]) => v).map(([k, v]) => `${k}:${v}`).join(', ');
+function parseLinkText(text) {
+  const out = {};
+  String(text || '').split(/\n+/).forEach(line => {
+    const m = line.trim().match(/^(shot_\d+|\d+)\s*[:=：]\s*(.+)$/i);
+    if (!m) return;
+    const n = /^\d+$/.test(m[1]) ? Number(m[1]) : Number(m[1].replace(/^shot_/i, ''));
+    if (!n) return;
+    out['shot_' + String(n).padStart(3, '0')] = m[2].trim();
+  });
+  return out;
+}
+const composeLinks = obj => Object.entries(obj).filter(([, v]) => String(v || '').trim())
+  .map(([k, v]) => `${k}: ${String(v).replace(/\s+/g, ' ').trim()}`).join('\n');
 
 function syncFromSettings() {
   const s = S.settings;
@@ -48,6 +61,7 @@ function syncFromSettings() {
   S.redo.kf = parsePairs(s.kf_redo);
   S.redo.video = parsePairs(s.video_redo);
   S.long = parsePairs(s.long_takes);
+  S.links = parseLinkText(s.shot_links);
   S.skip = new Set(String(s.skip_shots || '').split(/[,;，；\s]+/).filter(Boolean));
 }
 function syncToSettings() {
@@ -59,6 +73,7 @@ function syncToSettings() {
   s.kf_redo = composePairs(S.redo.kf);
   s.video_redo = composePairs(S.redo.video);
   s.long_takes = composePairs(S.long);
+  s.shot_links = composeLinks(S.links);
   s.skip_shots = [...S.skip].join(', ');
 }
 
@@ -230,7 +245,13 @@ async function monitorPrompt(run, pid, stage = 1, part = 'all', restored = false
     S.open[stage] = true;
     if (c.partial) {
       render();
-      showOk('本批分析已保存。请点击“继续分析”处理下一批。');
+      const p = S.view && S.view.analysis_progress;
+      const failed = p && (p.failed_batches || []).length;
+      if (p && !failed && p.analysis_status !== 'complete') {
+        showOk(`这一镜已保存（${p.completed_shot_count || 0}/${p.target_shot_count || 0}），继续下一镜…`);
+        return runStage(1);
+      }
+      showOk('这一镜已保存。失败的镜头请点「重试这一镜」。');
       return;
     }
     if (stage < 5) S.open[stage + 1] = true;
@@ -292,8 +313,8 @@ async function cancelRun() {
 const norm = t => JSON.stringify(Object.entries(parsePairs(t)).filter(([, v]) => v).sort());
 function changedSince(keys, used) {
   if (!used) return false;                       // projects from before this feature: don't guess
-  return keys.some(k => k === 'kf_variants'
-    ? String(S.settings[k]) !== String(used[k] ?? S.settings[k])
+  return keys.some(k => (k === 'kf_variants' || k === 'shot_links')
+    ? String(S.settings[k] || '') !== String((used[k] ?? ''))
     : norm(S.settings[k]) !== norm(used[k]));
 }
 function staleList() {
@@ -302,10 +323,10 @@ function staleList() {
   const refsChanged = k => u[k] && 'refs' in u[k] && (u[k].refs || '') !== (v.ref_sig || '');
   if (d['2'] && refsChanged('2'))
     out.push({ stage: 2, text: '你上传或更换了参考图，场景和角色需要按新的参考图重画（没变的不会重画）。' });
-  if (d['3'] && (refsChanged('3') || changedSince(['cast_picks', 'cast_redo', 'scene_view_picks', 'kf_picks', 'kf_redo', 'kf_variants'], u['3'])))
-    out.push({ stage: 3, text: '你更换了参考图或角色、场景、首帧的选择。首帧需要更新（只会重画受影响的分镜）。' });
-  if (d['4'] && (Number(d['3']) > Number(d['4']) || changedSince(['video_redo', 'long_takes'], u['4'])))
-    out.push({ stage: 4, text: '首帧或镜头设置有变化，视频需要更新（只会重新渲染受影响的分镜）。' });
+  if (d['3'] && (refsChanged('3') || changedSince(['cast_picks', 'cast_redo', 'scene_view_picks', 'kf_picks', 'kf_redo', 'kf_variants', 'shot_links'], u['3'])))
+    out.push({ stage: 3, text: '你更换了参考图、角色、场景、首帧或衔接提示词。首帧需要更新（只会重画受影响的分镜）。' });
+  if (d['4'] && (Number(d['3']) > Number(d['4']) || changedSince(['video_redo', 'long_takes', 'shot_links'], u['4'])))
+    out.push({ stage: 4, text: '首帧、时长或衔接提示词有变化，视频需要更新（只会重新渲染受影响的分镜）。' });
   if (d['5'] && (Number(d['4']) > Number(d['5']) || changedSince(['skip_shots'], u['5'])))
     out.push({ stage: 5, text: '视频有变化，成片需要重新合成。' });
   return out;
@@ -391,17 +412,34 @@ function card(n, title, bodyHtml) {
 const runBtn = n => `<button class="primary" data-act="run" data-stage="${n}" ${(S.run || !prereqOk(n)) ? 'disabled' : ''}>${STEPS[n - 1].verb}</button>`;
 const opt = (v, t, cur) => `<option value="${esc(v)}" ${String(v) === String(cur) ? 'selected' : ''}>${esc(t)}</option>`;
 
+function shotJobLabel(b) {
+  if (b && Number(b.shot_start) && Number(b.shot_start) === Number(b.shot_end)) return `镜头 ${b.shot_start}`;
+  return `第${b.batch_index}批（镜头${b.shot_start}-${b.shot_end}）`;
+}
 function renderAnalysisProgress() {
   const p = S.view.analysis_progress;
   if (!p || p.analysis_status === 'none') return '';
-  const current = p.current_batch ? `第 ${p.current_batch} 批` : (p.failed_batches || []).length ? '等待重试' : '等待继续';
+  const oneByOne = Number(p.batch_size) === 1;
+  const current = p.current_batch ? (oneByOne ? `正在分析镜头 ${p.current_batch}` : `第 ${p.current_batch} 批`)
+    : (p.failed_batches || []).length ? '等待重试' : '等待继续';
   const completed = `${p.completed_shot_count || 0}/${p.target_shot_count || 0}`;
   const failed = (p.batches || []).filter(b => b.status === 'failed');
-  return `<div class="batch-progress"><div class="batch-head"><b>${esc(current)} / 共 ${p.total_batches || 0} 批</b><span>已完成镜头 ${completed}</span></div>
-    <div class="batch-list">${(p.batches || []).map(b => `<span class="batch-chip ${esc(b.status)}">第${b.batch_index}批 ${b.status === 'completed' ? '✓' : b.status === 'failed' ? '失败' : b.status === 'running' ? '运行中' : '待处理'}</span>`).join('')}</div>
-    ${failed.map(b => `<div class="batch-error">第${b.batch_index}批（镜头${b.shot_start}-${b.shot_end}）：${esc(b.error || '未知错误')} <button class="small" data-act="retry-batch" data-batch="${b.batch_index}" ${S.run ? 'disabled' : ''}>重试此批</button></div>`).join('')}
-    <div class="row batch-actions"><button class="primary small" data-act="continue-analysis" ${S.run || p.analysis_status === 'complete' ? 'disabled' : ''}>继续分析</button>
+  const chips = oneByOne ? '' : `<div class="batch-list">${(p.batches || []).map(b => `<span class="batch-chip ${esc(b.status)}">第${b.batch_index}批 ${b.status === 'completed' ? '✓' : b.status === 'failed' ? '失败' : b.status === 'running' ? '运行中' : '待处理'}</span>`).join('')}</div>`;
+  return `<div class="batch-progress"><div class="batch-head"><b>${esc(current)}</b><span>已完成镜头 ${completed}</span></div>
+    ${chips}
+    ${failed.map(b => `<div class="batch-error">${esc(shotJobLabel(b))}：${esc(b.error || '未知错误')} <button class="small" data-act="retry-batch" data-batch="${b.batch_index}" ${S.run ? 'disabled' : ''}>重试这一镜</button></div>`).join('')}
+    <div class="row batch-actions"><button class="primary small" data-act="continue-analysis" ${S.run || p.analysis_status === 'complete' ? 'disabled' : ''}>${oneByOne ? '继续下一镜' : '继续分析'}</button>
       <button class="small" data-act="cancel-analysis" ${S.run ? '' : 'disabled'}>${S.run && S.run.submissionPending ? '取消提交并恢复' : '取消'}</button></div></div>`;
+}
+function shotEditors(shots) {
+  if (!shots || !shots.length) return '';
+  return `<h3 style="margin:18px 0 0">每镜衔接</h3>
+    <div class="note">每一镜一条提示词，用来接上一镜并拉长这一镜。时长留空就用上面的「每个分镜」。改完后，第 ③④ 步只会重做改过的镜头。</div>
+    <div class="shot-editors">${shots.map(x => `<div class="shot-edit">
+      <div class="id">${esc(x.id)} <span class="meta">${esc(x.scene || '')}</span></div>
+      <label>时长 <input type="number" min="3" max="120" data-long="${esc(x.id)}" value="${esc(S.long[x.id] || '')}" placeholder="${esc(x.duration || S.settings.seconds_per_shot)}" style="width:70px"> 秒</label>
+      <label class="link-label">衔接提示词<textarea data-link="${esc(x.id)}" rows="2" placeholder="接上一镜，镜头怎么走，这一镜持续做什么">${esc(S.links[x.id] || '')}</textarea></label>
+    </div>`).join('')}</div>`;
 }
 /* step 1 — script */
 function renderStep1() {
@@ -437,6 +475,7 @@ function renderStep1() {
     result = `<h3 style="margin:18px 0 0">分析结果</h3>${chips}
       <div class="tabs">${tabs.map(([k, t]) => `<button class="${S.tab === k ? 'on' : ''}" data-act="tab" data-tab="${k}">${t}</button>`).join('')}</div>
       <div class="table-wrap">${tbl}</div>
+      ${shotEditors(shots)}
       <div class="note">请对照剧本检查场景数量、角色外貌是否正确。有误就修改剧本后重新点「分析剧本」。重新分析会让后面的步骤重新来过。</div>`;
   }
   return card(1, '剧本', `
@@ -445,10 +484,10 @@ function renderStep1() {
     <div class="row">
       <div class="field"><label>画风</label><select data-set="style">${(S.opts.styles || []).map(x => opt(x, x, s.style)).join('')}</select></div>
       <div class="field"><label>影片总时长（秒）</label><input type="number" min="30" max="3600" data-set="duration" data-type="int" value="${esc(s.duration)}"></div>
-      <div class="field"><label>每个分镜（秒）</label><input type="number" min="3" max="15" data-set="seconds_per_shot" data-type="int" value="${esc(s.seconds_per_shot)}"></div>
+      <div class="field"><label>每个分镜（秒）</label><input type="number" min="5" max="60" data-set="seconds_per_shot" data-type="int" value="${esc(s.seconds_per_shot)}"></div>
       ${runBtn(1)}
     </div>
-    <div class="note">分镜数量 = 总时长 ÷ 每个分镜时长（例如 180 秒 ÷ 5 秒 = 36 个分镜）。第一次分析要载入语言模型，需要几分钟。</div>
+    <div class="note">现在逐镜分析：一镜完成会自动开始下一镜，失败只重试这一镜。第一次要载入语言模型，需要几分钟。想要长镜头，把「每个分镜」调到 15 秒（180 秒就是 12 镜），再重新分析。</div>
     ${result}`);
 }
 
@@ -581,7 +620,8 @@ function renderStep4() {
         </div></div>`).join('')}</div>`;
   }
   return card(4, '视频：让画面动起来', `
-    <p class="help">把每个首帧变成约 5 秒的视频。这一步最花时间，每个分镜需要几分钟，可以随时点底部的「取消」，已做好的不会丢。</p>
+    <p class="help">按每镜时长把首帧做成视频。超过约 5 秒会自动接成一条长镜头。可以随时点底部的「取消」，已做好的不会丢。</p>
+    ${shotEditors((a && a.shots) || [])}
     <div class="row">
       <div class="field"><label>清晰度</label><select data-size="1">${opt('832x480', '标准 832×480（较快）', size)}${opt('1024x576', '较高 1024×576（较慢）', size)}</select></div>
       <label class="switch"><input type="checkbox" data-set="fast" data-type="bool" ${s.fast ? 'checked' : ''}> 快速模式（推荐）</label>
@@ -678,6 +718,12 @@ document.addEventListener('change', ev => {
 document.addEventListener('input', ev => {
   const el = ev.target;
   if (el.tagName === 'TEXTAREA' && el.dataset.set) { S.settings[el.dataset.set] = el.value; saveSettingsSoon(); }
+  if (el.dataset.link) {
+    const v = el.value.trim();
+    if (v) S.links[el.dataset.link] = v; else delete S.links[el.dataset.link];
+    syncToSettings();
+    saveSettingsSoon();
+  }
 });
 
 $('#projOpen').addEventListener('click', () => {

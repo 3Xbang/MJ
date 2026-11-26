@@ -21,7 +21,7 @@ from ai_film_editor_nodes.nodes.director.screenplay_source_units import (
 )
 
 SCHEMA_VERSION = "afe-analysis-session-v1"
-DEFAULT_BATCH_SIZE = 4
+DEFAULT_BATCH_SIZE = 1
 
 
 def script_signature(script: str, target_shot_count: int, seconds_per_shot: int,
@@ -242,6 +242,11 @@ class AnalysisSessionStore:
         state = self.load()
         signature = script_signature(kwargs["script"], kwargs["target_shot_count"], kwargs["seconds_per_shot"], kwargs.get("episode_format", ""))
         if state and state.get("script_signature") == signature:
+            # An unfinished 4-shot batch session is rebuilt as one shot per call.
+            # A finished analysis is left as-is.
+            stored = int(state.get("batch_size") or self.batch_size)
+            if state.get("analysis_status") != "complete" and stored != int(self.batch_size):
+                return self.create(**kwargs)
             return state
         return self.create(**kwargs)
 

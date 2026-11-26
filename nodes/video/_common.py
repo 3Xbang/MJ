@@ -280,6 +280,27 @@ def get_shots(shot_sequence) -> list:
     return []
 
 
+def parse_link_prompts(text: str) -> dict[str, str]:
+    """'shot_003: slow push, match the previous frame' -> {'shot_003': '...'}."""
+    out: dict[str, str] = {}
+    for line in re.split(r"[\n;]+", text or ""):
+        line = line.strip()
+        if not line:
+            continue
+        match = re.match(r"^(shot_\d+|\d+)\s*[:=：]\s*(.+)$", line, re.IGNORECASE)
+        if not match:
+            continue
+        key = match.group(1)
+        if key.isdigit():
+            key = f"shot_{int(key):03d}"
+        else:
+            key = f"shot_{int(key.split('_', 1)[1]):03d}"
+        value = re.sub(r"\s+", " ", match.group(2)).strip()
+        if value:
+            out[key] = value
+    return out
+
+
 def has_dialogue(shot: dict) -> bool:
     d = shot.get("dialogue")
     if d is None:

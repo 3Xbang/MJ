@@ -35,7 +35,7 @@ STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 MIME_NO_CACHE = {"Cache-Control": "no-store"}
 # settings that decide what a step produced; the UI compares them with the current choices
 USED_KEYS = ("cast_picks", "cast_redo", "scene_view_picks", "kf_picks", "kf_redo", "kf_variants",
-             "video_redo", "long_takes", "skip_shots")
+             "video_redo", "long_takes", "shot_links", "skip_shots")
 
 
 # ── project files ─────────────────────────────────────────────────────────────
@@ -238,6 +238,14 @@ def extract_results(stage: int, outputs: dict, part: str = "all") -> dict:
         res["movie"] = movie
         res["report"] = _text(o)
     return res
+
+
+def _shot_job_label(batch: dict) -> str:
+    start = int(batch.get("shot_start") or 0)
+    end = int(batch.get("shot_end") or start)
+    if start and start == end:
+        return f"镜头 {start}"
+    return f"第{batch.get('batch_index')}批（镜头{start}-{end}）"
 
 
 def friendly_error(message: str, node_type: str = "") -> str:
@@ -649,7 +657,7 @@ class Api:
                 if await self.prompt_is_known(existing.get("prompt_id", "")):
                     return web.json_response({"prompt_id": existing.get("prompt_id"),
                                               "batch": existing, "session": self.analysis_status(pp),
-                                              "labels": {"1": f"分析剧本第{existing['batch_index']}批"}})
+                                              "labels": {"1": _shot_job_label(existing)}})
                 # A running prompt absent from both history and queue is
                 # conservatively retryable after a ComfyUI/browser restart.
                 session_store.recover_orphaned_running()
@@ -659,7 +667,7 @@ class Api:
                 return web.json_response({"ok": True, "complete": True,
                                           "session": self.analysis_status(pp)})
             if batch.get("status") == "failed":
-                return web.json_response({"error": f"第{batch['batch_index']}批失败，请先重试该批次。",
+                return web.json_response({"error": f"{_shot_job_label(batch)}失败，请先重试这一条。",
                                           "session": self.analysis_status(pp)}, status=409)
             if not batch.get("claimed"):
                 return web.json_response({"ok": True, "submission_pending": True,
