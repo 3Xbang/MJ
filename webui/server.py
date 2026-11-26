@@ -437,8 +437,11 @@ class Api:
                 logger.exception("Unable to republish completed analysis session")
         analysis = read_json(os.path.join(pp, "analysis.json"))
         settings = st.get("settings") or {}
-        target_count = max(1, round(int(settings.get("duration", 180)) /
-                                int(settings.get("seconds_per_shot", 5))))
+        target_count = film_shot_count(
+            settings.get("script", ""),
+            int(settings.get("duration", 180) or 180),
+            int(settings.get("seconds_per_shot", 5) or 5),
+        )
         expected_signature = script_signature(
             settings.get("script", ""), target_count,
             int(settings.get("seconds_per_shot", 5)), settings.get("episode", "")

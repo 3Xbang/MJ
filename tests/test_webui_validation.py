@@ -208,6 +208,36 @@ def test_project_view_hides_stale_analysis_and_dependent_references():
         assert view["refs"] == {"cast": {}, "scene": {}, "prop": {}}
 
 
+def test_numbered_script_stays_visible_when_duration_divides_to_another_count():
+    import tempfile
+    from ai_film_editor_nodes.nodes.director.script_analysis_session import AnalysisSessionStore
+    from ai_film_editor_nodes.nodes.director.screenplay_source_units import film_shot_count
+    script = "### 镜头 001（3 秒）\n甲的手。\n\n### 镜头 002（2 秒）\n乙的手。\n"
+    assert film_shot_count(script, 180, 5) == 2
+    assert round(180 / 5) == 36
+    with tempfile.TemporaryDirectory() as root:
+        api = Api(root, "http://127.0.0.1:8188")
+        project = api.project_path("lecture")
+        os.makedirs(project, exist_ok=True)
+        store = AnalysisSessionStore(os.path.join(project, "analysis_session"), 1)
+        session = store.create(script, 2, 5, [{"scene_id": "scene_001", "source_blocks": [{
+            "source_block_id": "block_001", "source_text": script,
+        }]}], cast=[{"name": "甲"}])
+        session["analysis_status"] = "complete"
+        store.save(session)
+        analysis = _complete_analysis()
+        analysis["session_signature"] = session["script_signature"]
+        analysis["cast"] = [{"name": "甲", "role_type": "lead", "appearance_en": "hands"}]
+        with open(os.path.join(project, "analysis.json"), "w", encoding="utf-8") as fh:
+            json.dump(analysis, fh)
+        with open(os.path.join(project, "ui_state.json"), "w", encoding="utf-8") as fh:
+            json.dump({"settings": {"script": script, "duration": 180, "seconds_per_shot": 5}}, fh)
+        view = api.project_view("lecture")
+        assert view["stale_analysis"] is False
+        assert view["has_analysis"] is True
+        assert view["analysis"]["cast"][0]["name"] == "甲"
+
+
 def test_project_view_allows_matching_completed_analysis():
     import tempfile
     from ai_film_editor_nodes.nodes.director.script_analysis_session import AnalysisSessionStore
