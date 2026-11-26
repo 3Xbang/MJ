@@ -624,7 +624,17 @@ def _mostly_cjk(text: str, threshold: float = 0.2) -> bool:
     return bool(t) and sum(1 for c in t if "\u4e00" <= c <= "\u9fff") / len(t) > threshold
 
 
-_NULL_WORDS = {"", "null", "none", "n/a", "nil"}
+_NULL_WORDS = {
+    "", "null", "none", "n/a", "nil",
+    "无", "没有", "暂无", "不适用", "未知", "不详", "空",
+}
+
+
+def _null_token(text: str) -> str:
+    """Normalize a model placeholder such as ``无。`` or ``"none"``."""
+    token = str(text or "").strip().lower()
+    token = re.sub(r"^[\"'“”‘’]+|[\"'“”‘’]+$", "", token).strip()
+    return token.strip("。．.，,；;：:、!！?？")
 
 
 def _clean_semantic(value):
@@ -641,7 +651,7 @@ def _clean_semantic(value):
         return {key: cleaned for key, item in value.items()
                 if (cleaned := _clean_semantic(item)) is not None}
     if isinstance(value, str):
-        return None if value.strip().lower() in _NULL_WORDS else value.strip()
+        return None if _null_token(value) in _NULL_WORDS else value.strip()
     return value
 
 

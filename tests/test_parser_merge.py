@@ -393,6 +393,17 @@ def test_phase1_props_list_accepts_verified_alias_and_blocks_hallucinated_prop()
     assert unsupported_action
 
 
+def test_chinese_none_is_not_a_screenplay_fact():
+    source = "胖叔举起玻璃杯，茶水轻轻晃动。"
+    assert parser_mod._clean_semantic("无") is None
+    assert parser_mod._clean_semantic("无。") is None
+    assert parser_mod._clean_semantic("无人物") == "无人物"
+    assert not parser_mod._phase1_fact_validation_errors(
+        {"body_language": "无", "camera_path": "无。", "action": "胖叔举起玻璃杯"},
+        source, source,
+    )
+
+
 def test_rule_derived_directions_are_kept_with_provenance():
     source = "Mina reaches for the lever."
     assert not parser_mod._fact_validation_errors(
