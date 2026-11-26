@@ -96,6 +96,22 @@ pip install accelerate -q && python -c "import accelerate; print('accelerate OK'
 
 然后回 `/afe/` 点「重试此批」。完整环境仍建议跑完整一键部署。
 
+### 4）`can't open file '.../custom_nodes/main.py'` / ComfyUI 没在跑
+
+说明启动时工作目录错了。手动拉起（端口按你的 Pod，常见 `18188`）：
+
+```bash
+COMFY=/workspace/runpod-slim/ComfyUI
+export COMFY_PORT="${COMFY_PORT:-18188}"
+pkill -f "python.*main.py" 2>/dev/null || true
+sleep 2
+cd "$COMFY"
+nohup python "$COMFY/main.py" --listen 0.0.0.0 --port "$COMFY_PORT" --enable-cors-header "*" > /tmp/comfyui.log 2>&1 &
+sleep 40
+grep -E 'AFE|Error|Traceback' /tmp/comfyui.log | tail -40
+curl -fsS "http://127.0.0.1:${COMFY_PORT}/afe/" >/dev/null && echo "✅ /afe/ OK"
+```
+
 ---
 
 ## 仅更新 AFE 代码并重启（模型已在、ComfyUI 正运行）

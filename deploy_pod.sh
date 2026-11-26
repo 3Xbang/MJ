@@ -183,10 +183,13 @@ if [ -z "${COMFY_PORT:-}" ] && [ -n "$ACTIVE_PID" ] && [ -r "/proc/$ACTIVE_PID/c
 fi
 COMFY_PORT="${COMFY_PORT:-$DEFAULT_PORT}"
 echo "使用 ComfyUI 端口：$COMFY_PORT"
-pkill -f "python main.py" 2>/dev/null || true
+pkill -f "python.*main.py" 2>/dev/null || true
 sleep 3
+# 必须用绝对路径启动：部署脚本末尾 cwd 常在 custom_nodes，相对 main.py 会点到不存在的
+# /workspace/.../custom_nodes/main.py，导致进程秒退、/afe/ 永远起不来。
 cd "$COMFY"
-nohup python main.py --listen 0.0.0.0 --port "$COMFY_PORT" --enable-cors-header "*" > /tmp/comfyui.log 2>&1 &
+nohup python "$COMFY/main.py" --listen 0.0.0.0 --port "$COMFY_PORT" --enable-cors-header "*" > /tmp/comfyui.log 2>&1 &
+echo "ComfyUI 已在后台启动（cwd=$COMFY, pid=$!）"
 
 echo ""
 echo "== 6/6 检查 AFE 注册（等待 50 秒）=="
