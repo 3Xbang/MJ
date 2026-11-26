@@ -28,6 +28,7 @@ DEFAULTS = {
     "make_props": True,
     "cast_candidates": 3,
     "cast_picks": "",
+    "cast_genders": "",
     "cast_redo": "",
     "scene_view_picks": "",
     # step 3
@@ -97,7 +98,8 @@ def build_prompt(stage: int, project: str, settings: dict | None, project_path: 
         g["6"] = _n("AFE_CastRefGenerator", cast_data=["1", 1], render_style=style, width=768,
                     height=1152, steps=8, seed=int(s["seed"]),
                     candidates_per_character=int(s["cast_candidates"]), picks=s["cast_picks"],
-                    redo_characters=s["cast_redo"], project_name=project, approved=True)
+                    redo_characters=s["cast_redo"], genders=s.get("cast_genders", ""),
+                    project_name=project, approved=True)
         labels["6"] = "绘制角色参考图"
 
     if stage == 1:

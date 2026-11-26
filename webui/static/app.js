@@ -21,7 +21,7 @@ const S = {
   settings: {},
   sel: { cast: {}, scene: {}, kf: {} },
   redo: { cast: {}, kf: {}, video: {} },
-  long: {}, links: {}, notes: {}, skip: new Set(),
+  long: {}, links: {}, notes: {}, genders: {}, skip: new Set(),
   open: {}, tab: 'shots',
   run: null, dock: null,
   clientId: 'afe-' + Math.random().toString(36).slice(2),
@@ -38,6 +38,31 @@ function parsePairs(text) {
   return out;
 }
 const composePairs = obj => Object.entries(obj).filter(([, v]) => v).map(([k, v]) => `${k}:${v}`).join(', ');
+function parseGenders(text) {
+  const out = {};
+  String(text || '').split(/[,;，；\n]+/).forEach(item => {
+    const m = item.trim().match(/^(.+?)\s*[:=：]\s*(female|male|女|男|女性|男性)$/i);
+    if (!m) return;
+    out[m[1].trim()] = /^(female|女|女性)$/i.test(m[2]) ? 'female' : 'male';
+  });
+  return out;
+}
+function castGender(name, fallback) {
+  const chosen = S.genders[name];
+  if (chosen === 'female' || chosen === 'male') return chosen;
+  const g = String(fallback || '').toLowerCase();
+  if (/female|woman|girl|女/.test(g)) return 'female';
+  if (/male|man|boy|男/.test(g)) return 'male';
+  return '';
+}
+function genderSelect(name, fallback) {
+  const cur = castGender(name, fallback);
+  return `<label class="gender">性别<select data-gender="${esc(name)}">
+    <option value="" ${cur ? '' : 'selected'}>未选</option>
+    <option value="female" ${cur === 'female' ? 'selected' : ''}>女</option>
+    <option value="male" ${cur === 'male' ? 'selected' : ''}>男</option>
+  </select></label>`;
+}
 function parseLinkText(text) {
   const out = {};
   String(text || '').split(/\n+/).forEach(line => {
@@ -64,6 +89,7 @@ function syncFromSettings() {
   S.links = parseLinkText(s.shot_links);
   S.notes = parseLinkText(s.kf_notes);
   S.skip = new Set(String(s.skip_shots || '').split(/[,;，；\s]+/).filter(Boolean));
+  S.genders = parseGenders(s.cast_genders);
 }
 function syncToSettings() {
   const s = S.settings;
@@ -77,6 +103,8 @@ function syncToSettings() {
   s.shot_links = composeLinks(S.links);
   s.kf_notes = composeLinks(S.notes);
   s.skip_shots = [...S.skip].join(', ');
+  s.cast_genders = Object.entries(S.genders).filter(([, v]) => v === 'female' || v === 'male')
+    .map(([k, v]) => `${k}:${v}`).join(', ');
 }
 
 /* ── network ────────────────────────────────────────────────────────────── */
@@ -520,7 +548,7 @@ function renderStep2() {
     const cast = (a.cast || []).map((c, j) => {
       const imgs = (v.cast_images || []).filter(x => x.char === j + 1);
       const cur = S.sel.cast[j + 1] || (imgs.find(x => x.chosen) || {}).variant || 1;
-      return `<div class="group"><h3>角色：${esc(c.name)} <button class="small" data-act="redo-cast" data-char="${j + 1}" ${S.run ? 'disabled' : ''}>🔄 不满意，重画这个角色</button></h3>
+      return `<div class="group"><h3>角色：${esc(c.name)} ${genderSelect(c.name, c.gender)} <button class="small" data-act="redo-cast" data-char="${j + 1}" ${S.run ? 'disabled' : ''}>🔄 不满意，重画这个角色</button></h3>
         <div class="gallery">${imgs.map(x => `<label class="pick ${cur === x.variant ? 'on' : ''}"><input type="radio" name="cast${j}" data-sel="cast" data-id="${j + 1}" data-val="${x.variant}" ${cur === x.variant ? 'checked' : ''}>
           <img src="${esc(x.url)}" loading="lazy"><div class="cap">${x.source === 'upload' ? '你的原图' : '版本 ' + x.variant}</div></label>`).join('')}</div></div>`;
     }).join('');
@@ -541,10 +569,12 @@ function renderStep2() {
 }
 
 /* optional reference pictures (uploaded by the user) */
-function refRow(kind, name, sub) {
+function refRow(kind, name, sub, genderFallback) {
   const url = ((S.view.refs || {})[kind] || {})[name];
+  const gender = kind === 'cast' ? genderSelect(name, genderFallback) : '';
   return `<div class="refrow"><div class="thumb">${url ? `<img src="${esc(url)}" alt="">` : '<span>无</span>'}</div>
     <div class="who"><b>${esc(name)}</b><br><small>${esc(sub || '')}</small></div>
+    ${gender}
     <label class="upl">📎 ${url ? '更换' : '上传'}参考图<input type="file" accept="image/*" data-ref-kind="${kind}" data-ref-name="${esc(name)}"></label>
     ${url ? `<button class="small ghost" data-act="ref-del" data-kind="${kind}" data-name="${esc(name)}">移除</button>` : ''}</div>`;
 }
@@ -555,14 +585,14 @@ function renderRefs() {
       <p class="help">想让 AI 照着你自己的图来画角色、场景或道具，可以在这里上传参考图；<b>不上传也完全没问题</b>，AI 会根据剧本里的文字描述来画。<br>
       请先完成上面第 ① 步「分析剧本」，分析完成后这里会列出每个角色、场景和道具，你就可以逐个上传。</p></details>`;
   }
-  const cast = (a.cast || []).map(c => refRow('cast', c.name, c.look)).join('');
+  const cast = (a.cast || []).map(c => refRow('cast', c.name, c.look, c.gender)).join('');
   const scenes = (a.scenes || []).map(c => refRow('scene', c.scene_name, c.scene_name_en)).join('');
   const nProps = Object.keys((S.view.refs || {}).prop || {}).length;
   const props = (a.props || []).map(c => refRow('prop', c.name, '')).join('');
   const n = Object.values(S.view.refs || {}).reduce((t, o) => t + Object.keys(o).length, 0);
   return `<details class="refs" open><summary>📎 我有参考图（可选）${n ? `<span class="chip" style="margin-left:8px">已上传 ${n} 张</span>` : ''}</summary>
     <p class="help">有现成的图就上传，AI 会<b>以你的图为准</b>来画，后面的首帧也会按它保持一致；没有就留空，AI 会根据文字描述来画。
-    角色请用正面、清晰、背景干净的图；场景请用没有人的空镜头；道具请用单个物品的图。</p>
+    每个角色先选女或男，再点「重画这个角色」，画面会按这个性别画。角色请用正面、清晰、背景干净的图；场景请用没有人的空镜头；道具请用单个物品的图。</p>
     ${cast ? `<h4>角色</h4>${cast}` : ''}${scenes ? `<h4>场景</h4>${scenes}` : ''}
     ${props ? `<details class="props" ${nProps ? 'open' : ''}><summary>道具（${(a.props || []).length} 件，需要时展开）</summary>${props}</details>` : ''}</details>`;
 }
@@ -718,6 +748,12 @@ document.addEventListener('change', ev => {
   } else if (el.dataset.refKind) {
     uploadRef(el.dataset.refKind, el.dataset.refName, el.files[0]);
     el.value = '';
+  } else if (el.dataset.gender) {
+    const name = el.dataset.gender;
+    if (el.value === 'female' || el.value === 'male') S.genders[name] = el.value;
+    else delete S.genders[name];
+    saveSettingsSoon();
+    render();
   } else if (el.dataset.sel) {
     const kind = el.dataset.sel;
     S.sel[kind][el.dataset.id] = Number(el.dataset.val);

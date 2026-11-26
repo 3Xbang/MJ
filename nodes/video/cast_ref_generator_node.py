@@ -25,7 +25,6 @@ import torch
 from ai_film_editor_nodes.nodes.analyzer.scene_image_generator_node import (
     _generate_scene_image, _load_models,
 )
-from ai_film_editor_nodes.nodes.generation.character_card_9views_node import VIEW_TEMPLATES
 from ai_film_editor_nodes.nodes.video import user_refs
 from ai_film_editor_nodes.nodes.video._common import (
     auto_all_input, check_interrupt, clamp, closed_result, fit_to_canvas, gate_input, gate_is_open,
@@ -41,22 +40,84 @@ CAST_NEGATIVE = (
 )
 
 
+_GENDER_WORDS = {
+    "female": "female", "woman": "female", "girl": "female", "女": "female", "女性": "female",
+    "male": "male", "man": "male", "boy": "male", "男": "male", "男性": "male",
+}
+
+
+def parse_gender_choices(text: str) -> dict[str, str]:
+    """'小舟:female, 小宇:男' -> {'小舟': 'female', '小宇': 'male'}."""
+    from ai_film_editor_nodes.nodes.video._common import split_items, split_pair
+    out = {}
+    for item in split_items(text or ""):
+        key, val = split_pair(item)
+        kind = _GENDER_WORDS.get(str(val or "").strip().lower())
+        if key and kind:
+            out[key] = kind
+    return out
+
+
+def apply_gender_choice(member: dict, choices: dict[str, str]) -> dict:
+    """The choice on the character card overrides the gender written during analysis."""
+    chosen = choices.get(str(member.get("name") or "").strip())
+    if not chosen:
+        return member
+    updated = dict(member)
+    updated["gender"] = chosen
+    return updated
+
+
+def gender_clause(member: dict) -> str:
+    raw = str(member.get("gender") or "").strip().lower()
+    kind = _GENDER_WORDS.get(raw) or _GENDER_WORDS.get(raw.split()[0].strip(",，") if raw else "")
+    if kind == "female":
+        return "adult woman, female"
+    if kind == "male":
+        return "adult man, male"
+    return ""
+
+
+def gender_negative(member: dict) -> str:
+    clause = gender_clause(member)
+    if "woman" in clause:
+        return "man, male, boy, masculine"
+    if "man" in clause:
+        return "woman, female, girl"
+    return ""
+
+
 def build_cast_prompt(member: dict, render_style: str) -> str:
     appearance = (member.get("appearance_en") or "").strip()
     costume = (member.get("default_costume_en") or "").strip()
-    gender = (member.get("gender") or "").strip()
     age = (member.get("age_range") or "").strip()
-    who = ", ".join(x for x in [gender, f"age {age}" if age else ""] if x)
     parts = [
         "Character design reference, ONE single character, full body from head to feet, "
         "front view, standing relaxed with arms at sides, plain solid white background, "
         "even studio lighting, no props, no other objects",
-        who,
+        gender_clause(member),
+        f"age {age}" if age else "",
         appearance,
         f"wearing {costume}" if costume else "",
         render_style,
     ]
     return ". ".join(p for p in parts if p)
+
+
+def build_cast_edit_prompt(member: dict, render_style: str) -> str:
+    """Edit an uploaded reference without changing the chosen gender."""
+    appearance = (member.get("appearance_en") or "").strip()
+    costume = (member.get("default_costume_en") or "").strip()
+    look = ", ".join(x for x in [appearance, f"wearing {costume}" if costume else ""] if x)
+    identity = gender_clause(member)
+    forbid = gender_negative(member)
+    bits = [identity, look, "White background", render_style]
+    body = ". ".join(bit.strip(" .") for bit in bits if bit and bit.strip(" ."))
+    banned = f" Do not draw: {forbid}." if forbid else ""
+    return (
+        "[Image_1] Full body FRONT VIEW, standing straight, arms relaxed at sides. "
+        f"Keep this exact person and this exact gender. {body}.{banned}"
+    )
 
 
 class AFE_CastRefGenerator:
@@ -83,6 +144,8 @@ class AFE_CastRefGenerator:
                                      "tooltip": "选用哪个版本。例：1:2, Ann:3  （角色序号或名字:版本号）。不写=都用 1 号"}),
                 "redo_characters": ("STRING", {"default": "",
                                                "tooltip": "不满意要重画的角色。例：2, Bo:2  （再次重画把冒号后的数字加 1）"}),
+                "genders": ("STRING", {"default": "",
+                                       "tooltip": "每个角色的性别。例：小舟:female, 小宇:male。页面上的选择优先于分析里写的性别"}),
                 "project_name": ("STRING", {"default": "afe_project"}),
                 "approved": gate_input("生成角色参考图"),
                 "auto_all": auto_all_input(),
@@ -96,7 +159,7 @@ class AFE_CastRefGenerator:
     OUTPUT_NODE = True
 
     def generate(self, cast_data, render_style, width=768, height=1152, steps=8, seed=42,
-                 candidates_per_character=3, picks="", redo_characters="",
+                 candidates_per_character=3, picks="", redo_characters="", genders="",
                  project_name="afe_project", approved=False, auto_all=False):
         if not gate_is_open(approved, auto_all):
             return closed_result("角色参考图（生成前请确认剧本解析里的角色外貌描述是否正确）", "drd")
@@ -108,6 +171,7 @@ class AFE_CastRefGenerator:
             return {"ui": {"text": [report], "afe_manifest": ["[]"]},
                     "result": (empty, report, empty)}
         names = [c["name"] for c in cast]
+        gender_choices = parse_gender_choices(genders)
         K = clamp(int(candidates_per_character), 1, 6)
         pick_map = parse_index_numbers(picks, names, default_value=1)
         redo_map = parse_index_numbers(redo_characters, names, default_value=1)
@@ -121,13 +185,12 @@ class AFE_CastRefGenerator:
         made = reused = 0
 
         for ci, member in enumerate(cast):
+            member = apply_gender_choice(member, gender_choices)
             prompt = build_cast_prompt(member, render_style)
             mine = user_refs.load_user_ref(project_name, "cast", member["name"])
             mine_sig = tensor_sig(mine) if mine is not None else ""
-            look = ", ".join(x for x in [(member.get("appearance_en") or "").strip(),
-                                         (f"wearing {member['default_costume_en']}"
-                                          if member.get("default_costume_en") else "")] if x)
-            qwen_prompt = VIEW_TEMPLATES[1].replace("{char}", look).replace("{style}", render_style)
+            qwen_prompt = build_cast_edit_prompt(member, render_style)
+            forbid = gender_negative(member)
             if mine is not None:
                 lines.append(f"  📎 {member['name']}：使用你上传的参考图")
             salt = redo_map.get(ci, 0)
@@ -138,7 +201,7 @@ class AFE_CastRefGenerator:
                 seed_k = seed + ci * 101 + (k - 1) * 17 + salt * 9973
                 is_original = mine is not None and k == 1          # v1 = the user's own picture
                 how = "orig" if is_original else ("qwen" if mine is not None else "krea")
-                sig = md5(prompt, width, height, steps, seed_k, how, mine_sig)[:8]
+                sig = md5(prompt, qwen_prompt, width, height, steps, seed_k, how, mine_sig)[:8]
                 path = os.path.join(out_dir, f"C{ci + 1}_v{k}_{sig}.png")
                 if os.path.exists(path):
                     img = load_png(path); reused += 1
@@ -155,7 +218,8 @@ class AFE_CastRefGenerator:
                                 model, clip, vae = _load_models()
                             img = _generate_scene_image(
                                 clip=clip, vae=vae, base_model=model, prompt=prompt, seed=seed_k,
-                                width=width, height=height, steps=steps, cfg=1.0, negative=CAST_NEGATIVE)
+                                width=width, height=height, steps=steps, cfg=1.0,
+                                negative=", ".join(x for x in (CAST_NEGATIVE, forbid) if x))
                         save_png(img, path); made += 1
                     except Exception as e:
                         logger.error("[AFE_CastRefGenerator] %s v%d failed: %s", member["name"], k, e)
