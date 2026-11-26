@@ -52,6 +52,14 @@ def ref_filename(kind: str, name: str) -> str:
     return f"{kind}_{hashlib.md5((name or '').strip().lower().encode('utf-8')).hexdigest()[:10]}.png"
 
 
+def reclaim_failed_analysis_batch(session_store, batch: dict) -> dict:
+    """The analyze button reruns a failed shot instead of stopping in front of it."""
+    if not isinstance(batch, dict) or batch.get("status") != "failed" or not batch.get("batch_index"):
+        return batch
+    session_store.retry(int(batch["batch_index"]))
+    return session_store.claim_next()
+
+
 def safe_project_name(name: str) -> str:
     """Must stay identical to nodes.video._common.project_dir()'s sanitising."""
     return "".join(c for c in (name or "").strip() if c.isalnum() or c in "-_ ").strip() or "afe_project"
@@ -684,7 +692,7 @@ class Api:
                 # conservatively retryable after a ComfyUI/browser restart.
                 session_store.recover_orphaned_running()
                 session = session_store.load()
-            batch = session_store.claim_next()
+            batch = reclaim_failed_analysis_batch(session_store, session_store.claim_next())
             if batch.get("status") == "complete":
                 return web.json_response({"ok": True, "complete": True,
                                           "session": self.analysis_status(pp)})

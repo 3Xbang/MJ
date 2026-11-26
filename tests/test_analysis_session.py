@@ -173,6 +173,23 @@ def test_36_shots_persist_every_batch_and_resume_after_interruption():
         assert AnalysisSessionStore(root, batch_size=4).claim_next()["status"] == "complete"
 
 
+def test_analyze_button_reruns_the_failed_shot_and_keeps_completed_shots():
+    from ai_film_editor_nodes.webui.server import reclaim_failed_analysis_batch
+    with tempfile.TemporaryDirectory() as root:
+        store = AnalysisSessionStore(root)
+        store.create("script", 3, 5, scene_fixture(3))
+        first = store.claim_next()
+        store.commit_batch(1, result_for(store, first))
+        second = store.claim_next()
+        store.fail_batch(second["batch_index"], "N/A")
+        blocked = store.claim_next()
+        assert blocked["status"] == "failed"
+        resumed = reclaim_failed_analysis_batch(store, blocked)
+        assert resumed["claimed"] is True
+        assert resumed["batch_index"] == 2
+        assert store.status()["completed_batches"] == [1]
+
+
 def test_completed_batch_is_idempotent_and_failed_batch_only_retries_it():
     with tempfile.TemporaryDirectory() as root:
         store = AnalysisSessionStore(root, batch_size=4)

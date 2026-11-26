@@ -278,7 +278,13 @@ async function runStage(stage, part = 'all', onlyShot = '') {
   const r = await api('/afe/api/run', {
     project: S.project, stage, part, only_shot: onlyShot, client_id: S.clientId, settings: S.settings,
   });
-  if (r.error) { S.run = null; render(); showError(r.error, r.details); return; }
+  if (r.error) {
+    S.run = null;
+    if (stage === 1) await loadProject(S.project, true);
+    render();
+    showError(r.error, r.details);
+    return;
+  }
   if (r.submission_pending) {
     S.run = null;
     await loadProject(S.project, true);
@@ -477,13 +483,14 @@ function renderStep1() {
       tbl = `<table><tr><th>道具</th><th>出现分镜</th></tr>${(a.props || []).map(c =>
         `<tr><td>${esc(c.name || c.prop_name)}</td><td>${esc((c.shot_appearances || c.appears_in_shots || []).join(', '))}</td></tr>`).join('')}</table>`;
     }
-    result = `<h3 style="margin:18px 0 0">分析结果</h3>${chips}
+    result += `<h3 style="margin:18px 0 0">分析结果</h3>${chips}
       <div class="tabs">${tabs.map(([k, t]) => `<button class="${S.tab === k ? 'on' : ''}" data-act="tab" data-tab="${k}">${t}</button>`).join('')}</div>
       <div class="table-wrap">${tbl}</div>
       ${shotEditors(shots)}
       <div class="note">请对照剧本检查场景数量、角色外貌是否正确。有误就修改剧本后重新点「分析剧本」。重新分析会让后面的步骤重新来过。</div>`;
   }
   return card(1, '剧本', `
+    ${result}
     <p class="help">把完整剧本粘贴到下面。AI 会把它拆成一个个分镜，并整理出场景、角色和道具。</p>
     <textarea data-set="script" placeholder="在这里粘贴剧本…">${esc(s.script)}</textarea>
     <div class="row">
@@ -492,8 +499,8 @@ function renderStep1() {
       <div class="field"><label>每个分镜（秒）</label><input type="number" min="5" max="60" data-set="seconds_per_shot" data-type="int" value="${esc(s.seconds_per_shot)}"></div>
       ${runBtn(1)}
     </div>
-    <div class="note">剧本里写了「镜头 001（3 秒）」这种标题时，镜数和每镜时长以标题为准，不再用总时长除以每个分镜的秒数。没有标题时，才用那两个数字来切。现在逐镜分析：一镜完成会自动开始下一镜，失败只重试这一镜。第一次要载入语言模型，需要几分钟。</div>
-    ${result}`);
+    <div class="note">剧本里写了「镜头 001（3 秒）」这种标题时，镜数和每镜时长以标题为准，不再用总时长除以每个分镜的秒数。没有标题时，才用那两个数字来切。现在逐镜分析：一镜完成会自动开始下一镜。失败的镜头再点「分析剧本」会重跑这一镜。第一次要载入语言模型，需要几分钟。</div>
+    `);
 }
 
 /* step 2 ─ assets */
