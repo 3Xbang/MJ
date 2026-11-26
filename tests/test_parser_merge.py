@@ -429,6 +429,22 @@ def test_joined_shot_clauses_and_camera_restatement_are_grounded():
     assert not parser_mod._fact_is_supported("Mina runs away", "Mina reaches for the brass lever and smiles.")
 
 
+def test_same_sentence_restatement_is_kept_and_invented_state_is_not():
+    source = (
+        "画面事实：空的超市外卖厨房，打包台、货架、热敏打印机、牛皮纸袋和落地窗全部可见。\n"
+        "动作：热敏打印机吐出一条带黑色条形码的小票。\n"
+        "运镜：从窗户缓慢向打包台推近。\n"
+    )
+    assert parser_mod._fact_is_supported("小票完全吐出", source)
+    assert parser_mod._fact_is_supported("打印机吐出小票", source)
+    assert not parser_mod._fact_is_supported("热敏打印机静止", source)
+    assert not parser_mod._fact_is_supported("突然跳起来挥剑", source)
+    assert not parser_mod._fact_is_supported("神秘法杖", source)
+    assert not parser_mod._fact_is_supported(
+        "Mina runs away", "Mina reaches for the brass lever and smiles."
+    )
+
+
 def test_rule_derived_directions_are_kept_with_provenance():
     source = "Mina reaches for the lever."
     assert not parser_mod._fact_validation_errors(

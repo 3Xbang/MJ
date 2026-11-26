@@ -426,7 +426,7 @@ def test_first_batch_canonicalizes_shot_002_prop_aliases_and_publishes():
         assert committed["completed_batches"] == [1]
 
 
-def test_first_batch_still_blocks_a_prop_not_declared_anywhere_in_the_script():
+def test_first_batch_drops_an_undeclared_prop_and_still_publishes():
     with open(SCRIPT_PATH, encoding="utf-8") as handle:
         screenplay = handle.read()
     scene_map = parser_mod._build_scene_map(screenplay)
@@ -447,14 +447,13 @@ def test_first_batch_still_blocks_a_prop_not_declared_anywhere_in_the_script():
         )
         result = _parser_result(parsed)
         shot_002 = result["shots"][1]
-        assert shot_002.get("scene_assignment_error") or shot_002.get("source_validation_error")
-
-        try:
-            store.commit_batch(batch["batch_index"], result)
-        except ValueError as exc:
-            assert "未验证" in str(exc)
-        else:
-            raise AssertionError("a prop absent from the script and its context must block batch 1")
+        assert not shot_002.get("scene_assignment_error")
+        assert not shot_002.get("source_validation_error")
+        assert "神秘法杖" not in shot_002.get("props_list", [])
+        assert "深棕色小叶紫檀佛珠" in shot_002["props_list"]
+        assert "粗金链" in shot_002["props_list"]
+        committed = store.commit_batch(batch["batch_index"], result)
+        assert committed["completed_batches"] == [1]
 
 
 if __name__ == "__main__":
@@ -462,5 +461,5 @@ if __name__ == "__main__":
     print("PASS test_complete_36_shot_screenplay_batches_bind_and_publish")
     test_first_batch_canonicalizes_shot_002_prop_aliases_and_publishes()
     print("PASS test_first_batch_canonicalizes_shot_002_prop_aliases_and_publishes")
-    test_first_batch_still_blocks_a_prop_not_declared_anywhere_in_the_script()
-    print("PASS test_first_batch_still_blocks_a_prop_not_declared_anywhere_in_the_script")
+    test_first_batch_drops_an_undeclared_prop_and_still_publishes()
+    print("PASS test_first_batch_drops_an_undeclared_prop_and_still_publishes")

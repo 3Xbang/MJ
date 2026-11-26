@@ -768,13 +768,65 @@ def _fact_clauses(text: str) -> list[str]:
     return parts or [_compact_source(text)]
 
 
+# Words that add no new object, place, or action. A paraphrase may keep these
+# after every other piece has been found inside one source sentence.
+_PARAPHRASE_FILLERS = (
+    "完全", "正在", "已经", "开始", "然后", "接着", "并且", "一个", "一条", "一些",
+    "这个", "那个", "一下", "非常", "稍微", "缓缓", "慢慢", "轻轻", "快速",
+    "的", "了", "着", "过", "地", "得",
+)
+
+
+def _cjk_run_is_covered(run: str, clause: str) -> bool:
+    """Cover a Chinese phrase from pieces that occur inside one source sentence."""
+    remaining = run
+    clause_text = clause.casefold()
+    while remaining:
+        best_at = None
+        best_len = 1
+        for length in range(len(remaining), 1, -1):
+            for index in range(len(remaining) - length + 1):
+                if remaining[index:index + length] in clause_text:
+                    best_at = index
+                    best_len = length
+                    break
+            if best_at is not None:
+                break
+        if best_at is None:
+            break
+        remaining = remaining[:best_at] + remaining[best_at + best_len:]
+    for filler in _PARAPHRASE_FILLERS:
+        remaining = remaining.replace(filler, "")
+    return not remaining.strip()
+
+
+def _clause_is_grounded(text: str, source: str) -> bool:
+    """Accept a restatement whose content all sits inside one source sentence.
+
+    Chinese phrases may be shortened or reordered ("吐出……小票" as "小票完全吐出").
+    A word that is not in that sentence, such as an invented state, still fails.
+    Pieces may not be collected from two different sentences.
+    """
+    if _fact_span_is_supported(text, source):
+        return True
+    # English keeps the local word-order check above. Gathering "Mina" and
+    # "runs away" from different subjects in one sentence is not a restatement.
+    if re.search(r"[A-Za-z]", text):
+        return False
+    clauses = [part.strip() for part in re.split(r"[，,。；;、：:\n]+", source) if part.strip()]
+    return any(
+        all(_cjk_run_is_covered(part, clause) for part in re.findall(r"[\u4e00-\u9fff]+", text))
+        for clause in clauses
+    )
+
+
 def _fact_is_supported(value: object, source_text: str) -> bool:
     """Require a fact to occur in this shot's source.
 
     Exact prose is preferred. A short structured paraphrase may omit a source
-    adjective or inflect a verb, but words may not be gathered from distant
-    actions or subjects. A value may join several clauses with punctuation
-    when each clause is itself supported by this same shot.
+    adjective, inflect a verb, or restate one source sentence. Words may not
+    be gathered from distant actions or subjects. A value may join several
+    clauses with punctuation when each clause is itself supported by this shot.
     """
     text = _compact_source(str(value or ""))
     if not text:
@@ -783,9 +835,9 @@ def _fact_is_supported(value: object, source_text: str) -> bool:
     if _fact_span_is_supported(text, source):
         return True
     parts = _fact_clauses(text)
-    if len(parts) < 2:
-        return False
-    return all(_fact_span_is_supported(part, source) for part in parts)
+    if len(parts) >= 2 and all(_clause_is_grounded(part, source) for part in parts):
+        return True
+    return _clause_is_grounded(text, source)
 
 
 def _camera_path_is_supported(value: object, source_text: str) -> bool:
@@ -1949,21 +2001,39 @@ class AFE_ScriptFullParser:
                 ]
             invalid_phase1_fields = set()
             if fact_validation_errors:
-                assignment_errors.extend(
-                    f"{shot_id}: {error}" for error in fact_validation_errors
+                # The verified source fragment is the picture. A rewritten
+                # field is dropped; it must not discard the whole shot.
+                logger.warning(
+                    "[AFE_ScriptFullParser] %s dropped unverified wording: %s",
+                    shot_id, "; ".join(fact_validation_errors),
                 )
-                # Invalid Phase-1 values must not reach either renderer, and
-                # must not be used as a fallback when Phase 2 omits a field.
                 for field in _FACT_FIELDS:
-                    if any(f" {field} fact " in error for error in fact_validation_errors):
-                        invalid_phase1_fields.add(field)
-                        shot[field] = [] if isinstance(shot.get(field), list) else None
+                    marker = f" {field} fact "
+                    dropped = {
+                        error.rsplit(": ", 1)[-1]
+                        for error in fact_validation_errors if marker in error
+                    }
+                    if not dropped:
+                        continue
+                    invalid_phase1_fields.add(field)
+                    value = shot.get(field)
+                    if isinstance(value, list):
+                        shot[field] = [item for item in value if str(item) not in dropped]
+                    else:
+                        shot[field] = None
+                dropped_names = {
+                    error.rsplit(": ", 1)[-1]
+                    for error in fact_validation_errors if " character fact " in error
+                }
+                if dropped_names:
+                    shot["character_names"] = [
+                        name for name in (shot.get("character_names") or [])
+                        if str(name) not in dropped_names
+                    ]
             if source_validation_error:
                 assignment_errors.append(f"{shot_id}: {source_validation_error}")
             dialogue   = _first_present(shot.get("dialogue"), default="")
             props_list = _clean_semantic(shot.get("props_list")) or []
-
-            fact_validation_error = "; ".join(fact_validation_errors)
 
             logger.info(f"[AFE_ScriptFullParser] Phase 2: shot {i + 1}/{total} ({shot_id})")
 
@@ -2105,9 +2175,9 @@ class AFE_ScriptFullParser:
                 "source_unit_ids":   _clean_semantic(shot.get("source_unit_ids")) or [],
                 "source_start":      shot.get("source_start"),
                 "source_end":        shot.get("source_end"),
-                "source_validation_error": "; ".join(filter(None, [source_validation_error, fact_validation_error])),
+                "source_validation_error": source_validation_error or None,
                 "raw_description":   raw_desc,
-                "scene_assignment_error": shot.get("scene_assignment_error") or source_validation_error or fact_validation_error,
+                "scene_assignment_error": shot.get("scene_assignment_error") or source_validation_error or None,
                 "environment": {
                     "description": scene_env.get(scene_idx, {}).get("environment_prompt_en", ""),
                     "scope": scene_env.get(scene_idx, {}).get("subject_scope", ""),
