@@ -141,20 +141,23 @@ def build_cast_prompt(member: dict, render_style: str) -> str:
 
 
 def build_cast_edit_prompt(member: dict, render_style: str) -> str:
-    """Edit an uploaded reference without changing the chosen gender."""
-    appearance = (member.get("appearance_en") or "").strip()
-    costume = (member.get("default_costume_en") or "").strip()
+    """Edit an uploaded reference. The photo is the look; the analyzed sentence is not copied in."""
     note = (member.get("revision_note") or "").strip()
-    look = _revision_clause(note) if note else ", ".join(
-        x for x in [appearance, f"wearing {costume}" if costume else ""] if x)
     identity = gender_clause(member)
     forbid = gender_negative(member)
-    bits = [identity, look, "White background", render_style]
+    bits = [
+        identity,
+        "Keep the face, hair, body, clothes and gender exactly as shown in the photo",
+        _revision_clause(note) if note else "",
+        "White background",
+        render_style,
+    ]
     body = ". ".join(bit.strip(" .") for bit in bits if bit and bit.strip(" ."))
     banned = f" Do not draw: {forbid}." if forbid else ""
     return (
-        "[Image_1] Full body FRONT VIEW, standing straight, arms relaxed at sides. "
-        f"Keep this exact person and this exact gender. {body}.{banned}"
+        "[Image_1] is the only person to copy. Full body FRONT VIEW, standing straight, arms relaxed at sides. "
+        "Do not invent a different face, hairstyle, body, or outfit. "
+        f"{body}.{banned}"
     )
 
 

@@ -31,6 +31,8 @@ DEFAULTS = {
     "cast_genders": "",
     "cast_notes": "",
     "cast_redo": "",
+    "scene_notes": "",
+    "scene_redo": "",
     "scene_view_picks": "",
     # step 3
     "kf_variants": 1,
@@ -72,8 +74,8 @@ def build_prompt(stage: int, project: str, settings: dict | None, project_path: 
                  part: str = "all", batch: dict | None = None, only_shot: str = "") -> tuple[dict, dict]:
     """Returns (api_prompt, labels). labels maps node id -> text shown while that node runs.
 
-    part "cast" redraws characters only. part "kf" redraws the one keyframe named
-    by only_shot. "all" runs the whole step."""
+    part "cast" redraws characters only. part "scene" redraws scenes only.
+    part "kf" redraws the one keyframe named by only_shot. "all" runs the whole step."""
     s = merged(settings)
     g: dict[str, dict] = {}
     labels: dict[str, str] = {}
@@ -92,8 +94,9 @@ def build_prompt(stage: int, project: str, settings: dict | None, project_path: 
     def scene_images():
         g["4"] = _n("AFE_SceneImageGenerator", scene_report=["2", 2], render_style=style,
                     scenes_json=["2", 0], width=1024, height=576, steps=20, cfg=1.0,
-                    seed=int(s["seed"]), approved=True, project_name=project)
-        labels["4"] = "绘制场景图（每个场景 3 张）"
+                    seed=int(s["seed"]), approved=True, project_name=project,
+                    revision_notes=s.get("scene_notes", ""), redo_scenes=s.get("scene_redo", ""))
+        labels["4"] = "只重画这一处场景" if part == "scene" else "绘制场景图（每个场景 3 张）"
 
     def cast_refs():
         g["6"] = _n("AFE_CastRefGenerator", cast_data=["1", 1], render_style=style, width=768,
@@ -122,10 +125,11 @@ def build_prompt(stage: int, project: str, settings: dict | None, project_path: 
 
     elif stage == 2:
         loader()
-        cast_refs()
+        if part != "scene":
+            cast_refs()
         if part != "cast":
             analyzers(); scene_images()
-            if s["make_props"]:
+            if part != "scene" and s["make_props"]:
                 g["5"] = _n("AFE_PropsImageGenerator", props_report=["3", 2], props_json=["3", 0],
                             size=1024, steps=20, seed=int(s["seed"]), approved=True, project_name=project)
                 labels["5"] = "绘制道具图"

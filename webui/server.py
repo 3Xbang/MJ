@@ -35,7 +35,7 @@ logger = logging.getLogger("AFE_WebUI")
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 MIME_NO_CACHE = {"Cache-Control": "no-store"}
 # settings that decide what a step produced; the UI compares them with the current choices
-USED_KEYS = ("cast_picks", "cast_redo", "scene_view_picks", "kf_picks", "kf_redo", "kf_variants",
+USED_KEYS = ("cast_picks", "cast_redo", "scene_redo", "scene_view_picks", "kf_picks", "kf_redo", "kf_variants",
              "kf_notes", "video_redo", "long_takes", "shot_links", "skip_shots")
 
 
@@ -216,8 +216,10 @@ def _validate_analysis_payload(analysis: dict) -> None:
 
 def stage_part(stage: int, requested) -> str:
     """Keep a single-card redo from being widened into a full step."""
-    requested = requested if requested in {"cast", "kf"} else "all"
+    requested = requested if requested in {"cast", "scene", "kf"} else "all"
     if requested == "cast" and stage != 2:
+        return "all"
+    if requested == "scene" and stage != 2:
         return "all"
     if requested == "kf" and stage != 3:
         return "all"
@@ -245,13 +247,16 @@ def extract_results(stage: int, outputs: dict, part: str = "all") -> dict:
         res["props"] = _first_json(o3, "afe_props", [])
         res["reports"] = {"parse": _text(o1), "scenes": _text(o2), "props": _text(o3)}
     elif stage == 2:
-        res["cast_manifest"] = _first_json(outputs.get("6", {}), "afe_manifest", [])
-        res["report"] = _text(outputs.get("6", {}))
+        if part != "scene":
+            res["cast_manifest"] = _first_json(outputs.get("6", {}), "afe_manifest", [])
+            res["report"] = _text(outputs.get("6", {}))
         if part != "cast":
             sm = sorted(_first_json(outputs.get("4", {}), "afe_manifest", []), key=lambda m: m["scene"])
             res["scene_files"] = {k: [m["file"] for m in sm if m["view"] == k] for k in ("est", "med", "atm")}
-            res["props_files"] = [{"name": m.get("name", ""), "file": m["file"]}
-                                for m in sorted(_first_json(outputs.get("5", {}), "afe_manifest", []), key=lambda m: m["index"])]
+            res["report"] = _text(outputs.get("4", {})) or res.get("report", "")
+            if part != "scene":
+                res["props_files"] = [{"name": m.get("name", ""), "file": m["file"]}
+                                    for m in sorted(_first_json(outputs.get("5", {}), "afe_manifest", []), key=lambda m: m["index"])]
     elif stage == 3:
         o = outputs.get("11", {})
         res["kf_manifest"] = _first_json(o, "afe_manifest", [])
@@ -1000,7 +1005,7 @@ class Api:
 
         st = self.state(pp)
         st.setdefault("done", {})[str(stage)] = int(time.time())
-        if part not in {"cast", "kf"}:
+        if part not in {"cast", "scene", "kf"}:
             st.setdefault("used", {})[str(stage)] = (st.get("run_settings") or {}).get(str(stage), {})
         if stage == 1:
             write_json(os.path.join(pp, "analysis.json"), res["analysis"])
@@ -1010,8 +1015,13 @@ class Api:
             st.pop("assets", None); st.pop("cast_manifest", None); st.pop("kf_manifest", None); st.pop("movie", None)
         elif stage == 2:
             if part != "cast":
-                st["assets"] = {"scene_files": res["scene_files"], "props_files": res["props_files"]}
-            st["cast_manifest"] = res["cast_manifest"]
+                assets = dict(st.get("assets") or {})
+                assets["scene_files"] = res["scene_files"]
+                if "props_files" in res:
+                    assets["props_files"] = res["props_files"]
+                st["assets"] = assets
+            if "cast_manifest" in res:
+                st["cast_manifest"] = res["cast_manifest"]
         elif stage == 3:
             fresh = res["kf_manifest"]
             if part == "kf":

@@ -20,8 +20,8 @@ const S = {
   view: null,
   settings: {},
   sel: { cast: {}, scene: {}, kf: {} },
-  redo: { cast: {}, kf: {}, video: {} },
-  long: {}, links: {}, notes: {}, castNotes: {}, genders: {}, skip: new Set(),
+  redo: { cast: {}, scene: {}, kf: {}, video: {} },
+  long: {}, links: {}, notes: {}, castNotes: {}, sceneNotes: {}, genders: {}, skip: new Set(),
   open: {}, tab: 'shots',
   run: null, dock: null,
   clientId: 'afe-' + Math.random().toString(36).slice(2),
@@ -92,12 +92,14 @@ function syncFromSettings() {
   S.sel.scene = parsePairs(s.scene_view_picks);
   S.sel.kf = parsePairs(s.kf_picks);
   S.redo.cast = parsePairs(s.cast_redo);
+  S.redo.scene = parsePairs(s.scene_redo);
   S.redo.kf = parsePairs(s.kf_redo);
   S.redo.video = parsePairs(s.video_redo);
   S.long = parsePairs(s.long_takes);
   S.links = parseLinkText(s.shot_links);
   S.notes = parseLinkText(s.kf_notes);
   S.castNotes = parseCastNotes(s.cast_notes);
+  S.sceneNotes = parseCastNotes(s.scene_notes);
   S.skip = new Set(String(s.skip_shots || '').split(/[,;，；\s]+/).filter(Boolean));
   S.genders = parseGenders(s.cast_genders);
 }
@@ -107,12 +109,14 @@ function syncToSettings() {
   s.scene_view_picks = composePairs(S.sel.scene);
   s.kf_picks = composePairs(S.sel.kf);
   s.cast_redo = composePairs(S.redo.cast);
+  s.scene_redo = composePairs(S.redo.scene);
   s.kf_redo = composePairs(S.redo.kf);
   s.video_redo = composePairs(S.redo.video);
   s.long_takes = composePairs(S.long);
   s.shot_links = composeLinks(S.links);
   s.kf_notes = composeLinks(S.notes);
   s.cast_notes = composeLinks(S.castNotes);
+  s.scene_notes = composeLinks(S.sceneNotes);
   s.skip_shots = [...S.skip].join(', ');
   s.cast_genders = Object.entries(S.genders).filter(([, v]) => v === 'female' || v === 'male')
     .map(([k, v]) => `${k}:${v}`).join(', ');
@@ -298,6 +302,7 @@ async function monitorPrompt(run, pid, stage = 1, part = 'all', restored = false
     if (stage < 5) S.open[stage + 1] = true;
     render();
     showOk(part === 'cast' ? '角色已重画完成，请在上面重新挑选'
+      : part === 'scene' ? '这一处场景已重画，其他场景没有动'
       : part === 'kf' ? '这一张首帧已重画，其他分镜没有动'
       : `「${STEPS[stage - 1].title}」完成` + (stage < 5 ? `，可以进行下一步 ${STEPS[stage].verb}` : '，成片已生成'));
   } else if (c.cancelled) {
@@ -373,7 +378,7 @@ function staleList() {
   const refsChanged = k => u[k] && 'refs' in u[k] && (u[k].refs || '') !== (v.ref_sig || '');
   if (d['2'] && refsChanged('2'))
     out.push({ stage: 2, text: '你上传或更换了参考图，场景和角色需要按新的参考图重画（没变的不会重画）。' });
-  if (d['3'] && (refsChanged('3') || changedSince(['cast_picks', 'cast_redo', 'scene_view_picks', 'kf_picks', 'kf_variants', 'shot_links'], u['3'])))
+  if (d['3'] && (refsChanged('3') || changedSince(['cast_picks', 'cast_redo', 'scene_redo', 'scene_view_picks', 'kf_picks', 'kf_variants', 'shot_links'], u['3'])))
     out.push({ stage: 3, text: '你更换了参考图、角色、场景、首帧或衔接提示词。首帧需要更新（只会重画受影响的分镜）。' });
   if (d['4'] && (Number(d['3']) > Number(d['4']) || changedSince(['video_redo', 'long_takes', 'shot_links'], u['4'])))
     out.push({ stage: 4, text: '首帧、时长或衔接提示词有变化，视频需要更新（只会重新渲染受影响的分镜）。' });
@@ -549,7 +554,7 @@ function renderStep2() {
   if (as && a) {
     const scenes = (a.scenes || []).map((sc, i) => {
       const cur = S.sel.scene[i + 1] || 1;
-      return `<div class="group"><h3>场景 ${i + 1}：${esc(sc.scene_name)} <small style="color:var(--muted);font-weight:400">选一张作为这个场景所有镜头的地点参考</small></h3>
+      return `<div class="group"><h3>场景 ${i + 1}：${esc(sc.scene_name)} <small style="color:var(--muted);font-weight:400">选一张作为这个场景所有镜头的地点参考</small> <label class="cast-note">修改意见<textarea data-scene-note="${esc(sc.scene_name)}" rows="2" placeholder="例如：夜间湿漉漉的马路，路边只有一个橙色外卖箱，不要画超市货架">${esc(S.sceneNotes[sc.scene_name] || '')}</textarea></label> <button class="small" data-act="redo-scene" data-scene="${i + 1}" ${S.run ? 'disabled' : ''}>🔄 不满意，重画这个场景</button></h3>
         <div class="gallery scenes">${VIEWS.map(([key, name], vi) => {
           const url = (as.scene_images[key] || [])[i];
           return url ? `<label class="pick ${cur === vi + 1 ? 'on' : ''}"><input type="radio" name="scene${i}" data-sel="scene" data-id="${i + 1}" data-val="${vi + 1}" ${cur === vi + 1 ? 'checked' : ''}>
@@ -566,7 +571,7 @@ function renderStep2() {
     const props = (as.props_images || []).length ? `<div class="group"><h3>道具白底图</h3><div class="gallery">${as.props_images.map(p =>
       `<div class="pick"><img src="${esc(p.url)}" loading="lazy" style="max-height:130px"><div class="cap">${esc(p.name)}</div></div>`).join('')}</div></div>` : '';
     result = `<h3 style="margin:18px 0 0">请挑选</h3>
-      <div class="note">点图片即可选用。角色画错了，在「不满意」旁边写下修改意见再点重画：这句话会换掉分析写错的外貌，只重画这一个角色。选好后直接进入第 ③ 步；以后如果更换了选择，第 ③ 步会自动只重画受影响的分镜。</div>
+      <div class="note">点图片即可选用。角色有原图时，重画以原图的脸、头发和衣服为准，不再套用分析写错的外貌；修改意见是在原图上再改的那一句。场景写下修改意见再点「不满意，重画这个场景」，只重画这一处的三张图。选好后直接进入第 ③ 步。</div>
       ${scenes}${cast}${props}`;
   }
   return card(2, '素材：场景、角色、道具', `
@@ -739,6 +744,15 @@ document.addEventListener('click', async ev => {
     }
     const k = el.dataset.char; S.redo.cast[k] = (S.redo.cast[k] || 0) + 1; saveSettingsSoon(); return runStage(2, 'cast');
   }
+  if (act === 'redo-scene') {
+    const box = el.closest('.group')?.querySelector('[data-scene-note]');
+    if (box) {
+      const name = box.dataset.sceneNote;
+      const v = box.value.trim();
+      if (v) S.sceneNotes[name] = v; else delete S.sceneNotes[name];
+    }
+    const k = el.dataset.scene; S.redo.scene[k] = (S.redo.scene[k] || 0) + 1; saveSettingsSoon(); return runStage(2, 'scene');
+  }
   if (act === 'redo-kf') {
     const k = el.dataset.shot;
     const box = el.closest('.shot')?.querySelector('[data-kf-note]');
@@ -805,6 +819,12 @@ document.addEventListener('input', ev => {
   if (el.dataset.castNote) {
     const v = el.value.trim();
     if (v) S.castNotes[el.dataset.castNote] = v; else delete S.castNotes[el.dataset.castNote];
+    syncToSettings();
+    saveSettingsSoon();
+  }
+  if (el.dataset.sceneNote) {
+    const v = el.value.trim();
+    if (v) S.sceneNotes[el.dataset.sceneNote] = v; else delete S.sceneNotes[el.dataset.sceneNote];
     syncToSettings();
     saveSettingsSoon();
   }

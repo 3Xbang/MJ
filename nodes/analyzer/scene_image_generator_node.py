@@ -15,8 +15,8 @@ import json  # noqa: E402
 import os  # noqa: E402
 from ai_film_editor_nodes.nodes.video import user_refs  # noqa: E402
 from ai_film_editor_nodes.nodes.video._common import (  # noqa: E402
-    auto_all_input, closed_result, fit_to_canvas, gate_input, gate_is_open, load_png, md5, project_dir,
-    save_png, sub_dir, tensor_sig,
+    auto_all_input, closed_result, fit_to_canvas, gate_input, gate_is_open, load_png, md5,
+    parse_index_numbers, project_dir, save_png, sub_dir, tensor_sig,
 )
 
 _MODEL_CACHE: dict = {}
@@ -30,6 +30,52 @@ NEGATIVE_PROMPT = (
     "people, characters, persons, figures, man, woman, human, "
     "text, watermark, logo, signature, ugly, deformed, blurry, low quality"
 )
+
+_VIEW_SUFFIX = {
+    "establishing": (
+        "Wide establishing shot, full environment and layout visible, "
+        "cinematic wide angle, eye level."
+    ),
+    "medium": (
+        "Medium shot from a different angle, key set pieces and "
+        "fixtures in detail, side view."
+    ),
+    "atmosphere": (
+        "Close-up of surfaces, materials and lighting, "
+        "atmospheric detail, shallow depth of field."
+    ),
+}
+
+
+def parse_scene_notes(text: str) -> dict[str, str]:
+    """One correction per line: '伦敦社区超市 / 外卖厨房: 夜间湿马路，路边一个橙色外卖箱'."""
+    out = {}
+    for line in re.split(r"\n+", text or ""):
+        line = line.strip()
+        if not line:
+            continue
+        match = re.match(r"^(.+?)\s*[:=：]\s*(.+)$", line)
+        if not match:
+            continue
+        name = match.group(1).strip()
+        note = " ".join(match.group(2).split())
+        if name and note:
+            out[name] = note
+    return out
+
+
+def scene_view_prompt(env_desc: str, render_style: str, view_key: str, note: str = "") -> str:
+    """A written correction replaces the analyzed place. An empty note keeps the old sentence."""
+    place = (note or "").strip()
+    if place:
+        place = (
+            "Follow this correction exactly, and ignore any earlier place description that conflicts with it: "
+            + place
+        )
+    else:
+        place = env_desc
+    base = f"{place}, {render_style}, empty scene, no people"
+    return f"{base}. {_VIEW_SUFFIX[view_key]}"
 
 
 def _get_node(name: str):
@@ -196,6 +242,10 @@ class AFE_SceneImageGenerator:
                 "seed":   ("INT",   {"default": 42,   "min": 0,   "max": 2147483647}),
                 "approved": gate_input("生成场景图（每个场景 3 张）"),
                 "project_name": ("STRING", {"default": "afe_project"}),
+                "revision_notes": ("STRING", {"default": "", "multiline": True,
+                                              "tooltip": "每个场景一条修改意见。例：伦敦社区超市 / 外卖厨房: 夜间湿马路，路边一个橙色外卖箱。这句话替换分析写的环境"}),
+                "redo_scenes": ("STRING", {"default": "",
+                                           "tooltip": "不满意要重画的场景。例：2, 露台:2  （再次重画把冒号后的数字加 1）"}),
                 "auto_all": auto_all_input(),
             },
         }
@@ -220,6 +270,8 @@ class AFE_SceneImageGenerator:
         approved: bool = False,
         project_name: str = "afe_project",
         auto_all: bool = False,
+        revision_notes: str = "",
+        redo_scenes: str = "",
     ):
         if not gate_is_open(approved, auto_all):
             return closed_result("场景图（生成前请确认场景分析报告：场景数量、环境提示词）", "dddr")
@@ -253,34 +305,26 @@ class AFE_SceneImageGenerator:
         failures = []
         made = reused = 0
         short = {"establishing": "est", "medium": "med", "atmosphere": "atm"}
+        note_map = parse_scene_notes(revision_notes)
+        scene_names = [str(s.get("scene_name") or s.get("name") or "") for s in scenes]
+        redo_map = parse_index_numbers(redo_scenes, scene_names, default_value=1)
 
         for i, scene in enumerate(scenes):
             # One clean English place description; the 3 views differ only by camera suffix.
+            scene_name = str(scene.get("scene_name") or scene.get("name") or "")
             env_desc = scene.get("environment_prompt_en") \
                     or scene.get("environment_description_en") \
                     or scene.get("name", f"scene_{i+1}")
-            base = f"{env_desc}, {render_style}, empty scene, no people"
-            prompts = {
-                "establishing": (
-                    f"{base}. Wide establishing shot, full environment and layout visible, "
-                    f"cinematic wide angle, eye level."
-                ),
-                "medium": (
-                    f"{base}. Medium shot from a different angle, key set pieces and "
-                    f"fixtures in detail, side view."
-                ),
-                "atmosphere": (
-                    f"{base}. Close-up of surfaces, materials and lighting, "
-                    f"atmospheric detail, shallow depth of field."
-                ),
-            }
+            note = note_map.get(scene_name, "")
+            prompts = {key: scene_view_prompt(env_desc, render_style, key, note) for key in _VIEW_SUFFIX}
             logger.info("[AFE_SceneImageGenerator] Scene %d/%d: %s", i+1, len(scenes), env_desc[:60])
-            mine = user_refs.load_user_ref(project_name, "scene", scene.get("scene_name") or scene.get("name", ""))
+            mine = user_refs.load_user_ref(project_name, "scene", scene_name)
             mine_sig = tensor_sig(mine) if mine is not None else ""
+            salt = redo_map.get(i, 0)
             for view_key, batch_list in [("establishing", establishing),
                                           ("medium",        medium),
                                           ("atmosphere",    atmosphere)]:
-                seed_i = seed + i * 100
+                seed_i = seed + i * 100 + salt * 9973
                 # An uploaded scene image is never used directly as the empty
                 # location slot. Run every view through an image-edit pass that
                 # removes people and preserves only the architecture, fixtures,
@@ -294,13 +338,20 @@ class AFE_SceneImageGenerator:
                 else:
                     try:
                         if how == "qwen":
+                            correction = ""
+                            if note:
+                                correction = (
+                                    "Apply this correction exactly, and ignore any earlier place description "
+                                    "that conflicts with it: " + note + ". "
+                                )
                             img = user_refs.qwen_variant(
                                 fit_to_canvas(mine, width, height, "crop"),
                                 "[Image_1] This is a location reference. Rebuild the SAME architecture, "
                                 "materials, fixtures, colors and lighting as an EMPTY set. Remove every "
                                 "person, character, face, body, animal and human trace. Do not add props "
                                 "that are not part of the location. "
-                                + prompts[view_key].rsplit(". ", 1)[-1], seed_i)
+                                + correction
+                                + _VIEW_SUFFIX[view_key], seed_i)
                         else:
                             if model is None:
                                 model, clip, vae = _load_models()

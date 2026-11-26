@@ -51,7 +51,16 @@ def test_revision_note_replaces_the_wrong_analyzed_look():
     assert "adult woman, female" in prompt
     assert "Chinese male" not in edit
     assert "成年女人，黑发扎在脑后" in edit
+    assert "exactly as shown in the photo" in edit
     assert "Do not draw: man, male, boy, masculine." in edit
+    plain = build_cast_edit_prompt(
+        {"name": "小舟", "gender": "female",
+         "appearance_en": "Chinese male in his early twenties, wearing a casual shirt and jeans",
+         "default_costume_en": "casual shirt and jeans"},
+        "3D cartoon",
+    )
+    assert "Chinese male" not in plain
+    assert "casual shirt and jeans" not in plain
 
     untouched = build_cast_prompt(
         {"name": "胖叔", "appearance_en": "silver curls", "default_costume_en": "white shirt"},
@@ -68,3 +77,23 @@ def test_asset_step_sends_the_character_revision():
         "out",
     )
     assert prompt["6"]["inputs"]["revision_notes"] == "小舟: 成年女人，黑发，米色开衫"
+
+
+def test_scene_step_can_redraw_one_place_from_a_note():
+    from ai_film_editor_nodes.nodes.analyzer.scene_image_generator_node import scene_view_prompt
+    kept = scene_view_prompt("a packing station", "3D cartoon", "establishing")
+    assert kept.startswith("a packing station, 3D cartoon, empty scene, no people. Wide establishing shot")
+    changed = scene_view_prompt(
+        "a supermarket interior", "3D cartoon", "medium", "夜间湿漉漉的马路，路边一个橙色外卖箱",
+    )
+    assert "夜间湿漉漉的马路，路边一个橙色外卖箱" in changed
+    assert "supermarket" not in changed
+    prompt, labels = build_prompt(
+        2, "afe_project",
+        {"scene_notes": "伦敦社区超市 / 外卖厨房: 夜间湿马路", "scene_redo": "2:1"},
+        "out", part="scene",
+    )
+    assert "6" not in prompt
+    assert prompt["4"]["inputs"]["revision_notes"] == "伦敦社区超市 / 外卖厨房: 夜间湿马路"
+    assert prompt["4"]["inputs"]["redo_scenes"] == "2:1"
+    assert labels["4"] == "只重画这一处场景"

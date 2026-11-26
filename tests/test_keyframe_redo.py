@@ -77,6 +77,8 @@ def test_part_kf_cannot_leak_into_another_step():
     assert stage_part(4, "kf") == "all"
     assert stage_part(2, "cast") == "cast"
     assert stage_part(3, "cast") == "all"
+    assert stage_part(2, "scene") == "scene"
+    assert stage_part(3, "scene") == "all"
 
 
 def test_revision_text_is_kept_and_a_blank_note_adds_nothing():
