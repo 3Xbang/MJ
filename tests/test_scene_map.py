@@ -260,6 +260,27 @@ def test_unlisted_article_free_occupation_relations_are_rejected():
     assert not validate_empty_scene_prompt("Steel beams support the glass roof")
 
 
+def test_place_possession_is_not_treated_as_an_action():
+    from ai_film_editor_nodes.nodes.analyzer.scene_analyzer_node import validate_empty_scene_prompt
+    prompts = (
+        "Left side has a large rectangular patch of natural light from a window, creating a bright spot on the ground.",
+        "Shallow gray honed stone floor. Six thousand Kelvin cold white LED flat panel lights on the ceiling. "
+        "Left side has a large rectangular patch of natural light. "
+        "Four rows of white metal shelves filled with red kidney bean cans. "
+        "black pens appear in specific shots. "
+        "An orange takeout box with water droplets on the lid, placed on the curb without text or logo.",
+        "A wide-angle view of the packing station. White thermal printer with a sheet of paper extending from it. "
+        "A large window on the left with natural light filtering in.",
+        "Sunlight filters through coconut leaves, casting dappled shadows on the floor. "
+        "A black smartphone and a teacup are on the table. The atmosphere is warm and tropical.",
+    )
+    for prompt in prompts:
+        assert not validate_empty_scene_prompt(prompt), prompt
+    assert validate_empty_scene_prompt("he has a bag in the kitchen")
+    assert validate_empty_scene_prompt("a worker has a cup")
+    assert validate_empty_scene_prompt("Machinery hums in workshop")
+
+
 def test_article_free_non_structural_subject_actions_are_rejected():
     from ai_film_editor_nodes.nodes.analyzer.scene_analyzer_node import validate_empty_scene_prompt
     for prompt in (

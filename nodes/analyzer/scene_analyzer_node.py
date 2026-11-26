@@ -33,7 +33,8 @@ _ENV_ROLE_HEAD_RE = re.compile(
     re.IGNORECASE,
 )
 _ENV_EXPLICIT_HUMAN_RE = re.compile(
-    r"\b(?:person|people|human|character|man|woman|boy|girl|someone|somebody|figure|silhouette)\b|"
+    r"\b(?:person|people|human|character|man|woman|boy|girl|someone|somebody|figure|silhouette|"
+    r"he|she|him|his|her|hers|they|them|their)\b|"
     r"人物|男人|女人|男孩|女孩|他|她|他们|人影",
     re.IGNORECASE,
 )
@@ -68,7 +69,7 @@ _ENV_STRUCTURAL_RELATION_VERBS = {
     "support", "overlook", "contain", "reveal", "connect", "lead",
 }
 _ENV_PREDICATE_WORDS = {
-    "is", "are", "was", "were", "has", "have", "had", "does", "do", "will",
+    "does", "do", "will",
     *_ENV_STRUCTURAL_RELATION_VERBS,
 }
 _ENV_FUNCTION_WORDS = {
@@ -138,8 +139,10 @@ def validate_empty_scene_prompt(prompt: str, characters=(), forbidden_facts=(), 
         # never an unlisted action.
         if subject in _ENV_STRUCTURAL_SUBJECTS and verb in _ENV_STRUCTURAL_RELATION_VERBS:
             continue
-        # "the scene is dark" is place wording. Copulas are not actions.
-        if verb in {"is", "are", "was", "were"}:
+        # "the scene is dark" and "the left side has a window" describe the set.
+        # Copulas and possession are not actions. "he has a bag" still fails
+        # earlier, because pronouns are human facts.
+        if verb in {"is", "are", "was", "were", "has", "have", "had"}:
             continue
         if verb not in _ENV_PREDICATE_WORDS and verb not in _ENV_THIRD_PERSON_VERBS:
             continue
