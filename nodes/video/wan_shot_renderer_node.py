@@ -368,8 +368,9 @@ class AFE_WanShotRenderer:
             prompt = build_video_prompt(shot, render_style, speaking)
             if opening_mode == "tail":
                 prompt += PREVIOUS_SHOT_SUFFIX
-            if link_map.get(sid):
-                prompt += " Continuity direction: " + link_map[sid]
+            direction = link_map.get(sid) or shot.get("continuity_prompt") or ""
+            if direction:
+                prompt += " Continuity direction: " + direction
             salt = redo_map.get(sid, 0)
             seed_eff = seed + i + salt * 9973
             with open(kf_path, "rb") as f:

@@ -490,6 +490,7 @@ class Api:
                 "shots": [{"id": s.get("shot_id"), "scene": s.get("scene_name"),
                            "continuity": s.get("continuity"), "continuity_from": s.get("continuity_from"),
                            "continuity_note": s.get("continuity_note"),
+                           "continuity_prompt": s.get("continuity_prompt"),
                            "scene_id": s.get("scene_id"), "section_type": s.get("section_type"),
                            "scene_occurrence_id": s.get("scene_occurrence_id"),
                            "chars": s.get("character_names", []), "dialogue": s.get("dialogue"),

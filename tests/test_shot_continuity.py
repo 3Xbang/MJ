@@ -31,6 +31,20 @@ def _continued(shots: list[dict]) -> dict[str, str]:
             for shot in link_shots(shots) if shot["continues_previous"]}
 
 
+def test_analysis_writes_the_link_sentence_from_the_screenplay():
+    with open(_LECTURE, encoding="utf-8") as handle:
+        linked = {shot["shot_id"]: shot for shot in link_shots(_shots(handle.read()))}
+    continued = linked["shot_002"]["continuity_prompt"]
+    assert continued.startswith("接上 shot_001 的最后一秒")
+    assert "仍只有双手" in continued
+    assert "左手把佛珠托稳" in continued
+    opening = linked["shot_037"]["continuity_prompt"]
+    assert opening.startswith("新机位，从这一镜首帧开口")
+    assert "小宇和小舟的背影" in opening
+    assert "中远景，从身后看" in opening
+    assert "小宇拿起罐头" in opening
+
+
 def test_lecture_keeps_the_same_camera_and_opens_a_new_one():
     with open(_LECTURE, encoding="utf-8") as handle:
         linked = _continued(_shots(handle.read()))

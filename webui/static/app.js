@@ -489,12 +489,12 @@ function renderAnalysisProgress() {
 function shotEditors(shots) {
   if (!shots || !shots.length) return '';
   return `<h3 style="margin:18px 0 0">每镜衔接</h3>
-    <div class="note">分析已经按剧本把同一机位收尾相连：下一镜从上一镜的最后一秒接着画。换了机位的镜头用自己的首帧开口。下面的衔接提示词是额外的一句，留空就按分析结果画。</div>
+    <div class="note">衔接提示词在分析时按剧本填好。同一机位接上一镜的最后一秒，换机位从这一镜首帧开口，后面是这一镜的入画、镜头和动作。改了格子里的句子，就按你改的画。</div>
     <div class="shot-editors">${shots.map(x => `<div class="shot-edit">
       <div class="id">${esc(x.id)} <span class="meta">${esc(x.scene || '')}</span></div>
       ${x.continuity ? `<div class="meta">${esc(x.continuity_note || (x.continuity === 'continue' ? '接上一镜的最后一秒' : '新机位，从这一镜首帧开口'))}</div>` : ''}
       <label>时长 <input type="number" min="3" max="120" data-long="${esc(x.id)}" value="${esc(S.long[x.id] || '')}" placeholder="${esc(x.duration || S.settings.seconds_per_shot)}" style="width:70px"> 秒</label>
-      <label class="link-label">衔接提示词<textarea data-link="${esc(x.id)}" rows="2" placeholder="接上一镜，镜头怎么走，这一镜持续做什么">${esc(S.links[x.id] || '')}</textarea></label>
+      <label class="link-label">衔接提示词<textarea data-link="${esc(x.id)}" data-auto="${esc(x.continuity_prompt || '')}" rows="3">${esc(S.links[x.id] || x.continuity_prompt || '')}</textarea></label>
     </div>`).join('')}</div>`;
 }
 /* step 1 — script */
@@ -807,7 +807,8 @@ document.addEventListener('input', ev => {
   if (el.tagName === 'TEXTAREA' && el.dataset.set) { S.settings[el.dataset.set] = el.value; saveSettingsSoon(); }
   if (el.dataset.link) {
     const v = el.value.trim();
-    if (v) S.links[el.dataset.link] = v; else delete S.links[el.dataset.link];
+    if (v && v !== (el.dataset.auto || '').trim()) S.links[el.dataset.link] = v;
+    else delete S.links[el.dataset.link];
     syncToSettings();
     saveSettingsSoon();
   }

@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 
 _FIELD_SPLIT = re.compile(r"\s+-\s+|\n+")
-_FIELD = re.compile(r"^(地点|入画|镜头)\s*[:：]\s*(.+)$")
+_FIELD = re.compile(r"^(.+?)\s*[:：]\s*(.+)$")
 _SAME_PLACE = re.compile(r"^(?:同上一镜|接上一镜|同上)(?!\s*\d)")
 _SAME_SHOT = re.compile(r"^同镜头\s*0*(\d+)")
 _STILL_OPENING = re.compile(r"^(?:仍|依旧|还是|同样|继续)")
@@ -33,9 +33,39 @@ def screenplay_text(shot: dict) -> str:
 def screenplay_field(text: str, name: str) -> str:
     for part in _FIELD_SPLIT.split(text or ""):
         match = _FIELD.match(part.strip())
-        if match and match.group(1) == name:
+        if match and match.group(1).strip() == name:
             return match.group(2).strip().rstrip("。.")
     return ""
+
+
+def _filled(*values) -> str:
+    for value in values:
+        text = str(value or "").strip().rstrip("。.")
+        if text and text not in {"（无）", "(无)", "无", "none", "null"}:
+            return text
+    return ""
+
+
+def continuity_prompt(shot: dict) -> str:
+    """The link sentence analysis writes for one shot, taken from the screenplay."""
+    text = screenplay_text(shot)
+    note = _filled(shot.get("continuity_note")) or "新机位，从这一镜首帧开口"
+    action = "，".join(part for part in (
+        _filled(screenplay_field(text, "动作开始"), shot.get("action_start")),
+        _filled(screenplay_field(text, "动作过程"), shot.get("action_process"), shot.get("business")),
+        _filled(screenplay_field(text, "动作结束"), shot.get("action_end")),
+    ) if part)
+    bits = [note]
+    for label, value in (
+        ("入画", _filled(screenplay_field(text, "入画"))),
+        ("镜头", _filled(screenplay_field(text, "镜头"))),
+        ("运镜", _filled(screenplay_field(text, "运镜"))),
+    ):
+        if value:
+            bits.append(f"{label}：{value}")
+    if action:
+        bits.append(f"这一镜：{action}")
+    return "。".join(bits) + "。"
 
 
 def _core(line: str) -> str:
@@ -133,6 +163,7 @@ def link_shots(shots: list[dict]) -> list[dict]:
             item["continuity"] = "new_camera"
             item["continuity_from"] = ""
             item["continuity_note"] = "新机位，从这一镜首帧开口"
+        item["continuity_prompt"] = continuity_prompt(item)
         linked.append(item)
         prev = item
         prev_place = place
