@@ -11,10 +11,12 @@ SCENE_PREFIX = "empty scene, no people, no characters, no humans, background onl
 # Empty-set validation is structural rather than an occupation/verb/prop
 # blacklist. A free-form phrase that asserts a subject/action or a subject/
 # object relation cannot be proven to be place-only, regardless of the words it
-# uses. The structured fields below provide the stronger boundary for node use.
+# uses. "with" is allowed for set dressing ("a box with water"). People holding,
+# carrying, using, gripping, or wearing something still fail. The structured
+# fields below provide the stronger boundary for node use.
 _ENV_UNPROVEN_RELATION_RE = re.compile(
     r"\b(?:a|an|the)\s+(?:[a-z][a-z-]*\s+){0,3}[a-z][a-z-]*\s+"
-    r"(?:with|holding|carrying|using|gripping|wearing)\s+"
+    r"(?:holding|carrying|using|gripping|wearing)\s+"
     r"(?:(?:a|an|the)\s+)?[a-z][a-z-]*\b",
     re.IGNORECASE,
 )
