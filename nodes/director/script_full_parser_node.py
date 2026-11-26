@@ -718,19 +718,21 @@ def _fact_tokens(value: str) -> set[str]:
     return result
 
 
-def _fact_is_supported(value: object, source_text: str) -> bool:
-    """Require a fact to occur in one local source span.
+_CLAUSE_SPLIT_RE = re.compile(r"[，,。；;、]+")
+# A camera path may rename the move ("绕拍" -> "路径") without adding a place
+# or an object. These words carry no new screenplay fact on their own.
+_CAMERA_PATH_GENERIC = ("运镜", "绕拍", "拍摄", "机位", "镜头", "路径", "轨迹", "路线", "运动")
 
-    Exact prose is preferred. A short structured paraphrase may omit a source
-    adjective or inflect a verb, but words may not be gathered from distant
-    actions or subjects.
-    """
-    text = _compact_source(str(value or ""))
+
+def _fact_span_is_supported(text: str, source: str) -> bool:
+    """Require one clause to occur inside a short local source span."""
+    text = _compact_source(text)
+    source = _compact_source(source).lower()
     if not text:
         return True
-    source = _compact_source(source_text).lower()
     if text.lower() in source:
         return True
+
     def token_key(token: str) -> str:
         stem = token
         for suffix in ("ing", "ed", "es", "s"):
@@ -759,6 +761,54 @@ def _fact_is_supported(value: object, source_text: str) -> bool:
         if matched and position - start <= len(fact_tokens) + 2:
             return True
     return False
+
+
+def _fact_clauses(text: str) -> list[str]:
+    parts = [part.strip() for part in _CLAUSE_SPLIT_RE.split(_compact_source(text)) if part.strip()]
+    return parts or [_compact_source(text)]
+
+
+def _fact_is_supported(value: object, source_text: str) -> bool:
+    """Require a fact to occur in this shot's source.
+
+    Exact prose is preferred. A short structured paraphrase may omit a source
+    adjective or inflect a verb, but words may not be gathered from distant
+    actions or subjects. A value may join several clauses with punctuation
+    when each clause is itself supported by this same shot.
+    """
+    text = _compact_source(str(value or ""))
+    if not text:
+        return True
+    source = _compact_source(source_text)
+    if _fact_span_is_supported(text, source):
+        return True
+    parts = _fact_clauses(text)
+    if len(parts) < 2:
+        return False
+    return all(_fact_span_is_supported(part, source) for part in parts)
+
+
+def _camera_path_is_supported(value: object, source_text: str) -> bool:
+    """Accept a camera path that restates this shot's move and adds nothing else."""
+    text = _compact_source(str(value or ""))
+    if not text:
+        return True
+    source = _compact_source(source_text)
+    if _fact_is_supported(text, source):
+        return True
+
+    def clause_supported(clause: str) -> bool:
+        if _fact_span_is_supported(clause, source):
+            return True
+        reduced = clause
+        for word in _CAMERA_PATH_GENERIC:
+            reduced = reduced.replace(word, "")
+        reduced = re.sub(r"[\s，,。；;：:、]+", "", reduced)
+        if not reduced:
+            return True
+        return reduced.lower() in source.lower()
+
+    return all(clause_supported(part) for part in _fact_clauses(text))
 
 
 # A prop alias may enrich a current shot only when the detailed declaration is
@@ -1013,9 +1063,12 @@ def _fact_validation_errors(data: dict, source_fragment: str, source_block_text:
             if not _present(item):
                 continue
             evidence = block if field == "location" and not source else source
-            supported = (_prop_fact_is_supported(item, source, prop_registry)
-                         if field in {"props_list", "prop_interactions"}
-                         else _fact_is_supported(item, evidence))
+            if field in {"props_list", "prop_interactions"}:
+                supported = _prop_fact_is_supported(item, source, prop_registry)
+            elif field == "camera_path":
+                supported = _camera_path_is_supported(item, evidence)
+            else:
+                supported = _fact_is_supported(item, evidence)
             if not supported:
                 errors.append(f"{phase} {field} fact is not supported by the exact source: {item}")
     for field in ("character_names",):

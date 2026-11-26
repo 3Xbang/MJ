@@ -404,6 +404,31 @@ def test_chinese_none_is_not_a_screenplay_fact():
     )
 
 
+def test_joined_shot_clauses_and_camera_restatement_are_grounded():
+    source = (
+        "画面事实：胖叔戴着墨镜的侧脸，墨镜镜片里反射出伦敦街景。\n"
+        "动作开始：胖叔保持侧脸不动。\n"
+        "动作过程：他缓慢转动眼睛，墨镜反光发生变化。\n"
+        "运镜：半圆弧绕拍，从侧脸转到三分之二正面。\n"
+    )
+    assert parser_mod._fact_is_supported("保持侧脸不动，缓慢转动眼睛", source)
+    assert parser_mod._camera_path_is_supported("半圆弧路径", source)
+    assert parser_mod._camera_path_is_supported("半圆弧路径，从侧脸转到三分之二正面", source)
+    assert not parser_mod._phase1_fact_validation_errors(
+        {"body_language": "保持侧脸不动，缓慢转动眼睛", "camera_path": "半圆弧路径"},
+        source, source,
+    )
+    blocked = parser_mod._phase1_fact_validation_errors(
+        {"body_language": "突然跳起来挥剑", "camera_path": "穿过爆炸的墙",
+         "action": "他抽出神秘法杖"},
+        source, source,
+    )
+    assert any("body_language" in error for error in blocked)
+    assert any("camera_path" in error for error in blocked)
+    assert any("action" in error for error in blocked)
+    assert not parser_mod._fact_is_supported("Mina runs away", "Mina reaches for the brass lever and smiles.")
+
+
 def test_rule_derived_directions_are_kept_with_provenance():
     source = "Mina reaches for the lever."
     assert not parser_mod._fact_validation_errors(
