@@ -20,20 +20,41 @@ echo "== 1/6 更新 ComfyUI 本体（Krea 2 / Wan 2.2 需要较新版本）"
 # Pull by explicit remote/branch instead of a bare `git pull`: a Pod's ComfyUI
 # checkout may have no upstream tracking configured, which makes a bare
 # `git pull` fail with "There is no tracking information for the current
-# branch". Each command below is its own statement (not chained with &&) so a
-# real failure here is NOT swallowed by the `&&`-chain errexit quirk and
-# aborts the deployment with a clear message instead of silently skipping the
-# ComfyUI core pip install.
+# branch". Fetch + hard-reset instead of `git pull origin "$COMFY_BRANCH"`:
+# on a Pod whose checkout has diverged from origin (e.g. a previous partial
+# update), a plain `pull` needs `pull.rebase`/`pull.ff` configured or it
+# aborts with "fatal: Need to specify how to reconcile divergent branches."
+# This script only wants the vendored ComfyUI core reasonably current, not to
+# preserve or merge any local edits to it, so discarding local divergence in
+# favor of the remote tip is correct here and never needs any pre-set git
+# config or an interactive prompt. Each command below is its own statement
+# (not chained with &&) so a real failure here (e.g. network unreachable) is
+# NOT swallowed by the `&&`-chain errexit quirk and aborts the deployment
+# with a clear message instead of silently skipping the ComfyUI core pip
+# install.
 cd "$COMFY"
 COMFY_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
-git pull origin "$COMFY_BRANCH"
+git fetch origin "$COMFY_BRANCH"
+git reset --hard "origin/$COMFY_BRANCH"
 pip install -r requirements.txt -q
 
 echo ""
 echo "== 2/6 安装或更新 AFE 节点和依赖"
 cd "$CN"
 if [ -d ai_film_editor_nodes/.git ]; then
-  (cd ai_film_editor_nodes && git pull origin main)
+  # Use --ff-only, not a bare `git pull`: it fails deterministically on a
+  # divergent checkout ("fatal: Not possible to fast-forward, aborting.")
+  # without needing pull.rebase/pull.ff pre-configured and without any
+  # interactive prompt, and it still fast-forwards normally in the common
+  # up-to-date/behind case. Unlike ComfyUI core (step 1/6) this repo is the
+  # user's own actively-developed code, and this very script is one of its
+  # files being read by bash while it runs, so a `git reset --hard` here
+  # would both discard any real local state on the Pod and risk rewriting
+  # deploy_pod.sh out from under the interpreter mid-execution. --ff-only
+  # avoids both problems: it never rewrites existing history or working-tree
+  # files that aren't trivially catching up, and a genuine divergence still
+  # aborts deployment with a clear message instead of resetting silently.
+  (cd ai_film_editor_nodes && git pull --ff-only origin main)
 else
   git clone https://github.com/3Xbang/MJ.git ai_film_editor_nodes
 fi
