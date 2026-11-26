@@ -26,6 +26,7 @@ from ai_film_editor_nodes.webui import graphs
 from ai_film_editor_nodes.nodes.director.script_analysis_session import (
     AnalysisSessionStore, DEFAULT_BATCH_SIZE, script_signature,
 )
+from ai_film_editor_nodes.nodes.director.screenplay_source_units import film_shot_count
 from ai_film_editor_nodes.nodes.director.script_full_parser_node import (
     _build_scene_map, _source_units_with_offsets, _ordered_scene_blocks,
 )
@@ -652,7 +653,9 @@ class Api:
             return web.json_response({"error": "请先在上面粘贴剧本。"}, status=400)
         batch = None
         session_store = None
-        target_count = max(1, round(int(s.get("duration", 180)) / int(s.get("seconds_per_shot", 5))))
+        target_count = film_shot_count(
+            s.get("script", ""), s.get("duration", 180), s.get("seconds_per_shot", 5)
+        )
         if stage == 1:
             session_store = self.session_store(pp)
             try:

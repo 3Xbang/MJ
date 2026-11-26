@@ -492,7 +492,7 @@ function renderStep1() {
       <div class="field"><label>每个分镜（秒）</label><input type="number" min="5" max="60" data-set="seconds_per_shot" data-type="int" value="${esc(s.seconds_per_shot)}"></div>
       ${runBtn(1)}
     </div>
-    <div class="note">现在逐镜分析：一镜完成会自动开始下一镜，失败只重试这一镜。第一次要载入语言模型，需要几分钟。想要长镜头，把「每个分镜」调到 15 秒（180 秒就是 12 镜），再重新分析。</div>
+    <div class="note">剧本里写了「镜头 001（3 秒）」这种标题时，镜数和每镜时长以标题为准，不再用总时长除以每个分镜的秒数。没有标题时，才用那两个数字来切。现在逐镜分析：一镜完成会自动开始下一镜，失败只重试这一镜。第一次要载入语言模型，需要几分钟。</div>
     ${result}`);
 }
 

@@ -16,6 +16,7 @@ import re
 from ai_film_editor_nodes.lib.utils.logger import get_logger
 from ai_film_editor_nodes.nodes.video.shot_prompt_contract import normalize_shot
 from ai_film_editor_nodes.nodes.director.screenplay_source_units import (
+    explicit_shot_plan,
     explicit_shot_units,
     source_units_with_offsets,
 )
@@ -1740,8 +1741,13 @@ class AFE_ScriptFullParser:
         if color_palette != "auto (from style)":
             style_full += f", {color_palette} color palette"
 
-        # 目标镜头数 = 总时长 / 每镜时长
-        target_shot_count = max(1, round(target_duration_seconds / seconds_per_shot))
+        # Numbered headings decide the shot count. A duration ÷ seconds
+        # formula only applies to a screenplay that has no shot headings.
+        explicit_plan = explicit_shot_plan(raw_script)
+        if explicit_plan:
+            target_shot_count = len(explicit_plan)
+        else:
+            target_shot_count = max(1, round(target_duration_seconds / max(1, int(seconds_per_shot))))
 
         # Every parser invocation is a bounded batch. The WebUI supplies the
         # persisted session context; direct/manual node calls also return a
@@ -1798,13 +1804,30 @@ class AFE_ScriptFullParser:
         # 2. Phase 1: single LLM call → cast + minimal shots
         logger.info("[AFE_ScriptFullParser] Phase 1: parsing script (target %d shots × %ds = %ds)...",
                     target_shot_count, seconds_per_shot, target_duration_seconds)
+        if explicit_plan:
+            written = []
+            for offset, item in enumerate(explicit_plan[batch_start_shot - 1:batch_end_shot]):
+                seconds = item.get("duration_seconds")
+                written.append(
+                    f"shot_{batch_start_shot + offset:03d} "
+                    + (f"{seconds:g}s" if seconds else "the duration written on its heading")
+                )
+            timing_line = (
+                "The screenplay already separates these shots. Return one shot per heading, "
+                "in this order: " + ", ".join(written) + ". "
+                "Do not split a heading and do not add shots. "
+            )
+        else:
+            timing_line = (
+                f"(total {target_shot_count * seconds_per_shot}s at {seconds_per_shot}s each). "
+                f"Break scenes and dialogue into individual {seconds_per_shot}-second moments. "
+            )
         phase1_user = (
             f"Generate EXACTLY {target_shot_count} shots for global shot IDs "
             f"shot_{batch_start_shot:03d} through shot_{batch_end_shot:03d} "
-            f"(total {target_shot_count * seconds_per_shot}s at {seconds_per_shot}s each). "
+            f"{timing_line}"
             f"This is one contiguous batch; do not describe shots outside this range. "
-            f"Episode format: {episode_format}. "
-            f"Break scenes and dialogue into individual {seconds_per_shot}-second moments.\n\n"
+            f"Episode format: {episode_format}.\n\n"
             f"{scene_map_text}\n\n"
             f"Screenplay source for this batch:\n"
             f"{raw_script if not batch_mode else _ordered_prompt_source_text(scene_map)}"
@@ -1842,6 +1865,14 @@ class AFE_ScriptFullParser:
         _validate_cast_against_script(cast_list, raw_script)
         batch_duration = target_shot_count * seconds_per_shot if batch_mode else target_duration_seconds
         minimal_shots = _normalize_durations(minimal_shots, batch_duration, seconds_per_shot)
+        if explicit_plan:
+            for offset, shot in enumerate(minimal_shots):
+                index = batch_start_shot - 1 + offset
+                if not isinstance(shot, dict) or index >= len(explicit_plan):
+                    continue
+                seconds = explicit_plan[index].get("duration_seconds")
+                if seconds:
+                    shot["duration_seconds"] = float(seconds)
         logger.info(f"[AFE_ScriptFullParser] Phase 1 done: {len(cast_list)} cast, {len(minimal_shots)} shots")
 
         # Do not let Phase 2 make a truncated or reordered Phase 1 result look

@@ -133,3 +133,40 @@ def refine_source_units(source_text: str, minimum_count: int) -> list[dict]:
 def explicit_shot_units(units: list[dict]) -> list[dict]:
     """Return only explicit shot units, preserving screenplay order."""
     return [unit for unit in units if unit.get("is_explicit_shot")]
+
+
+_HEADING_DURATION_RE = re.compile(
+    r"[（(]\s*(\d+(?:\.\d+)?)\s*(?:秒|s|sec|seconds)\s*[)）]",
+    re.IGNORECASE,
+)
+
+
+def heading_duration_seconds(text: str):
+    """Read the duration written on a shot heading, such as ``镜头 001（3 秒）``."""
+    first = str(text or "").splitlines()[0] if text else ""
+    match = _HEADING_DURATION_RE.search(first)
+    return float(match.group(1)) if match else None
+
+
+def explicit_shot_plan(source_text: str) -> list[dict]:
+    """Return one entry per numbered shot heading, in screenplay order.
+
+    ``duration_seconds`` is the number written on that heading, or None when
+    the heading does not state a duration.
+    """
+    plan = []
+    for unit in explicit_shot_units(source_units_with_offsets(source_text)):
+        plan.append({
+            "shot_number": int(unit.get("shot_number") or 0),
+            "duration_seconds": heading_duration_seconds(unit.get("text", "")),
+        })
+    return plan
+
+
+def film_shot_count(script: str, duration_seconds: int, seconds_per_shot: int) -> int:
+    """Numbered headings are the shot count. Other scripts use duration ÷ seconds."""
+    plan = explicit_shot_plan(script)
+    if plan:
+        return len(plan)
+    seconds = max(1, int(seconds_per_shot or 1))
+    return max(1, round(int(duration_seconds or 0) / seconds))

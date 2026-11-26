@@ -44,3 +44,32 @@ def test_explicit_shot_batches_follow_heading_order_not_sentence_ratios():
     assert "动作结束：停住" in first_text
     assert "镜头002" in second_text and "镜头001" not in second_text
     assert "表情：惊讶" in second_text
+
+
+def test_numbered_lecture_uses_heading_count_not_duration_divided_by_five():
+    from ai_film_editor_nodes.nodes.director.screenplay_source_units import (
+        explicit_shot_plan, film_shot_count,
+    )
+    from ai_film_editor_nodes.nodes.director.script_analysis_session import AnalysisSessionStore
+    import tempfile
+
+    path = os.path.join(ROOT, "test_scripts", "san_yan_liang_yu_ep01_lecture.md")
+    with open(path, encoding="utf-8") as handle:
+        script = handle.read()
+    plan = explicit_shot_plan(script)
+    assert film_shot_count(script, 180, 5) == 37
+    assert [item["duration_seconds"] for item in plan[:4]] == [3, 5, 2, 2]
+    assert sum(item["duration_seconds"] for item in plan) == 180
+    assert film_shot_count("甲走进房间。乙坐下。", 180, 5) == 36
+
+    scene_map = parser._build_scene_map(script)
+    with tempfile.TemporaryDirectory() as directory:
+        store = AnalysisSessionStore(directory)
+        created = store.create(script, film_shot_count(script, 180, 5), 5, scene_map)
+        assert created["target_shot_count"] == 37
+        try:
+            store.create(script, 36, 5, scene_map)
+        except ValueError as exc:
+            assert "37" in str(exc) and "36" in str(exc)
+        else:
+            raise AssertionError("a 36-shot target must still reject 37 headings")
