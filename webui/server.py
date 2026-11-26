@@ -35,7 +35,7 @@ STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 MIME_NO_CACHE = {"Cache-Control": "no-store"}
 # settings that decide what a step produced; the UI compares them with the current choices
 USED_KEYS = ("cast_picks", "cast_redo", "scene_view_picks", "kf_picks", "kf_redo", "kf_variants",
-             "video_redo", "long_takes", "shot_links", "skip_shots")
+             "kf_notes", "video_redo", "long_takes", "shot_links", "skip_shots")
 
 
 # ── project files ─────────────────────────────────────────────────────────────

@@ -34,6 +34,7 @@ DEFAULTS = {
     "kf_variants": 1,
     "kf_picks": "",
     "kf_redo": "",
+    "kf_notes": "",
     # step 4
     "fast": True,
     "video_width": 832,
@@ -137,6 +138,7 @@ def build_prompt(stage: int, project: str, settings: dict | None, project_path: 
                      seed=int(s["seed"]), variants_per_shot=int(s["kf_variants"]),
                      picks=s["kf_picks"], link_prompts=s["shot_links"], redo_shots=s["kf_redo"],
                      only_listed=one, only_shot=only_shot if one else "",
+                     edit_notes=s["kf_notes"],
                      scene_view_picks=s["scene_view_picks"], approved=True,
                      scene_images_medium=["4", 1], scene_images_atmosphere=["4", 2])
         if "5" in g:

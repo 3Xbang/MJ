@@ -21,7 +21,7 @@ const S = {
   settings: {},
   sel: { cast: {}, scene: {}, kf: {} },
   redo: { cast: {}, kf: {}, video: {} },
-  long: {}, links: {}, skip: new Set(),
+  long: {}, links: {}, notes: {}, skip: new Set(),
   open: {}, tab: 'shots',
   run: null, dock: null,
   clientId: 'afe-' + Math.random().toString(36).slice(2),
@@ -62,6 +62,7 @@ function syncFromSettings() {
   S.redo.video = parsePairs(s.video_redo);
   S.long = parsePairs(s.long_takes);
   S.links = parseLinkText(s.shot_links);
+  S.notes = parseLinkText(s.kf_notes);
   S.skip = new Set(String(s.skip_shots || '').split(/[,;，；\s]+/).filter(Boolean));
 }
 function syncToSettings() {
@@ -74,6 +75,7 @@ function syncToSettings() {
   s.video_redo = composePairs(S.redo.video);
   s.long_takes = composePairs(S.long);
   s.shot_links = composeLinks(S.links);
+  s.kf_notes = composeLinks(S.notes);
   s.skip_shots = [...S.skip].join(', ');
 }
 
@@ -586,13 +588,14 @@ function renderStep3() {
   const shots = ((a && a.shots) || []).filter(x => v.keyframes[x.id]);
   if (shots.length) {
     result = `<h3 style="margin:18px 0 0">首帧（${shots.length} 个）</h3>
-      <div class="note">每个分镜的第一帧。点「重画」只重画这一张，其他分镜不动。画了多个版本的，点下面的小图切换使用哪个。</div>
+      <div class="note">每个分镜的第一帧。在图下写下修改意见，再点「重画」，画面模型会按这句话改这一张，其他分镜不动。画了多个版本的，点下面的小图切换使用哪个。</div>
       <div class="shots">${shots.map(x => {
         const vars = (v.kf_images || []).filter(m => m.shot === x.id);
         const cur = S.sel.kf[x.id] || (vars.find(m => m.chosen) || {}).variant || 1;
         return `<div class="shot"><img src="${esc(v.keyframes[x.id])}" loading="lazy">
           <div class="id">${esc(x.id)} <span class="meta">${esc(x.scene)}</span></div>
           <div class="desc">${esc(x.desc)}</div>
+          <label class="kf-note-label">修改意见<textarea class="kf-note" data-kf-note="${esc(x.id)}" rows="2" placeholder="例如：茶杯换成白瓷杯，人物看向镜头">${esc(S.notes[x.id] || '')}</textarea></label>
           ${vars.length > 1 ? `<div class="vars">${vars.map(m => `<label class="pick ${cur === m.variant ? 'on' : ''}"><input type="radio" name="kf${x.id}" data-sel="kf" data-id="${esc(x.id)}" data-val="${m.variant}" ${cur === m.variant ? 'checked' : ''}><img src="${esc(m.url)}" loading="lazy"><div class="cap">v${m.variant}</div></label>`).join('')}</div>` : ''}
           <div class="tools"><button class="small" data-act="redo-kf" data-shot="${esc(x.id)}" ${S.run ? 'disabled' : ''}>🔄 重画</button></div></div>`;
       }).join('')}</div>`;
@@ -683,7 +686,13 @@ document.addEventListener('click', async ev => {
     const k = el.dataset.char; S.redo.cast[k] = (S.redo.cast[k] || 0) + 1; saveSettingsSoon(); return runStage(2, 'cast');
   }
   if (act === 'redo-kf') {
-    const k = el.dataset.shot; S.redo.kf[k] = (S.redo.kf[k] || 0) + 1; saveSettingsSoon(); return runStage(3, 'kf', k);
+    const k = el.dataset.shot;
+    const box = el.closest('.shot')?.querySelector('[data-kf-note]');
+    if (box) {
+      const v = box.value.trim();
+      if (v) S.notes[k] = v; else delete S.notes[k];
+    }
+    S.redo.kf[k] = (S.redo.kf[k] || 0) + 1; saveSettingsSoon(); return runStage(3, 'kf', k);
   }
   if (act === 'redo-video') {
     const k = el.dataset.shot; S.redo.video[k] = (S.redo.video[k] || 0) + 1; saveSettingsSoon(); return runStage(4);
@@ -724,6 +733,12 @@ document.addEventListener('input', ev => {
   if (el.dataset.link) {
     const v = el.value.trim();
     if (v) S.links[el.dataset.link] = v; else delete S.links[el.dataset.link];
+    syncToSettings();
+    saveSettingsSoon();
+  }
+  if (el.dataset.kfNote) {
+    const v = el.value.trim();
+    if (v) S.notes[el.dataset.kfNote] = v; else delete S.notes[el.dataset.kfNote];
     syncToSettings();
     saveSettingsSoon();
   }

@@ -75,6 +75,18 @@ VIEW_BY_NAME = {"1": 0, "establishing": 0, "wide": 0, "2": 1, "medium": 1, "3": 
 VIEW_LABEL = ["establishing", "medium", "atmosphere"]
 
 
+def revision_clause(note: str) -> str:
+    """User wording for one frame. Empty notes add nothing to the prompt."""
+    note = " ".join(str(note or "").split())
+    if not note:
+        return ""
+    return (
+        " Director revision for this one frame. Apply this change exactly. "
+        "Keep the same people, faces, outfits, and location unless the revision explicitly changes them. "
+        "Revision: " + note
+    )
+
+
 def cast_names(cast_data) -> list[str]:
     """Cast names in the same order AFE_CastRefGenerator uses."""
     return [c["name"] for c in (cast_data or []) if isinstance(c, dict) and c.get("name")]
@@ -205,6 +217,8 @@ class AFE_ShotKeyframeGenerator:
                                             "tooltip": "True = draw only the shot named in only_shot"}),
                 "only_shot": ("STRING", {"default": "",
                                          "tooltip": "The one shot id to redraw when only_listed is on"}),
+                "edit_notes": ("STRING", {"default": "", "multiline": True,
+                                          "tooltip": "每镜一条修改意见。例：shot_002: 茶杯换成白瓷杯，人物看向镜头"}),
                 "scene_view_picks": ("STRING", {"default": "",
                                                 "tooltip": "每个场景用哪张场景图当地点参考。例：1:2, 2:3  （场景号:视角，1全景 2中景 3氛围）"}),
                 "approved": gate_input("生成分镜首帧"),
@@ -229,7 +243,7 @@ class AFE_ShotKeyframeGenerator:
                  render_style, max_shots=0, overwrite=False, resolution=1024, seed=42,
                  variants_per_shot=1, picks="", link_prompts="", redo_shots="", scene_view_picks="", approved=False,
                  scene_images_medium=None, scene_images_atmosphere=None, props_images=None,
-                 props_manifest="", auto_all=False, only_listed=False, only_shot=""):
+                 props_manifest="", auto_all=False, only_listed=False, only_shot="", edit_notes=""):
         if not gate_is_open(approved, auto_all):
             return closed_result("分镜首帧（生成前请确认场景图和角色参考图）", "ddrd")
 
@@ -246,6 +260,7 @@ class AFE_ShotKeyframeGenerator:
         view_picks = parse_scene_view_picks(scene_view_picks)
         pick_map = parse_shot_numbers(picks, default_value=1)
         link_map = parse_link_prompts(link_prompts)
+        edit_map = parse_link_prompts(edit_notes)
         K = clamp(int(variants_per_shot), 1, 4)
 
         proj = project_dir(project_name)
@@ -323,6 +338,7 @@ class AFE_ShotKeyframeGenerator:
             prompt = build_keyframe_prompt(shot, in_shot, render_style, in_props)
             if link_map.get(sid):
                 prompt += " Continuity direction: " + link_map[sid]
+            prompt += revision_clause(edit_map.get(sid, ""))
             base_sig = md5(prompt, resolution, KEYFRAME_NEGATIVE,
                            *[tensor_sig(t) for t in images.values()])
             salt = redo_map.get(sid, 0)

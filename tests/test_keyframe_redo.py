@@ -5,7 +5,7 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(ROOT))
 
-from ai_film_editor_nodes.nodes.video.shot_keyframe_node import indexed_keyframe_shots
+from ai_film_editor_nodes.nodes.video.shot_keyframe_node import indexed_keyframe_shots, revision_clause
 from ai_film_editor_nodes.webui import graphs
 from ai_film_editor_nodes.webui.server import merge_kf_manifest, stage_part
 
@@ -77,6 +77,20 @@ def test_part_kf_cannot_leak_into_another_step():
     assert stage_part(4, "kf") == "all"
     assert stage_part(2, "cast") == "cast"
     assert stage_part(3, "cast") == "all"
+
+
+def test_revision_text_is_kept_and_a_blank_note_adds_nothing():
+    clause = revision_clause("  茶杯换成白瓷杯，人物看向镜头  ")
+    assert "茶杯换成白瓷杯，人物看向镜头" in clause
+    assert "Director revision" in clause
+    assert revision_clause("   ") == ""
+
+
+def test_kf_graph_carries_the_revision_for_every_listed_shot():
+    prompt, _labels = graphs.build_prompt(
+        3, "afe_project", {"kf_notes": "shot_002: 茶杯换成白瓷杯"}, "out",
+    )
+    assert prompt["11"]["inputs"]["edit_notes"] == "shot_002: 茶杯换成白瓷杯"
 
 
 def test_one_card_replaces_only_its_manifest_row():
