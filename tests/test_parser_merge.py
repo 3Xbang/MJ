@@ -333,8 +333,12 @@ def test_verified_prop_registry_resolves_same_script_alias_without_sibling_shots
 
     assert parser_mod._prop_fact_is_supported("深棕色小叶紫檀佛珠", shot_text, registry)
     assert parser_mod._prop_fact_is_supported("粗金链", shot_text, registry)
-    assert not parser_mod._prop_fact_is_supported("2厘米宽实心粗金链", shot_text, registry)
+    # A sibling shot's measurement names the same verified prop. Keep the
+    # shot moving and store only the context declaration, not the measurement.
+    assert parser_mod._prop_fact_is_supported("2厘米宽的实心粗金链", shot_text, registry)
+    assert parser_mod._canonicalize_prop_value("2厘米宽的实心粗金链", shot_text, registry) == "粗金链"
     assert not parser_mod._prop_fact_is_supported("神秘法杖", shot_text, registry)
+    assert not parser_mod._prop_fact_is_supported("神秘法杖和金链", shot_text, registry)
 
     assert parser_mod._canonicalize_prop_value("佛珠", shot_text, registry) == "深棕色小叶紫檀佛珠"
     assert parser_mod._canonicalize_prop_value("金链", shot_text, registry) == "粗金链"

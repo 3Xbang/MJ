@@ -843,6 +843,33 @@ def _prop_alias_for_fragment(canonical: str, source_text: str) -> str:
     return best
 
 
+def _unverified_prop_elaboration(text: str, source_text: str,
+                                 registry: list[str] | None) -> str:
+    """Return the verified prop when ``text`` only adds an unsupported modifier.
+
+    Chinese modifiers precede the noun, so ``2厘米宽的实心粗金链`` on a shot
+    that only says ``金链`` is still the registered ``粗金链``. The extra
+    measurement is dropped instead of failing the shot. Matching only the
+    short alias is not enough: ``祖传金怀表`` does not contain the verified
+    declaration and stays rejected, as does a second object such as
+    ``神秘法杖和金链``.
+    """
+    if not text or not registry:
+        return ""
+    for canonical in sorted(set(registry), key=len, reverse=True):
+        if not _prop_alias_for_fragment(canonical, source_text):
+            continue
+        if canonical not in text or not text.endswith(canonical):
+            continue
+        prefix = text[:-len(canonical)].strip()
+        if not prefix or re.search(r"[，,。；;：:、和与或及/]", prefix):
+            continue
+        if any(other != canonical and other in prefix for other in registry):
+            continue
+        return canonical
+    return ""
+
+
 def _canonicalize_prop_value(value: object, source_text: str,
                              registry: list[str] | None):
     """Canonicalize one validated prop or prop interaction.
@@ -850,7 +877,9 @@ def _canonicalize_prop_value(value: object, source_text: str,
     A value already grounded in the exact fragment is a fact on its own; a
     short value in the current fragment, or a detailed value declared only
     in verified context, is upgraded to the registered canonical declaration
-    whose alias this shot's own fragment actually supports.
+    whose alias this shot's own fragment actually supports. An unsupported
+    modifier copied onto that same prop is removed, leaving the canonical
+    declaration.
     """
     if not _present(value) or not registry:
         return value
@@ -861,9 +890,17 @@ def _canonicalize_prop_value(value: object, source_text: str,
         if not alias:
             continue
         if canonical in text:
-            # Already the verified detailed form, whole or embedded in a
-            # longer interaction sentence. Nothing to rewrite.
-            matches.append((canonical, text))
+            if _fact_is_supported(text, source_text):
+                stored = text
+            else:
+                alias_form = text.replace(canonical, alias) if alias != canonical else text
+                if alias != canonical and _fact_is_supported(alias_form, source_text):
+                    stored = text
+                elif _unverified_prop_elaboration(text, source_text, registry) == canonical:
+                    stored = canonical
+                else:
+                    stored = text
+            matches.append((canonical, stored))
         elif text == alias:
             matches.append((canonical, canonical))
         elif alias in text:
@@ -899,7 +936,9 @@ def _prop_fact_is_supported(value: object, source_text: str,
         if alias and alias != canonical:
             rewritten = rewritten.replace(canonical, alias)
             replaced = True
-    return replaced and _fact_is_supported(rewritten, source_text)
+    if replaced and _fact_is_supported(rewritten, source_text):
+        return True
+    return bool(_unverified_prop_elaboration(text, source_text, registry))
 
 
 # These are screenplay facts, not free-form visual decoration.  A missing
