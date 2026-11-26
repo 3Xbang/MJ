@@ -248,6 +248,9 @@ def test_scene_environment_rejects_generic_worker_contamination():
     assert not validate_empty_scene_prompt("an orange takeout box with water")
     assert not validate_empty_scene_prompt("a red taillight reflection crossing wet asphalt")
     assert not validate_empty_scene_prompt("a shelf of canned tomatoes beside a trash can")
+    assert not validate_empty_scene_prompt("empty street at night, no people, wet asphalt")
+    assert not validate_empty_scene_prompt("the kitchen scene is lit by cool fluorescent tubes")
+    assert validate_empty_scene_prompt("people walking through the kitchen")
 
 
 def test_unlisted_article_free_occupation_relations_are_rejected():

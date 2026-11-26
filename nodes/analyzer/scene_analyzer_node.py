@@ -115,8 +115,13 @@ def validate_empty_scene_prompt(prompt: str, characters=(), forbidden_facts=(), 
         fact_text = str(fact or "").strip()
         if fact_text and fact_text.lower() in lowered:
             return f"contains screenplay fact: {fact_text}"
-    match = _ENV_EXPLICIT_HUMAN_RE.search(text)
-    if match:
+    for match in _ENV_EXPLICIT_HUMAN_RE.finditer(text):
+        word = match.group(0).lower()
+        prefix = text[max(0, match.start() - 16):match.start()].lower()
+        # "no people" / "without people" is the empty-set instruction, not a person.
+        if word in {"people", "person", "human", "humans", "人物"} and re.search(
+                r"(?:no|without|zero|not any|没有|无)\s*$", prefix):
+            continue
         return f"contains an unverified human fact: {match.group(0)}"
     match = _ENV_HUMAN_ROLE_RE.search(text)
     if match:
@@ -132,6 +137,9 @@ def validate_empty_scene_prompt(prompt: str, characters=(), forbidden_facts=(), 
         # A structural noun may use an explicitly structural relation, but
         # never an unlisted action.
         if subject in _ENV_STRUCTURAL_SUBJECTS and verb in _ENV_STRUCTURAL_RELATION_VERBS:
+            continue
+        # "the scene is dark" is place wording. Copulas are not actions.
+        if verb in {"is", "are", "was", "were"}:
             continue
         if verb not in _ENV_PREDICATE_WORDS and verb not in _ENV_THIRD_PERSON_VERBS:
             continue
