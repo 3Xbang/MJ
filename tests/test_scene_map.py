@@ -267,6 +267,7 @@ def test_article_free_non_structural_subject_actions_are_rejected():
         "glass roofs",
         "Steel beams support the glass roof",
         "Windows overlook the courtyard",
+        "empty terrace, rosewood prayer beads, daylight",
     ):
         assert not validate_empty_scene_prompt(prompt), prompt
 

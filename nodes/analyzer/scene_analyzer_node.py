@@ -38,9 +38,9 @@ _ENV_HUMAN_ROLE_RE = re.compile(
 # the courtyard") or a noun compound ("steel counters"). An article-free
 # token ending in ``s`` is therefore ambiguous: distinguish the final token
 # from a known structural noun before treating it as a predicate. A structural
-# noun may use a small, source-grounded relation vocabulary, but an unknown
-# predicate still fails closed so "Machinery hums" and "Equipment vibrates"
-# cannot contaminate the empty-scene slot.
+# noun may use a small, source-grounded relation vocabulary. An unlisted
+# plural ("prayer beads") is place wording. Listed third-person verbs still
+# fail closed so "Machinery hums" and "Equipment vibrates" cannot pass.
 _ENV_ARTICLE_FREE_SUBJECT_ACTION_RE = re.compile(
     r"(?=(?<![A-Za-z])(?P<subject>[A-Za-z][A-Za-z-]*)\s+"
     r"(?P<verb>[A-Za-z][A-Za-z-]*)\b)",
@@ -61,6 +61,15 @@ _ENV_STRUCTURAL_RELATION_VERBS = {
 _ENV_PREDICATE_WORDS = {
     "is", "are", "was", "were", "has", "have", "had", "does", "do", "can", "will",
     *_ENV_STRUCTURAL_RELATION_VERBS,
+}
+# A trailing s is usually a plural noun ("prayer beads", "steel counters"), not an
+# action. Only listed third-person verbs still count as an action in that slot.
+_ENV_THIRD_PERSON_VERBS = {
+    "hums", "vibrates", "inspects", "stands", "sits", "holds", "walks", "runs",
+    "looks", "turns", "opens", "closes", "glows", "flickers", "waits", "moves",
+    "reaches", "grips", "wears", "carries", "uses", "manipulates", "calibrates",
+    "leans", "watches", "smiles", "nods", "points", "lifts", "pulls", "pushes",
+    "drops", "places", "picks", "grabs", "touches", "stares", "breathes",
 }
 
 
@@ -106,11 +115,11 @@ def validate_empty_scene_prompt(prompt: str, characters=(), forbidden_facts=(), 
         # head for a verb, while still checking the next pair in a sentence.
         if subject in {"a", "an", "the"} or verb in _ENV_STRUCTURAL_SUBJECTS:
             continue
-        if not (verb.endswith("s") or verb in _ENV_PREDICATE_WORDS):
-            continue
         # A structural noun may use an explicitly structural relation, but
         # never an unlisted action.
         if subject in _ENV_STRUCTURAL_SUBJECTS and verb in _ENV_STRUCTURAL_RELATION_VERBS:
+            continue
+        if verb not in _ENV_PREDICATE_WORDS and verb not in _ENV_THIRD_PERSON_VERBS:
             continue
         return ("contains an unverified subject/action relation: "
                 f"{subject} {verb}")
