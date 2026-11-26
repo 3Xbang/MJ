@@ -354,6 +354,17 @@ def ffmpeg_exe() -> str:
         )
 
 
+def extract_last_frame(mp4_path: str, png_path: str) -> bool:
+    """Save the last image of a clip so the next shot can continue from it."""
+    cmd = [ffmpeg_exe(), "-y", "-loglevel", "error", "-sseof", "-0.08",
+           "-i", mp4_path, "-frames:v", "1", png_path]
+    proc = subprocess.run(cmd, capture_output=True)
+    if proc.returncode != 0 or not os.path.exists(png_path):
+        logger.warning("could not read the last frame of %s", mp4_path)
+        return False
+    return True
+
+
 def write_mp4(frames: torch.Tensor, path: str, fps: float) -> None:
     """frames: (N,H,W,3) float 0..1  ->  H.264 mp4 (yuv420p) via ffmpeg pipe."""
     n, h, w, _ = frames.shape

@@ -489,9 +489,10 @@ function renderAnalysisProgress() {
 function shotEditors(shots) {
   if (!shots || !shots.length) return '';
   return `<h3 style="margin:18px 0 0">每镜衔接</h3>
-    <div class="note">每一镜一条提示词，用来接上一镜并拉长这一镜。时长留空就用上面的「每个分镜」。改完后，第 ③④ 步只会重做改过的镜头。</div>
+    <div class="note">分析已经按剧本把同一机位收尾相连：下一镜从上一镜的最后一秒接着画。换了机位的镜头用自己的首帧开口。下面的衔接提示词是额外的一句，留空就按分析结果画。</div>
     <div class="shot-editors">${shots.map(x => `<div class="shot-edit">
       <div class="id">${esc(x.id)} <span class="meta">${esc(x.scene || '')}</span></div>
+      ${x.continuity ? `<div class="meta">${esc(x.continuity_note || (x.continuity === 'continue' ? '接上一镜的最后一秒' : '新机位，从这一镜首帧开口'))}</div>` : ''}
       <label>时长 <input type="number" min="3" max="120" data-long="${esc(x.id)}" value="${esc(S.long[x.id] || '')}" placeholder="${esc(x.duration || S.settings.seconds_per_shot)}" style="width:70px"> 秒</label>
       <label class="link-label">衔接提示词<textarea data-link="${esc(x.id)}" rows="2" placeholder="接上一镜，镜头怎么走，这一镜持续做什么">${esc(S.links[x.id] || '')}</textarea></label>
     </div>`).join('')}</div>`;
@@ -679,7 +680,7 @@ function renderStep4() {
         </div></div>`).join('')}</div>`;
   }
   return card(4, '视频：让画面动起来', `
-    <p class="help">按每镜时长把首帧做成视频。超过约 5 秒会自动接成一条长镜头。可以随时点底部的「取消」，已做好的不会丢。</p>
+    <p class="help">按剧本往下画。同一机位从上一镜的最后一秒接着画，换机位用这一镜的首帧开口。一镜超过约 5 秒时，后一段也接在这一镜自己的最后一秒上。可以随时点底部的「取消」，已做好的不会丢。</p>
     ${shotEditors((a && a.shots) || [])}
     <div class="row">
       <div class="field"><label>清晰度</label><select data-size="1">${opt('832x480', '标准 832×480（较快）', size)}${opt('1024x576', '较高 1024×576（较慢）', size)}</select></div>

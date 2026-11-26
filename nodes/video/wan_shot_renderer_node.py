@@ -27,10 +27,11 @@ import time
 import torch
 
 from ai_film_editor_nodes.nodes.video._common import (
-    auto_all_input, call, check_interrupt, closed_result, gate_input, gate_is_open, get_node,
-    get_shots, has_dialogue, load_png, make_progress, md5, parse_link_prompts, parse_shot_numbers, shot_id_of,
-    sub_dir, write_mp4,
+    auto_all_input, call, check_interrupt, closed_result, extract_last_frame, gate_input, gate_is_open, get_node,
+    get_shots, has_dialogue, load_png, make_progress, md5, parse_link_prompts, parse_shot_numbers, save_png,
+    shot_id_of, sub_dir, write_mp4,
 )
+from ai_film_editor_nodes.nodes.video.shot_continuity import link_shots
 
 logger = logging.getLogger("AFE_WanShotRenderer")
 
@@ -70,9 +71,24 @@ CAMERA_PHRASES = {
     "orbit": "the camera slowly orbits around the subject",
 }
 
+def _tail_path(clip_dir: str, shot_id: str) -> str:
+    return os.path.join(clip_dir, f"{shot_id}_tail.png")
+
+
+def _ensure_tail(clip_dir: str, shot_id: str) -> str:
+    """Return the saved last frame, extracting it from the clip when needed."""
+    png = _tail_path(clip_dir, shot_id)
+    if os.path.exists(png):
+        return png
+    mp4 = os.path.join(clip_dir, f"{shot_id}.mp4")
+    if os.path.exists(mp4) and extract_last_frame(mp4, png):
+        return png
+    return ""
+
+
 def _invalidate_clip(project_dir: str, shot_id: str, out_path: str, meta_path: str) -> None:
     """Invalidate every generated representation so assembly cannot use stale output."""
-    paths = [out_path, meta_path,
+    paths = [out_path, meta_path, _tail_path(os.path.dirname(out_path), shot_id),
              os.path.join(project_dir, "clips_av", f"{shot_id}.mp4"),
              os.path.join(project_dir, "clips_av", f"{shot_id}.json")]
     for path in paths:
@@ -124,6 +140,10 @@ MAX_SEG_FRAMES = 81          # Wan 2.2 14B: one segment is at most ~5 s at 16 fp
 MAX_SHOT_SECONDS = 120.0
 CONTINUE_SUFFIX = (". Continuing the same continuous shot without any cut, same character, "
                    "same location, same lighting")
+PREVIOUS_SHOT_SUFFIX = (
+    " The opening frame is the last moment of the previous shot. Keep this same camera setup "
+    "and continue that motion without a cut, then perform only this shot's action."
+)
 
 
 def plan_segments(duration_seconds: float, fps: int = FPS) -> tuple[list[int], int]:
@@ -275,7 +295,7 @@ class AFE_WanShotRenderer:
         if not gate_is_open(approved, auto_all):
             return closed_result("分镜视频渲染（渲染前请确认首帧）", "dr")
 
-        shots = get_shots(shot_sequence)
+        shots = link_shots(get_shots(shot_sequence))
         if not shots:
             raise ValueError("shot_sequence is empty")
         redo_map = parse_shot_numbers(redo_shots, default_value=1)
@@ -307,7 +327,9 @@ class AFE_WanShotRenderer:
             todo = todo[:max_shots]
 
         models = None
-        lines = ["🎬 Wan 2.2 渲染"]
+        joined = [s for s in shots if s.get("continues_previous")]
+        chain = "，".join(f"{s['continuity_from']}→{s.get('shot_id')}" for s in joined) or "无"
+        lines = ["🎬 Wan 2.2 渲染", f"收尾相连 {len(joined)} 处：{chain}"]
         bar = make_progress(len(todo))
         done = skipped = failed = redone = 0
         t_total = 0.0
@@ -334,14 +356,28 @@ class AFE_WanShotRenderer:
                 continue
             duration = float(shot.get("duration_seconds") or 5.0)
             n_segs = len(plan_segments(duration)[0])
+            opening_mode = "keyframe"
+            opening_path = kf_path
+            if shot.get("continues_previous"):
+                tail = _ensure_tail(clip_dir, str(shot.get("continuity_from") or ""))
+                if tail:
+                    opening_mode = "tail"
+                    opening_path = tail
+                else:
+                    lines.append(f"  ⚠️ {sid}: 上一镜还没有画面，这一镜改从自己的首帧开口")
             prompt = build_video_prompt(shot, render_style, speaking)
+            if opening_mode == "tail":
+                prompt += PREVIOUS_SHOT_SUFFIX
             if link_map.get(sid):
                 prompt += " Continuity direction: " + link_map[sid]
             salt = redo_map.get(sid, 0)
             seed_eff = seed + i + salt * 9973
             with open(kf_path, "rb") as f:
                 kf_hash = hashlib.md5(f.read()).hexdigest()
-            sig = md5(kf_hash, prompt, width, height, duration, fast_4step, anchor_identity, seed_eff)
+            with open(opening_path, "rb") as f:
+                opening_hash = hashlib.md5(f.read()).hexdigest()
+            sig = md5(kf_hash, prompt, width, height, duration, fast_4step, anchor_identity, seed_eff,
+                      opening_mode, opening_hash)
             contract_sig = md5(render_shared_facts(shot), speaking)
 
             existing = os.path.exists(out_path)
@@ -353,6 +389,7 @@ class AFE_WanShotRenderer:
                     except Exception:
                         pass
                 if old_sig == sig:
+                    _ensure_tail(clip_dir, sid)
                     skipped += 1
                     if bar: bar.update(1)
                     continue
@@ -368,18 +405,22 @@ class AFE_WanShotRenderer:
             try:
                 if models is None:
                     models = _load_wan(fast_4step)
-                frames = render_shot(models, load_png(kf_path), prompt, width, height, duration,
+                frames = render_shot(models, load_png(opening_path), prompt, width, height, duration,
                                      seed_eff, fast_4step, anchor_identity)
                 write_mp4(frames, out_path, FPS)
+                save_png(frames[-1:], _tail_path(clip_dir, sid))
                 with open(meta_path, "w", encoding="utf-8") as f:
                     json.dump({"sig": sig, "contract_sig": contract_sig, "keyframe_sig": kf_hash,
                                "prompt_sig": md5(prompt), "prompt": prompt, "render_style": render_style,
-                               "shot_id": sid, "duration": duration, "seed": seed_eff}, f,
+                               "shot_id": sid, "duration": duration, "seed": seed_eff,
+                               "opening": opening_mode, "continued_from": shot.get("continuity_from") or ""}, f,
                               ensure_ascii=False)
                 done += 1
                 dt = time.time() - t0
                 t_total += dt
-                if n_segs > 1:
+                if opening_mode == "tail":
+                    lines.append(f"  🔗 {sid}: 接上 {shot.get('continuity_from')} 的最后一秒，用时 {dt:.0f}s")
+                elif n_segs > 1:
                     lines.append(f"  🔗 {sid}: 长镜头 {duration:.0f}s = {n_segs} 段接续，用时 {dt:.0f}s")
                 logger.info("[AFE_WanShotRenderer]   %s done in %.0fs", sid, dt)
             except Exception as e:

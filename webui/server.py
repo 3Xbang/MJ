@@ -30,6 +30,7 @@ from ai_film_editor_nodes.nodes.director.screenplay_source_units import film_sho
 from ai_film_editor_nodes.nodes.director.script_full_parser_node import (
     _build_scene_map, _source_units_with_offsets, _ordered_scene_blocks,
 )
+from ai_film_editor_nodes.nodes.video.shot_continuity import link_shots
 
 logger = logging.getLogger("AFE_WebUI")
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
@@ -350,7 +351,7 @@ class Api:
             "expected_shot_count": session["target_shot_count"],
             "source_manifest": [{k: v for k, v in item.items() if k != "source_text"}
                                 for item in session["source_manifest"]],
-            "shots": session["parsed_shots"], "cast": session.get("cast", []),
+            "shots": link_shots(session["parsed_shots"]), "cast": session.get("cast", []),
         }
         _validate_analysis_payload(analysis)
         return analysis
@@ -484,8 +485,11 @@ class Api:
                 "used": st.get("used", {}),
                 "keyframes": {}, "clips": {}, "movie": None}
         if current_analysis:
+            linked = link_shots(current_analysis.get("shots", []))
             view["analysis"] = {
                 "shots": [{"id": s.get("shot_id"), "scene": s.get("scene_name"),
+                           "continuity": s.get("continuity"), "continuity_from": s.get("continuity_from"),
+                           "continuity_note": s.get("continuity_note"),
                            "scene_id": s.get("scene_id"), "section_type": s.get("section_type"),
                            "scene_occurrence_id": s.get("scene_occurrence_id"),
                            "chars": s.get("character_names", []), "dialogue": s.get("dialogue"),
@@ -499,7 +503,7 @@ class Api:
                            "lighting": s.get("lighting"), "time_of_day": s.get("time_of_day", ""),
                            "weather": s.get("weather", ""),
                            "desc": s.get("shot_description") or s.get("action") or ""}
-                          for s in current_analysis.get("shots", [])],
+                          for s in linked],
                 "cast": [{"name": c.get("name"), "role": c.get("role_type"), "gender": c.get("gender"),
                           "look": c.get("appearance_en")} for c in current_analysis.get("cast", [])],
                 "scenes": scenes, "props": props,
