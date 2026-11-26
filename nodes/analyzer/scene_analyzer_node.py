@@ -123,6 +123,20 @@ def validate_empty_scene_prompt(prompt: str, characters=(), forbidden_facts=(), 
     return ""
 
 
+def _place_only_name_list(value) -> tuple[bool, list]:
+    """Accept only an explicit empty name list.
+
+    Older saved analyses stringified ``[]`` to ``""`` while keeping
+    ``scope=place_only``. A blank value is that empty list. Any name still fails.
+    """
+    if isinstance(value, (list, tuple)):
+        names = [str(item).strip() for item in value if str(item).strip()]
+        return names == [], names
+    if isinstance(value, str) and not value.strip():
+        return True, []
+    return False, [str(value).strip()] if str(value or "").strip() else []
+
+
 def _get_shots(shot_sequence) -> list:
     if isinstance(shot_sequence, list):
         return shot_sequence
@@ -229,10 +243,10 @@ class AFE_SceneAnalyzer:
                           else env_payload.get("people"))
             env_props = (shot.get("environment_props") if "environment_props" in shot
                          else env_payload.get("props"))
+            people_ok, env_people = _place_only_name_list(env_people)
+            props_ok, env_props = _place_only_name_list(env_props)
             if env_scope == "place_only" and (
-                    not people_present or not props_present
-                    or not isinstance(env_people, list) or not isinstance(env_props, list)
-                    or env_people != [] or env_props != []):
+                    not people_present or not props_present or not people_ok or not props_ok):
                 raise ValueError(
                     f"scene {shot_id or scene_name or 'unknown'} place_only requires people and props fields as empty arrays"
                 )

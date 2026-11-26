@@ -150,8 +150,13 @@ def normalize_shot(shot: dict, index: int = 0) -> dict:
     motion, motion_source = camera_motion_for(src)
     environment = src.get("environment") if isinstance(src.get("environment"), dict) else {}
     environment = dict(environment)
+    # people/props stay lists. Stringifying [] makes the place-only check reject
+    # every shot, because an empty array is the required proof of an empty set.
     for env_key, env_value in list(environment.items()):
-        environment[env_key] = _text(env_value)
+        if env_key in {"people", "props"}:
+            environment[env_key] = _list(env_value)
+        else:
+            environment[env_key] = _text(env_value)
     for key, old in (("description", "scene_environment_en"), ("location", "location"),
                      ("time_of_day", "time_of_day"), ("weather", "weather"),
                      ("lighting", "lighting"), ("color_temperature", "color_temperature")):

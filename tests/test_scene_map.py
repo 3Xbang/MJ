@@ -1,5 +1,6 @@
 """Regression tests for script scene detection (no GPU needed).  python tests/test_scene_map.py"""
 import importlib.util
+import json
 import os
 import sys
 
@@ -300,6 +301,41 @@ def test_fact_validation_requires_contiguous_relation_and_checks_directions():
          "lighting_style": "neon", "director_notes": "dramatic"},
         source, source, "Phase 2"
     )
+
+
+def test_stringified_empty_place_only_lists_still_build_the_scene():
+    from ai_film_editor_nodes.nodes.analyzer.scene_analyzer_node import AFE_SceneAnalyzer
+    result = AFE_SceneAnalyzer.analyze_scenes(AFE_SceneAnalyzer, [{
+        "shot_id": "shot_001", "scene_name": "Thai Beach Villa Terrace",
+        "scene_id": "scene_terrace", "scene_name_en": "Thai Beach Villa Terrace",
+        "scene_environment_en": "empty wooden terrace, white walls, ocean horizon, daylight",
+        "environment": {
+            "description": "empty wooden terrace, white walls, ocean horizon, daylight",
+            "scope": "place_only", "people": "", "props": "",
+            "location": "terrace", "time_of_day": "day", "weather": "",
+            "lighting": "daylight", "color_temperature": "",
+        },
+        "character_names": ["Uncle"], "props_list": ["gold chain"],
+        "action": "the printer feeds a receipt",
+    }])
+    scenes = json.loads(result["result"][0])
+    assert scenes[0]["environment_people"] == []
+    assert scenes[0]["environment_props"] == []
+    assert "empty wooden terrace" in scenes[0]["environment_prompt_en"]
+
+
+def test_named_place_only_people_still_block_the_scene():
+    from ai_film_editor_nodes.nodes.analyzer.scene_analyzer_node import AFE_SceneAnalyzer
+    try:
+        AFE_SceneAnalyzer.analyze_scenes(AFE_SceneAnalyzer, [{
+            "shot_id": "shot_001", "scene_name": "Terrace",
+            "scene_environment_en": "empty wooden terrace",
+            "environment": {"scope": "place_only", "people": ["Uncle"], "props": []},
+        }])
+    except ValueError as exc:
+        assert "people and props" in str(exc)
+    else:
+        raise AssertionError("a named person must block place-only generation")
 
 
 def test_place_only_requires_explicit_empty_people_and_props_arrays():

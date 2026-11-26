@@ -9,6 +9,21 @@ from ai_film_editor_nodes.nodes.video.shot_prompt_contract import (
 )
 
 
+def test_place_only_environment_lists_stay_arrays():
+    shot = normalize_shot({
+        "shot_id": "shot_001",
+        "environment": {
+            "description": "empty wooden terrace, white walls, ocean horizon",
+            "scope": "place_only", "people": [], "props": [],
+            "location": "terrace",
+        },
+    })
+    assert shot["environment"]["scope"] == "place_only"
+    assert shot["environment"]["people"] == []
+    assert shot["environment"]["props"] == []
+    assert shot["environment"]["description"] == "empty wooden terrace, white walls, ocean horizon"
+
+
 def test_structured_facts_and_non_static_camera_are_preserved():
     shot = normalize_shot({
         "shot_id": "shot_001", "scene_id": "scene_warehouse", "character_names": ["Mina"],
