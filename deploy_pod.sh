@@ -13,7 +13,12 @@ set -euo pipefail
 
 COMFY=/workspace/runpod-slim/ComfyUI
 CN=$COMFY/custom_nodes
-DEFAULT_PORT="${COMFY_PORT:-8188}"
+# RunPod 模板把对外 8188 留给 comfy-auth-proxy，真正的 ComfyUI 在 COMFYUI_UPSTREAM（常见 18188）。
+# 直接占用 8188 会报 “Port 8188 is already in use”，页面也进不去。
+if [ -z "${COMFY_PORT:-}" ] && [ -n "${COMFYUI_UPSTREAM:-}" ]; then
+  COMFY_PORT="${COMFYUI_UPSTREAM##*:}"
+fi
+DEFAULT_PORT="${COMFY_PORT:-18188}"
 
 echo "=============================================="
 echo " AFE 部署开始"
@@ -188,8 +193,9 @@ sleep 3
 # 必须用绝对路径启动：部署脚本末尾 cwd 常在 custom_nodes，相对 main.py 会点到不存在的
 # /workspace/.../custom_nodes/main.py，导致进程秒退、/afe/ 永远起不来。
 cd "$COMFY"
-nohup python "$COMFY/main.py" --listen 0.0.0.0 --port "$COMFY_PORT" --enable-cors-header "*" > /tmp/comfyui.log 2>&1 &
-echo "ComfyUI 已在后台启动（cwd=$COMFY, pid=$!）"
+# 只监听本机：对外入口是 8188 上的 auth proxy，它再转到这个端口。
+nohup python "$COMFY/main.py" --listen 127.0.0.1 --port "$COMFY_PORT" --enable-cors-header "*" > /tmp/comfyui.log 2>&1 &
+echo "ComfyUI 已在后台启动（127.0.0.1:$COMFY_PORT, pid=$!）"
 
 echo ""
 echo "== 6/6 检查 AFE 注册（等待 50 秒）=="

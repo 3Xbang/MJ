@@ -22,11 +22,7 @@ cd /workspace/runpod-slim/ComfyUI/custom_nodes && { [ -d ai_film_editor_nodes/.g
 然后浏览器打开 `/afe/`，继续出片。  
 没有这句 = 部署未完成，不要开始分析剧本。
 
-可选：端口不是默认时先导出再跑：
-
-```bash
-export COMFY_PORT=8188
-```
+这台模板的对外链接是 **8188**（auth proxy），ComfyUI 本体在 **18188**。脚本会读 `COMFYUI_UPSTREAM`，不要手动改成 8188。
 
 ---
 
