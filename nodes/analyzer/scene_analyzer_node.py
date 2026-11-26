@@ -68,8 +68,13 @@ _ENV_STRUCTURAL_RELATION_VERBS = {
     "support", "overlook", "contain", "reveal", "connect", "lead",
 }
 _ENV_PREDICATE_WORDS = {
-    "is", "are", "was", "were", "has", "have", "had", "does", "do", "can", "will",
+    "is", "are", "was", "were", "has", "have", "had", "does", "do", "will",
     *_ENV_STRUCTURAL_RELATION_VERBS,
+}
+_ENV_FUNCTION_WORDS = {
+    "of", "in", "on", "with", "and", "or", "for", "to", "from", "by", "at",
+    "into", "over", "under", "near", "beside", "across", "through", "without",
+    "within", "between", "along", "around", "behind", "above", "below",
 }
 # A trailing s is usually a plural noun ("prayer beads", "steel counters"), not an
 # action. Only listed third-person verbs still count as an action in that slot.
@@ -122,7 +127,7 @@ def validate_empty_scene_prompt(prompt: str, characters=(), forbidden_facts=(), 
         # Inspect overlapping word pairs. This keeps "steel counters" and
         # "glass roofs" as noun compounds instead of mistaking their plural
         # head for a verb, while still checking the next pair in a sentence.
-        if subject in {"a", "an", "the"} or verb in _ENV_STRUCTURAL_SUBJECTS:
+        if subject in {"a", "an", "the"} or subject in _ENV_FUNCTION_WORDS or verb in _ENV_STRUCTURAL_SUBJECTS:
             continue
         # A structural noun may use an explicitly structural relation, but
         # never an unlisted action.
