@@ -75,6 +75,26 @@ def test_single_character_chinese_cast_name_is_grounded_in_source():
     parser_mod._validate_cast_against_script([{"name": "李"}], "【场景】\n李走进厨房，停下。")
 
 
+def test_placeholder_cast_name_is_not_a_character():
+    kept = parser_mod._without_placeholder_cast([
+        {"name": "小宇", "role_type": "lead"},
+        {"name": "N/A"},
+        {"name": "无"},
+        {"name": ""},
+    ])
+    assert [item["name"] for item in kept] == ["小宇"]
+    parser_mod._validate_cast_against_script(kept, "小宇站在打包台前。")
+
+
+def test_invented_cast_name_is_still_blocked():
+    try:
+        parser_mod._validate_cast_against_script([{"name": "神秘法杖"}], "小宇站在打包台前。")
+    except ValueError as exc:
+        assert "神秘法杖" in str(exc)
+    else:
+        raise AssertionError("invented cast name must still fail")
+
+
 def test_phase2_nulls_preserve_phase1_facts_in_both_prompts():
     shot = _parse(_phase1("tracking_shot", "script"), _null_phase2(),
                   "【场景一：Workshop】\nMina in a red wool coat reaches for the brass lever, anxious smile tight, left eyelid trembling, gaze toward the window, shoulders tense; hand approaches the lever, grips the brass lever, thumb rubs the brass label, she pulls the lever; under cool LEDs.")

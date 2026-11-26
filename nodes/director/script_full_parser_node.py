@@ -1137,6 +1137,21 @@ def _phase1_fact_validation_errors(shot: dict, source_fragment: str, source_bloc
     return _fact_validation_errors(shot, source_fragment, source_block_text, "Phase 1", prop_registry)
 
 
+def _without_placeholder_cast(cast_list: list) -> list:
+    """Drop model placeholders such as ``N/A`` or ``无``. They are not people."""
+    kept = []
+    for entry in cast_list or []:
+        if not isinstance(entry, dict):
+            continue
+        name = _clean_semantic(entry.get("name"))
+        if not name:
+            continue
+        cleaned = dict(entry)
+        cleaned["name"] = str(name).strip()
+        kept.append(cleaned)
+    return kept
+
+
 def _validate_cast_against_script(cast_list: list, raw_script: str) -> None:
     source = _source_tokens(raw_script)
     normalized_source = re.sub(r"\s+", "", _compact_source(raw_script)).casefold()
@@ -1842,7 +1857,7 @@ class AFE_ScriptFullParser:
         if not isinstance(phase1_data, dict):
             phase1_data = {}
 
-        cast_list    = phase1_data.get("cast", [])
+        cast_list    = _without_placeholder_cast(phase1_data.get("cast", []))
         minimal_shots = phase1_data.get("shots", [])
         # Explicit shot units are the persisted source contract. Bind each
         # returned item to its positional unit before coverage or fact checks;
