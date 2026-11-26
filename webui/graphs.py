@@ -66,11 +66,11 @@ def _max_shots(s: dict) -> int:
 
 
 def build_prompt(stage: int, project: str, settings: dict | None, project_path: str,
-                 part: str = "all", batch: dict | None = None) -> tuple[dict, dict]:
+                 part: str = "all", batch: dict | None = None, only_shot: str = "") -> tuple[dict, dict]:
     """Returns (api_prompt, labels). labels maps node id -> text shown while that node runs.
 
-    part: for step 2 only. "all" = scenes + props + characters, "cast" = characters only
-    (used by the per-character redo button, so scenes and props are never touched)."""
+    part "cast" redraws characters only. part "kf" redraws the one keyframe named
+    by only_shot. "all" runs the whole step."""
     s = merged(settings)
     g: dict[str, dict] = {}
     labels: dict[str, str] = {}
@@ -126,21 +126,23 @@ def build_prompt(stage: int, project: str, settings: dict | None, project_path: 
                 labels["5"] = "绘制道具图"
 
     elif stage == 3:
+        one = part == "kf"
         loader(); analyzers(); scene_images(); cast_refs()
         if s["make_props"]:
             g["5"] = _n("AFE_PropsImageGenerator", props_report=["3", 2], props_json=["3", 0],
                          size=1024, steps=20, seed=int(s["seed"]), approved=True, project_name=project)
         g["11"] = _n("AFE_ShotKeyframeGenerator", shot_sequence=["1", 0], cast_data=["1", 1],
                      scene_images=["4", 0], character_refs=["6", 0], project_name=project,
-                     render_style=style, max_shots=_max_shots(s), overwrite=False, resolution=1024,
+                     render_style=style, max_shots=0 if one else _max_shots(s), overwrite=False, resolution=1024,
                      seed=int(s["seed"]), variants_per_shot=int(s["kf_variants"]),
                      picks=s["kf_picks"], link_prompts=s["shot_links"], redo_shots=s["kf_redo"],
+                     only_listed=one, only_shot=only_shot if one else "",
                      scene_view_picks=s["scene_view_picks"], approved=True,
                      scene_images_medium=["4", 1], scene_images_atmosphere=["4", 2])
         if "5" in g:
             g["11"]["inputs"]["props_images"] = ["5", 0]
             g["11"]["inputs"]["props_manifest"] = ["5", 2]
-        labels["11"] = "绘制每个分镜的首帧"
+        labels["11"] = "只重画这一张首帧" if one else "绘制每个分镜的首帧"
 
     elif stage == 4:
         loader()

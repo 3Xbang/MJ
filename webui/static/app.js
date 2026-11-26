@@ -257,6 +257,7 @@ async function monitorPrompt(run, pid, stage = 1, part = 'all', restored = false
     if (stage < 5) S.open[stage + 1] = true;
     render();
     showOk(part === 'cast' ? '角色已重画完成，请在上面重新挑选'
+      : part === 'kf' ? '这一张首帧已重画，其他分镜没有动'
       : `「${STEPS[stage - 1].title}」完成` + (stage < 5 ? `，可以进行下一步 ${STEPS[stage].verb}` : '，成片已生成'));
   } else if (c.cancelled) {
     S.dock = { kind: 'ok', text: c.error }; renderDock();
@@ -265,14 +266,16 @@ async function monitorPrompt(run, pid, stage = 1, part = 'all', restored = false
   }
 }
 
-async function runStage(stage, part = 'all') {
+async function runStage(stage, part = 'all', onlyShot = '') {
   if (S.run) return;
   syncToSettings();
   S.dock = null;
   S.run = { stage, promptId: null, labels: {}, label: '正在提交…', t0: Date.now(), progress: null };
   renderDock(); render();
   const run = S.run;
-  const r = await api('/afe/api/run', { project: S.project, stage, part, client_id: S.clientId, settings: S.settings });
+  const r = await api('/afe/api/run', {
+    project: S.project, stage, part, only_shot: onlyShot, client_id: S.clientId, settings: S.settings,
+  });
   if (r.error) { S.run = null; render(); showError(r.error, r.details); return; }
   if (r.submission_pending) {
     S.run = null;
@@ -323,7 +326,7 @@ function staleList() {
   const refsChanged = k => u[k] && 'refs' in u[k] && (u[k].refs || '') !== (v.ref_sig || '');
   if (d['2'] && refsChanged('2'))
     out.push({ stage: 2, text: '你上传或更换了参考图，场景和角色需要按新的参考图重画（没变的不会重画）。' });
-  if (d['3'] && (refsChanged('3') || changedSince(['cast_picks', 'cast_redo', 'scene_view_picks', 'kf_picks', 'kf_redo', 'kf_variants', 'shot_links'], u['3'])))
+  if (d['3'] && (refsChanged('3') || changedSince(['cast_picks', 'cast_redo', 'scene_view_picks', 'kf_picks', 'kf_variants', 'shot_links'], u['3'])))
     out.push({ stage: 3, text: '你更换了参考图、角色、场景、首帧或衔接提示词。首帧需要更新（只会重画受影响的分镜）。' });
   if (d['4'] && (Number(d['3']) > Number(d['4']) || changedSince(['video_redo', 'long_takes', 'shot_links'], u['4'])))
     out.push({ stage: 4, text: '首帧、时长或衔接提示词有变化，视频需要更新（只会重新渲染受影响的分镜）。' });
@@ -583,7 +586,7 @@ function renderStep3() {
   const shots = ((a && a.shots) || []).filter(x => v.keyframes[x.id]);
   if (shots.length) {
     result = `<h3 style="margin:18px 0 0">首帧（${shots.length} 个）</h3>
-      <div class="note">每个分镜的第一帧。不满意可以点「重画」。画了多个版本的，点下面的小图切换使用哪个。</div>
+      <div class="note">每个分镜的第一帧。点「重画」只重画这一张，其他分镜不动。画了多个版本的，点下面的小图切换使用哪个。</div>
       <div class="shots">${shots.map(x => {
         const vars = (v.kf_images || []).filter(m => m.shot === x.id);
         const cur = S.sel.kf[x.id] || (vars.find(m => m.chosen) || {}).variant || 1;
@@ -680,7 +683,7 @@ document.addEventListener('click', async ev => {
     const k = el.dataset.char; S.redo.cast[k] = (S.redo.cast[k] || 0) + 1; saveSettingsSoon(); return runStage(2, 'cast');
   }
   if (act === 'redo-kf') {
-    const k = el.dataset.shot; S.redo.kf[k] = (S.redo.kf[k] || 0) + 1; saveSettingsSoon(); return runStage(3);
+    const k = el.dataset.shot; S.redo.kf[k] = (S.redo.kf[k] || 0) + 1; saveSettingsSoon(); return runStage(3, 'kf', k);
   }
   if (act === 'redo-video') {
     const k = el.dataset.shot; S.redo.video[k] = (S.redo.video[k] || 0) + 1; saveSettingsSoon(); return runStage(4);

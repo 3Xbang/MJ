@@ -44,6 +44,27 @@ from ai_film_editor_nodes.nodes.video.shot_prompt_contract import (
     build_keyframe_prompt as render_contract_keyframe, normalize_shot,
 )
 
+def indexed_keyframe_shots(all_shots, max_shots, only_listed, only_shot=""):
+    """Shots to draw, with their original index so the seed stays stable.
+
+    A per-card redo draws only the shot named for this click. Earlier redo
+    counts stay in the seed map and are not drawn again. A full step still
+    walks the test-mode prefix, or every shot when max_shots is 0.
+    """
+    indexed = [(i, shot) for i, shot in enumerate(all_shots)]
+    if only_listed:
+        target = str(only_shot or "").strip()
+        if not target:
+            raise ValueError("没有指定要重画的分镜。请在某一张首帧上点「重画」。")
+        chosen = [(i, shot) for i, shot in indexed if shot_id_of(shot, i) == target]
+        if not chosen:
+            raise ValueError("要重画的分镜不在当前剧本里：" + target)
+        return chosen
+    if max_shots and max_shots > 0:
+        return indexed[:max_shots]
+    return indexed
+
+
 KEYFRAME_NEGATIVE = (
     "ugly, deformed, blurry, bad anatomy, extra fingers, extra limbs, duplicate characters, "
     "text, watermark, logo, subtitles, low quality"
@@ -180,6 +201,10 @@ class AFE_ShotKeyframeGenerator:
                     "tooltip": "每镜一条衔接提示词。例：shot_002: 接上一镜的手部特写，镜头继续缓慢推近"}),
                 "redo_shots": ("STRING", {"default": "",
                                           "tooltip": "不满意要重画的分镜。例：shot_007, 12:2  （再次重画把冒号后的数字加 1）"}),
+                "only_listed": ("BOOLEAN", {"default": False,
+                                            "tooltip": "True = draw only the shot named in only_shot"}),
+                "only_shot": ("STRING", {"default": "",
+                                         "tooltip": "The one shot id to redraw when only_listed is on"}),
                 "scene_view_picks": ("STRING", {"default": "",
                                                 "tooltip": "每个场景用哪张场景图当地点参考。例：1:2, 2:3  （场景号:视角，1全景 2中景 3氛围）"}),
                 "approved": gate_input("生成分镜首帧"),
@@ -204,14 +229,15 @@ class AFE_ShotKeyframeGenerator:
                  render_style, max_shots=0, overwrite=False, resolution=1024, seed=42,
                  variants_per_shot=1, picks="", link_prompts="", redo_shots="", scene_view_picks="", approved=False,
                  scene_images_medium=None, scene_images_atmosphere=None, props_images=None,
-                 props_manifest="", auto_all=False):
+                 props_manifest="", auto_all=False, only_listed=False, only_shot=""):
         if not gate_is_open(approved, auto_all):
             return closed_result("分镜首帧（生成前请确认场景图和角色参考图）", "ddrd")
 
         all_shots = get_shots(shot_sequence)
         if not all_shots:
             raise ValueError("shot_sequence is empty")
-        shots = all_shots[:max_shots] if max_shots and max_shots > 0 else all_shots
+        redo_map = parse_shot_numbers(redo_shots, default_value=1)
+        indexed = indexed_keyframe_shots(all_shots, max_shots, only_listed, only_shot)
 
         names = cast_names(cast_data)
         ref_by_name = {n: character_refs[i:i + 1] for i, n in enumerate(names) if i < character_refs.shape[0]}
@@ -219,7 +245,6 @@ class AFE_ShotKeyframeGenerator:
         views = [scene_images, scene_images_medium, scene_images_atmosphere]
         view_picks = parse_scene_view_picks(scene_view_picks)
         pick_map = parse_shot_numbers(picks, default_value=1)
-        redo_map = parse_shot_numbers(redo_shots, default_value=1)
         link_map = parse_link_prompts(link_prompts)
         K = clamp(int(variants_per_shot), 1, 4)
 
@@ -263,10 +288,10 @@ class AFE_ShotKeyframeGenerator:
         chosen_frames, preview, lines = [], [], ["🖼 首帧（选用的版本带 * 号）"]
         manifest = []
         blocked_shots = []
-        bar = make_progress(len(shots) * K)
+        bar = make_progress(len(indexed) * K)
         made = reused = failed = 0
 
-        for i, shot in enumerate(shots):
+        for n, (i, shot) in enumerate(indexed, start=1):
             sid = shot_id_of(shot, i)
             requested_chars = list(dict.fromkeys(shot.get("character_names") or []))
             if shot.get("scene_assignment_error"):
@@ -316,7 +341,7 @@ class AFE_ShotKeyframeGenerator:
                         model, clip, vae = _load_models()
                         cached = call(get_node("QwenImage21Cache"), model=model, device="auto", dtype="default")[0]
                     logger.info("[AFE_ShotKeyframeGenerator] %d/%d %s v%d chars=%s scene_view=%s",
-                                i + 1, len(shots), sid, k, in_shot, VIEW_LABEL[vidx])
+                                n, len(indexed), sid, k, in_shot, VIEW_LABEL[vidx])
                     try:
                         img = _generate_frame(cached, clip, vae, images, prompt, KEYFRAME_NEGATIVE,
                                               seed_k, resolution)
@@ -353,7 +378,8 @@ class AFE_ShotKeyframeGenerator:
                 note = f"  {sid}：选用 v{use + 1}/{K}，地点图={VIEW_LABEL[vidx]}" + (f"，第{salt}次重画" if salt else "")
                 lines.append(note)
 
-        lines.insert(1, f"新画 {made} / 复用 {reused} / 失败 {failed} / 共 {len(shots)} 个分镜")
+        scope = "指定分镜" if only_listed else "分镜"
+        lines.insert(1, f"新画 {made} / 复用 {reused} / 失败 {failed} / 共 {len(indexed)} 个{scope}")
         lines.append(f"目录：{kf_dir}")
         lines.append("挑选：在 picks 写「分镜号:版本号」；不满意：在 redo_shots 写分镜号；改完再点 Queue。")
         report = "\n".join(lines)

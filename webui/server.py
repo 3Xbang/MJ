@@ -205,6 +205,25 @@ def _validate_analysis_payload(analysis: dict) -> None:
         )
 
 
+def stage_part(stage: int, requested) -> str:
+    """Keep a single-card redo from being widened into a full step."""
+    requested = requested if requested in {"cast", "kf"} else "all"
+    if requested == "cast" and stage != 2:
+        return "all"
+    if requested == "kf" and stage != 3:
+        return "all"
+    return requested
+
+
+def merge_kf_manifest(old, new) -> list:
+    """A one-card redo replaces only that shot's entries and keeps the rest."""
+    by = {}
+    for item in list(old or []) + list(new or []):
+        if isinstance(item, dict):
+            by[(item.get("shot"), item.get("variant"))] = item
+    return list(by.values())
+
+
 def extract_results(stage: int, outputs: dict, part: str = "all") -> dict:
     """outputs = history[prompt_id]["outputs"]  ->  dict of what the UI should remember."""
     res: dict = {}
@@ -792,8 +811,11 @@ class Api:
                                                                                                st.get("scenes", []), st.get("props", []))}
         self.save_state(pp, st)
 
-        part = "cast" if body.get("part") == "cast" and stage == 2 else "all"
-        prompt, labels = graphs.build_prompt(stage, project, s, pp, part, batch=batch)
+        part = stage_part(stage, body.get("part"))
+        only_shot = str(body.get("only_shot") or "").strip() if part == "kf" else ""
+        if part == "kf" and not only_shot:
+            return web.json_response({"error": "没有指定要重画的分镜。请在某一张首帧上点「重画」。"}, status=400)
+        prompt, labels = graphs.build_prompt(stage, project, s, pp, part, batch=batch, only_shot=only_shot)
         classes = self._node_classes() if callable(self._node_classes) else self._node_classes
         if classes:
             problems = graphs.validate_prompt(prompt, classes)
@@ -843,7 +865,7 @@ class Api:
     async def collect(self, request):
         body = await request.json()
         stage = int(body["stage"])
-        part = "cast" if body.get("part") == "cast" and stage == 2 else "all"
+        part = stage_part(stage, body.get("part"))
         project = safe_project_name(body.get("project", "afe_project"))
         pp = self.project_path(project)
         pid = body["prompt_id"]
@@ -964,7 +986,7 @@ class Api:
 
         st = self.state(pp)
         st.setdefault("done", {})[str(stage)] = int(time.time())
-        if part != "cast":
+        if part not in {"cast", "kf"}:
             st.setdefault("used", {})[str(stage)] = (st.get("run_settings") or {}).get(str(stage), {})
         if stage == 1:
             write_json(os.path.join(pp, "analysis.json"), res["analysis"])
@@ -977,7 +999,10 @@ class Api:
                 st["assets"] = {"scene_files": res["scene_files"], "props_files": res["props_files"]}
             st["cast_manifest"] = res["cast_manifest"]
         elif stage == 3:
-            st["kf_manifest"] = res["kf_manifest"]
+            fresh = res["kf_manifest"]
+            if part == "kf":
+                fresh = merge_kf_manifest(st.get("kf_manifest") or [], fresh)
+            st["kf_manifest"] = fresh
             st.setdefault("reports", {})["keyframes"] = res["report"]
         elif stage == 4:
             st.setdefault("reports", {})["video"] = res["report"]
