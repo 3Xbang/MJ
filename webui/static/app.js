@@ -21,7 +21,7 @@ const S = {
   settings: {},
   sel: { cast: {}, scene: {}, kf: {} },
   redo: { cast: {}, kf: {}, video: {} },
-  long: {}, links: {}, notes: {}, genders: {}, skip: new Set(),
+  long: {}, links: {}, notes: {}, castNotes: {}, genders: {}, skip: new Set(),
   open: {}, tab: 'shots',
   run: null, dock: null,
   clientId: 'afe-' + Math.random().toString(36).slice(2),
@@ -76,6 +76,15 @@ function parseLinkText(text) {
 }
 const composeLinks = obj => Object.entries(obj).filter(([, v]) => String(v || '').trim())
   .map(([k, v]) => `${k}: ${String(v).replace(/\s+/g, ' ').trim()}`).join('\n');
+function parseCastNotes(text) {
+  const out = {};
+  String(text || '').split(/\n+/).forEach(line => {
+    const m = line.trim().match(/^(.+?)\s*[:=：]\s*(.+)$/);
+    if (!m) return;
+    out[m[1].trim()] = m[2].trim();
+  });
+  return out;
+}
 
 function syncFromSettings() {
   const s = S.settings;
@@ -88,6 +97,7 @@ function syncFromSettings() {
   S.long = parsePairs(s.long_takes);
   S.links = parseLinkText(s.shot_links);
   S.notes = parseLinkText(s.kf_notes);
+  S.castNotes = parseCastNotes(s.cast_notes);
   S.skip = new Set(String(s.skip_shots || '').split(/[,;，；\s]+/).filter(Boolean));
   S.genders = parseGenders(s.cast_genders);
 }
@@ -102,6 +112,7 @@ function syncToSettings() {
   s.long_takes = composePairs(S.long);
   s.shot_links = composeLinks(S.links);
   s.kf_notes = composeLinks(S.notes);
+  s.cast_notes = composeLinks(S.castNotes);
   s.skip_shots = [...S.skip].join(', ');
   s.cast_genders = Object.entries(S.genders).filter(([, v]) => v === 'female' || v === 'male')
     .map(([k, v]) => `${k}:${v}`).join(', ');
@@ -548,14 +559,14 @@ function renderStep2() {
     const cast = (a.cast || []).map((c, j) => {
       const imgs = (v.cast_images || []).filter(x => x.char === j + 1);
       const cur = S.sel.cast[j + 1] || (imgs.find(x => x.chosen) || {}).variant || 1;
-      return `<div class="group"><h3>角色：${esc(c.name)} ${genderSelect(c.name, c.gender)} <button class="small" data-act="redo-cast" data-char="${j + 1}" ${S.run ? 'disabled' : ''}>🔄 不满意，重画这个角色</button></h3>
+      return `<div class="group"><h3>角色：${esc(c.name)} ${genderSelect(c.name, c.gender)} <label class="cast-note">修改意见<textarea data-cast-note="${esc(c.name)}" rows="2" placeholder="例如：成年女人，黑发扎在脑后，浅米色开衫，卡其百褶裙">${esc(S.castNotes[c.name] || '')}</textarea></label> <button class="small" data-act="redo-cast" data-char="${j + 1}" ${S.run ? 'disabled' : ''}>🔄 不满意，重画这个角色</button></h3>
         <div class="gallery">${imgs.map(x => `<label class="pick ${cur === x.variant ? 'on' : ''}"><input type="radio" name="cast${j}" data-sel="cast" data-id="${j + 1}" data-val="${x.variant}" ${cur === x.variant ? 'checked' : ''}>
           <img src="${esc(x.url)}" loading="lazy"><div class="cap">${x.source === 'upload' ? '你的原图' : '版本 ' + x.variant}</div></label>`).join('')}</div></div>`;
     }).join('');
     const props = (as.props_images || []).length ? `<div class="group"><h3>道具白底图</h3><div class="gallery">${as.props_images.map(p =>
       `<div class="pick"><img src="${esc(p.url)}" loading="lazy" style="max-height:130px"><div class="cap">${esc(p.name)}</div></div>`).join('')}</div></div>` : '';
     result = `<h3 style="margin:18px 0 0">请挑选</h3>
-      <div class="note">点图片即可选用。选好后直接进入第 ③ 步；以后如果更换了选择，第 ③ 步会自动只重画受影响的分镜。</div>
+      <div class="note">点图片即可选用。角色画错了，在「不满意」旁边写下修改意见再点重画：这句话会换掉分析写错的外貌，只重画这一个角色。选好后直接进入第 ③ 步；以后如果更换了选择，第 ③ 步会自动只重画受影响的分镜。</div>
       ${scenes}${cast}${props}`;
   }
   return card(2, '素材：场景、角色、道具', `
@@ -720,6 +731,12 @@ document.addEventListener('click', async ev => {
     return showOk(`已移除「${name}」的参考图。点「现在更新」让它生效。`);
   }
   if (act === 'redo-cast') {
+    const box = el.closest('.group')?.querySelector('[data-cast-note]');
+    if (box) {
+      const name = box.dataset.castNote;
+      const v = box.value.trim();
+      if (v) S.castNotes[name] = v; else delete S.castNotes[name];
+    }
     const k = el.dataset.char; S.redo.cast[k] = (S.redo.cast[k] || 0) + 1; saveSettingsSoon(); return runStage(2, 'cast');
   }
   if (act === 'redo-kf') {
@@ -782,6 +799,12 @@ document.addEventListener('input', ev => {
   if (el.dataset.kfNote) {
     const v = el.value.trim();
     if (v) S.notes[el.dataset.kfNote] = v; else delete S.notes[el.dataset.kfNote];
+    syncToSettings();
+    saveSettingsSoon();
+  }
+  if (el.dataset.castNote) {
+    const v = el.value.trim();
+    if (v) S.castNotes[el.dataset.castNote] = v; else delete S.castNotes[el.dataset.castNote];
     syncToSettings();
     saveSettingsSoon();
   }

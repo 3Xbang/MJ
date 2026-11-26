@@ -68,6 +68,34 @@ def apply_gender_choice(member: dict, choices: dict[str, str]) -> dict:
     return updated
 
 
+def parse_cast_notes(text: str) -> dict[str, str]:
+    """One correction per line: '小舟: 成年女人，黑发，米色开衫，卡其百褶裙'."""
+    import re
+    out = {}
+    for line in re.split(r"\n+", text or ""):
+        line = line.strip()
+        if not line:
+            continue
+        match = re.match(r"^(.+?)\s*[:=：]\s*(.+)$", line)
+        if not match:
+            continue
+        name = match.group(1).strip()
+        note = " ".join(match.group(2).split())
+        if name and note:
+            out[name] = note
+    return out
+
+
+def apply_revision_note(member: dict, notes: dict[str, str]) -> dict:
+    """A written correction replaces the analyzed look for this redraw."""
+    note = notes.get(str(member.get("name") or "").strip())
+    if not note:
+        return member
+    updated = dict(member)
+    updated["revision_note"] = note
+    return updated
+
+
 def gender_clause(member: dict) -> str:
     raw = str(member.get("gender") or "").strip().lower()
     kind = _GENDER_WORDS.get(raw) or _GENDER_WORDS.get(raw.split()[0].strip(",，") if raw else "")
@@ -87,18 +115,26 @@ def gender_negative(member: dict) -> str:
     return ""
 
 
+def _revision_clause(note: str) -> str:
+    return (
+        "Follow this correction exactly, and ignore any earlier description that conflicts with it: "
+        + note
+    )
+
+
 def build_cast_prompt(member: dict, render_style: str) -> str:
     appearance = (member.get("appearance_en") or "").strip()
     costume = (member.get("default_costume_en") or "").strip()
     age = (member.get("age_range") or "").strip()
+    note = (member.get("revision_note") or "").strip()
     parts = [
         "Character design reference, ONE single character, full body from head to feet, "
         "front view, standing relaxed with arms at sides, plain solid white background, "
         "even studio lighting, no props, no other objects",
         gender_clause(member),
         f"age {age}" if age else "",
-        appearance,
-        f"wearing {costume}" if costume else "",
+        _revision_clause(note) if note else appearance,
+        "" if note else (f"wearing {costume}" if costume else ""),
         render_style,
     ]
     return ". ".join(p for p in parts if p)
@@ -108,7 +144,9 @@ def build_cast_edit_prompt(member: dict, render_style: str) -> str:
     """Edit an uploaded reference without changing the chosen gender."""
     appearance = (member.get("appearance_en") or "").strip()
     costume = (member.get("default_costume_en") or "").strip()
-    look = ", ".join(x for x in [appearance, f"wearing {costume}" if costume else ""] if x)
+    note = (member.get("revision_note") or "").strip()
+    look = _revision_clause(note) if note else ", ".join(
+        x for x in [appearance, f"wearing {costume}" if costume else ""] if x)
     identity = gender_clause(member)
     forbid = gender_negative(member)
     bits = [identity, look, "White background", render_style]
@@ -146,6 +184,8 @@ class AFE_CastRefGenerator:
                                                "tooltip": "不满意要重画的角色。例：2, Bo:2  （再次重画把冒号后的数字加 1）"}),
                 "genders": ("STRING", {"default": "",
                                        "tooltip": "每个角色的性别。例：小舟:female, 小宇:male。页面上的选择优先于分析里写的性别"}),
+                "revision_notes": ("STRING", {"default": "", "multiline": True,
+                                              "tooltip": "每个角色一条修改意见。例：小舟: 成年女人，黑发，米色开衫，卡其百褶裙。这句话替换分析写错的外貌"}),
                 "project_name": ("STRING", {"default": "afe_project"}),
                 "approved": gate_input("生成角色参考图"),
                 "auto_all": auto_all_input(),
@@ -160,7 +200,7 @@ class AFE_CastRefGenerator:
 
     def generate(self, cast_data, render_style, width=768, height=1152, steps=8, seed=42,
                  candidates_per_character=3, picks="", redo_characters="", genders="",
-                 project_name="afe_project", approved=False, auto_all=False):
+                 project_name="afe_project", approved=False, auto_all=False, revision_notes=""):
         if not gate_is_open(approved, auto_all):
             return closed_result("角色参考图（生成前请确认剧本解析里的角色外貌描述是否正确）", "drd")
 
@@ -172,6 +212,7 @@ class AFE_CastRefGenerator:
                     "result": (empty, report, empty)}
         names = [c["name"] for c in cast]
         gender_choices = parse_gender_choices(genders)
+        note_map = parse_cast_notes(revision_notes)
         K = clamp(int(candidates_per_character), 1, 6)
         pick_map = parse_index_numbers(picks, names, default_value=1)
         redo_map = parse_index_numbers(redo_characters, names, default_value=1)
@@ -185,7 +226,7 @@ class AFE_CastRefGenerator:
         made = reused = 0
 
         for ci, member in enumerate(cast):
-            member = apply_gender_choice(member, gender_choices)
+            member = apply_revision_note(apply_gender_choice(member, gender_choices), note_map)
             prompt = build_cast_prompt(member, render_style)
             mine = user_refs.load_user_ref(project_name, "cast", member["name"])
             mine_sig = tensor_sig(mine) if mine is not None else ""

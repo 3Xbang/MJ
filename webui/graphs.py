@@ -29,6 +29,7 @@ DEFAULTS = {
     "cast_candidates": 3,
     "cast_picks": "",
     "cast_genders": "",
+    "cast_notes": "",
     "cast_redo": "",
     "scene_view_picks": "",
     # step 3
@@ -99,6 +100,7 @@ def build_prompt(stage: int, project: str, settings: dict | None, project_path: 
                     height=1152, steps=8, seed=int(s["seed"]),
                     candidates_per_character=int(s["cast_candidates"]), picks=s["cast_picks"],
                     redo_characters=s["cast_redo"], genders=s.get("cast_genders", ""),
+                    revision_notes=s.get("cast_notes", ""),
                     project_name=project, approved=True)
         labels["6"] = "绘制角色参考图"
 
