@@ -63,13 +63,17 @@ def test_missing_route_table_reports_clear_diagnostic():
         PromptServerWithoutInstance.routes = original_routes
 
 
-def test_package_import_reports_registration_failure():
+def test_package_import_reports_registration_skipped_outside_comfyui():
+    # Importing the package stand-alone (no real ComfyUI `server` module on
+    # sys.path, as happens here and in the CPU-only test/deploy scripts) is
+    # expected and must not be reported as a registration failure.
     result = subprocess.run(
         [sys.executable, "-c", "import ai_film_editor_nodes"],
         cwd=os.path.dirname(ROOT), capture_output=True, text=True,
     )
     assert result.returncode == 0
-    assert "[AFE] web UI registration FAILED:" in result.stdout
+    assert "[AFE] web UI registration skipped" in result.stdout
+    assert "[AFE] web UI registration FAILED:" not in result.stdout
 
 
 async def _check_discoverable_routes():
@@ -98,7 +102,7 @@ def test_static_and_api_routes_are_discoverable():
 if __name__ == "__main__":
     for test in (test_no_instance_route_table_registers_and_is_idempotent,
                  test_missing_route_table_reports_clear_diagnostic,
-                 test_package_import_reports_registration_failure,
+                 test_package_import_reports_registration_skipped_outside_comfyui,
                  test_static_and_api_routes_are_discoverable):
         test()
     print("webui registration tests passed")

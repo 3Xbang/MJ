@@ -1,59 +1,86 @@
-# Review: deploy_pod.sh robustness fixes (77dd917..HEAD, commit 743b916)
+# Review: deploy_pod.sh divergent-branches fix
 
-## Scope
-Only `deploy_pod.sh` changed (26 insertions, 2 deletions, confirmed via `git diff --stat`). No unrelated files touched.
+## Change reviewed
+Commit `c7a6901` on `main` (1 commit ahead of `origin/main` = `d46bc0d`):
+"fix: make deploy_pod.sh ComfyUI core pull immune to divergent-branch config".
+Diff: `deploy_pod.sh` only, +27/-6, two hunks (step 1/6, step 2/6).
 
-## Bug 1 — ComfyUI core `git pull` tracking + `&&`-chain quirk
+## Requirement-by-requirement check
 
-Old: `cd "$COMFY" && git pull && pip install -r requirements.txt -q`
-New:
-```
-cd "$COMFY"
-COMFY_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
-git pull origin "$COMFY_BRANCH"
-pip install -r requirements.txt -q
-```
+**Step 1/6 — deterministic regardless of divergence/config, no prompt, no
+reliance on pull.rebase/pull.ff**
+The plain `git pull origin "$COMFY_BRANCH"` is replaced with
+`git fetch origin "$COMFY_BRANCH"` + `git reset --hard "origin/$COMFY_BRANCH"`.
+I reproduced the exact reported failure and the fix in an isolated git
+environment (`GIT_CONFIG_NOSYSTEM=1`, scratch `HOME`, no `pull.rebase`/
+`pull.ff` set anywhere), using two clones pushed to diverge:
+- `git pull origin master` → `fatal: Need to specify how to reconcile
+  divergent branches.`, exit 128 — matches the user's report verbatim.
+- `git fetch origin master` (exit 0) + `git reset --hard origin/master`
+  (exit 0) on the same diverged checkout → HEAD lands exactly on the
+  remote tip, no prompt, no config read. Confirms the fix is deterministic
+  and config-independent.
 
-- `git pull origin "$COMFY_BRANCH"` pulls by explicit remote/branch, which works on a checkout with no upstream tracking configured (this is exactly the required fix: option "pull from an explicit remote/branch").
-- Each line is now its own statement rather than an `&&` chain, so a real failure in any of `cd`, the `git rev-parse` command substitution, `git pull`, or `pip install` now triggers `set -e` and aborts the script immediately with git's/pip's native error output. I independently reproduced the underlying bash semantics the coder cited:
-  - `set -e; false && echo mid && echo after; echo continued` → prints `continued` (confirms the original quirk: a non-final command's failure inside an `&&` chain does not trigger errexit).
-  - `set -e; (false && echo mid); echo after` → aborts before printing `after` (confirms that wrapping a chain in a subshell used as a standalone statement does propagate failure to the outer `set -e`).
-  - `set -e; v=$(false); echo "after v=$v"` → aborts (confirms a failing command substitution assigned to a variable also triggers `set -e`), which matters for `COMFY_BRANCH="$(git rev-parse --abbrev-ref HEAD)"`.
-  This matches the commit message's claims about bash's `&&`-chain errexit behavior.
-- Audit of other `&&` chains in the file (as required by the task): `(cd ai_film_editor_nodes && git pull origin main)` (line 36), `(cd comfyui_LLM_party && pip install -r requirements.txt -q)` (line 74), `(cd ComfyUI-KJNodes && pip install -r requirements.txt -q)` (line 77) are each wrapped in a subshell used as a standalone statement, so per the test above their failures do propagate to `set -e` — no silent-skip risk there, and no fix was needed. The remaining `&&` usages (line 6 usage comment; lines 147/150 `if [ ... ] && [ ... ]` conditions) are either non-executed documentation or genuine boolean conditions inside an `if`, not a sequential-command chain, so they are not instances of this bug. The coder's audit conclusion is correct.
-- Idempotency: re-running `git pull origin "$COMFY_BRANCH"` on an already-up-to-date repo is a no-op, same as before. No behavior change for the already-tracked case.
+**`pip install -r requirements.txt -q` still runs, not silently skipped**
+Diff shows it stays as its own bash statement after `git reset --hard`
+(not `&&`-chained), identical in form to the 743b916 fix for the
+pre-743b916 regression. Re-verified the chain is still three separate
+statements, not reassembled into an `&&` chain that would resurrect the
+`set -e`-swallowing bug.
 
-No gap found in Bug 1's fix.
+**Aborts with a clear message on a real unrecoverable failure**
+`git fetch`/`git reset`/`pip install` remain separate top-level statements
+under `set -euo pipefail`; a real failure (e.g. network-unreachable fetch)
+prints git's native fatal error to stderr and `set -e` aborts the script
+immediately, before step 2+. No change to this error-propagation structure
+from 743b916, and the new commands don't introduce any `|| true` or similar
+swallow.
 
-## Bug 2 — hard `node` dependency
+**Step 2/6 audit and reasoning**
+Commit message correctly identifies `(cd ai_film_editor_nodes && git pull
+origin main)` as vulnerable to the identical divergent-branches failure, and
+explicitly reasons about the exact risk the task called out: this repo's
+checkout contains `deploy_pod.sh` itself, being read by bash while it runs,
+so a `git reset --hard` here could discard a Pod's local hand-edits to the
+running script (and risk rewriting it out from under the interpreter).
+Based on that reasoning it chose `git pull --ff-only origin main` instead of
+copying the step 1/6 fetch+reset fix verbatim. I verified this variant
+empirically in the same isolated environment:
+- On a clone that only diverged (local commit + remote commit from a common
+  base): `git pull --ff-only origin master` → `fatal: Not possible to
+  fast-forward, aborting.`, exit 128, **and the local file content is left
+  untouched** — confirms no config dependency, no prompt, and no discarding
+  of local edits.
+- On a clone that is only behind (no local commits): `git pull --ff-only
+  origin master` → fast-forwards and succeeds, exit 0 — confirms the common
+  up-to-date/behind case is unaffected.
+This is a sound, deterministic fix for the same symptom that correctly
+avoids the hazard the task asked the reasoning to consider, and the
+reasoning is stated in the commit message either way as required.
 
-Old: `node --check webui/static/app.js` (mandatory, no fallback).
-New:
-```
-if ! command -v node >/dev/null 2>&1; then
-  echo "⚠️  未检测到 Node.js，尝试通过 apt 自动安装以检查 webui/static/app.js..."
-  apt-get update -y >/dev/null 2>&1 || true
-  apt-get install -y nodejs >/dev/null 2>&1 || true
-fi
-if command -v node >/dev/null 2>&1; then
-  node --check webui/static/app.js
-else
-  echo "⚠️  Node.js 不可用，已跳过 webui/static/app.js 语法检查（其余 CPU/图/UI 检查仍然执行，任一失败都会停止部署）。"
-fi
-```
-- When `node` is present, behavior is unchanged: the check still runs as its own statement and still aborts deployment on a real syntax error (via `set -e`, since it's not inside an `&&` chain).
-- When `node` is missing, it auto-installs via `apt-get install -y nodejs` and then still runs the real check if the install succeeded — this keeps the check's value intact in the common case (RunPod base images are Debian/Ubuntu-based and run as root, so unauthenticated `apt-get install` works, consistent with the failure log in the task showing a root shell).
-- If install isn't possible (e.g. no apt, no network), the script prints a clearly visible `⚠️` warning and continues, rather than silently skipping or hard-failing. This satisfies "must never silently skip the check without at least a visible warning."
-- All other checks (`compileall`, the `tests/*.py` suite, `check_graphs.py`, `ui_e2e.py`) are untouched, still individual statements, and still abort on failure — the "any check failure stops deployment" guarantee for other checks is preserved.
-- Idempotency: `apt-get install -y nodejs` is a no-op if nodejs is already installed; re-running the script doesn't change state when node is already present.
+## Other checks
+- `bash -n deploy_pod.sh` (git-bash) → exit 0, confirms no syntax error
+  introduced.
+- Commit message states `bash -n` was run and records running DEPLOY.md's
+  documented CPU-only suite (compileall, all `test_*.py`, `check_graphs.py`,
+  `ui_e2e.py`) with per-file results; I did not re-run this suite per
+  instructions, only confirmed the listed commands match what DEPLOY.md
+  documents at lines 188-211.
+- Commit message states a dry-run trace for step 1/6 covering both the
+  up-to-date and diverged cases — present and, per the empirical check
+  above, accurate.
+- `git diff -- deploy_pod.sh` (working tree vs. HEAD) shows an unrelated,
+  unstaged `ui_e2e.py`/playwright-fallback hunk still present uncommitted,
+  exactly as the commit message discloses ("I did not author and is out of
+  this fix's scope... intentionally left as an uncommitted, unstaged
+  change"). Confirms the commit cleanly contains only the two hunks it
+  claims and nothing more; no unrequested behavior was added.
+- No other files were touched by this commit (`git show HEAD --stat` shows
+  only `deploy_pod.sh`).
 
-No gap found in Bug 2's fix.
-
-## Verification evidence
-- `bash -n deploy_pod.sh` (re-checked independently via Git-for-Windows bash as a narrow spot-check): exit 0, no syntax errors — consistent with the commit message's claim.
-- Commit message records the documented CPU-only regression suite (`compileall`, `test_analysis_session.py` ... `ui_e2e.py`) run to completion with exit 0; this matches the suite documented in `DEPLOY.md` under "本地 CPU 检查". Per review instructions this recorded evidence is accepted rather than re-run.
-- Dry-run reasoning for both fixed paths (tracking-less ComfyUI repo; missing-node Pod) is stated in the commit message and is sound: pulling by explicit branch bypasses the tracking-info requirement, and the node-missing branch degrades to a visible warning without aborting. Both are consistent with actual code behavior verified above.
-- Honest limitation disclosed: no real RunPod Pod available for full end-to-end verification; this is a reasonable, disclosed constraint given no Pod is accessible from this environment, and does not block approval since the reasoning and static checks are sound and sufficient to establish the fixes work.
-
-## Conclusion
-Both bugs are fixed as specified, scoped strictly to the two reported issues, the `&&`-chain audit elsewhere in the script is correct, and the idempotency / fail-stops-deployment guarantees for unrelated checks are preserved. No blockers found.
+## Verdict
+No blockers found. The fix satisfies every stated requirement: deterministic
+regardless of divergence/config, no interactive prompt, pip install still
+runs, real failures still abort with a native git/pip error message, and the
+step 2/6 audit is both performed and reasoned correctly, including the
+specific self-modifying-script hazard the task asked it to consider.

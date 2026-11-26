@@ -318,7 +318,15 @@ try:
     _afe_webui.register()
     print("[AFE] web UI registered at /afe/", flush=True)
 except Exception as _afe_err:  # the UI must never stop the nodes from loading
-    print(f"[AFE] web UI registration FAILED: {type(_afe_err).__name__}: {_afe_err}", flush=True)
+    if isinstance(_afe_err, ModuleNotFoundError) and _afe_err.name == "server":
+        # ComfyUI's own `server` module is only importable when this package is
+        # loaded by ComfyUI's main.py; importing `ai_film_editor_nodes` on its
+        # own (e.g. the CPU-only test/deploy scripts) can never find it. That is
+        # expected and not a real registration failure, so don't print it as one.
+        print("[AFE] web UI registration skipped (no ComfyUI `server` module on sys.path; "
+              "expected when importing this package outside a running ComfyUI, e.g. in tests)", flush=True)
+    else:
+        print(f"[AFE] web UI registration FAILED: {type(_afe_err).__name__}: {_afe_err}", flush=True)
 
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]
 

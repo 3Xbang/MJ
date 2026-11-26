@@ -245,6 +245,8 @@ def friendly_error(message: str, node_type: str = "") -> str:
     low = m.lower()
     if "out of memory" in low or "oom" in low:
         return "显存不足。请把「视频分辨率」调低一档，或等其他任务结束后重试。"
+    if "requires 'accelerate'" in low or ("accelerate" in low and "pip install" in low):
+        return "缺少依赖 accelerate，剧本模型无法加载。请在 RunPod 终端执行：pip install accelerate，然后点击「重试此批」。"
     if "not found" in low and "node" in low:
         return "缺少节点或模型文件。请在 RunPod 终端重新运行部署命令，然后刷新页面。"
     if "no such file" in low or "value_not_in_list" in low:

@@ -1443,6 +1443,14 @@ class AFE_ScriptFullParser:
             return
         logger.info(f"[AFE_ScriptFullParser] Loading model from: {model_path}")
         logger.info("[AFE_ScriptFullParser] First load may take several minutes...")
+        try:
+            import accelerate  # noqa: F401
+        except ImportError as exc:
+            raise ImportError(
+                "缺少依赖 accelerate，无法加载剧本解析模型。"
+                "请在 RunPod 终端执行：pip install accelerate"
+                "，然后回到页面点击「重试此批」。"
+            ) from exc
         import torch
         from transformers import AutoModelForCausalLM, AutoTokenizer
         cls._tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)

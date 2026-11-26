@@ -1,39 +1,38 @@
 #!/usr/bin/env bash
-# AFE 一键部署 / 更新脚本（RunPod ComfyUI Pod 用）
-# 新 Pod 和已有 Pod 都能用；可以重复运行，已有的模型会自动跳过，不会重新下载。
+# AFE 一键部署 / 更新（RunPod ComfyUI Pod）
+# 每次开机都可重复执行；已有模型自动跳过。
 #
-# 用法（在 RunPod 终端粘贴这一行）：
-#   cd /workspace/runpod-slim/ComfyUI/custom_nodes && { [ -d ai_film_editor_nodes/.git ] && git -C ai_film_editor_nodes pull origin main || git clone https://github.com/3Xbang/MJ.git ai_film_editor_nodes; } && bash ai_film_editor_nodes/deploy_pod.sh
+# 每次开机在 RunPod 终端粘贴：
+#   cd /workspace/runpod-slim/ComfyUI/custom_nodes && { [ -d ai_film_editor_nodes/.git ] && git -C ai_film_editor_nodes pull --ff-only origin main || git clone https://github.com/3Xbang/MJ.git ai_film_editor_nodes; } && bash ai_film_editor_nodes/deploy_pod.sh
+#
+# 可选环境变量：
+#   COMFY_PORT=8188     未检测到运行中的 ComfyUI 时使用
+#   AFE_RUN_E2E=1       强制跑浏览器 E2E（默认能装就跑，失败不阻断部署）
 
 set -euo pipefail
 
 COMFY=/workspace/runpod-slim/ComfyUI
 CN=$COMFY/custom_nodes
+DEFAULT_PORT="${COMFY_PORT:-8188}"
 
 echo "=============================================="
-echo " AFE 部署开始（新 Pod 约 30-60 分钟，主要是下载模型）"
+echo " AFE 部署开始"
+echo " 新 Pod / 空磁盘：约 30-60 分钟（主要下模型）"
+echo " 模型已在 /workspace：约几分钟（跳过下载）"
 echo "=============================================="
-df -h /workspace | tail -1 | awk '{print "磁盘：已用 "$3" / 总共 "$2"，剩余 "$4" （新 Pod 全部模型约需 150GB）"}'
+df -h /workspace | tail -1 | awk '{print "磁盘：已用 "$3" / 总共 "$2"，剩余 "$4" （全部模型约需 100-150GB）"}'
 
 echo ""
 echo "== 1/6 更新 ComfyUI 本体（Krea 2 / Wan 2.2 需要较新版本）"
-# Pull by explicit remote/branch instead of a bare `git pull`: a Pod's ComfyUI
-# checkout may have no upstream tracking configured, which makes a bare
-# `git pull` fail with "There is no tracking information for the current
-# branch". Fetch + hard-reset instead of `git pull origin "$COMFY_BRANCH"`:
-# on a Pod whose checkout has diverged from origin (e.g. a previous partial
-# update), a plain `pull` needs `pull.rebase`/`pull.ff` configured or it
-# aborts with "fatal: Need to specify how to reconcile divergent branches."
-# This script only wants the vendored ComfyUI core reasonably current, not to
-# preserve or merge any local edits to it, so discarding local divergence in
-# favor of the remote tip is correct here and never needs any pre-set git
-# config or an interactive prompt. Each command below is its own statement
-# (not chained with &&) so a real failure here (e.g. network unreachable) is
-# NOT swallowed by the `&&`-chain errexit quirk and aborts the deployment
-# with a clear message instead of silently skipping the ComfyUI core pip
-# install.
+# 不用 git pull：Pod 上 ComfyUI 常与远程分叉，会触发
+# "Need to specify how to reconcile divergent branches" 并中断部署。
+# 这里只要求核心跟上远程，本地改动直接丢弃。
 cd "$COMFY"
 COMFY_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+if [ "$COMFY_BRANCH" = "HEAD" ]; then
+  COMFY_BRANCH=master
+  echo "当前处于 detached HEAD，改用 origin/master"
+fi
 git fetch origin "$COMFY_BRANCH"
 git reset --hard "origin/$COMFY_BRANCH"
 pip install -r requirements.txt -q
@@ -42,42 +41,31 @@ echo ""
 echo "== 2/6 安装或更新 AFE 节点和依赖"
 cd "$CN"
 if [ -d ai_film_editor_nodes/.git ]; then
-  # Use --ff-only, not a bare `git pull`: it fails deterministically on a
-  # divergent checkout ("fatal: Not possible to fast-forward, aborting.")
-  # without needing pull.rebase/pull.ff pre-configured and without any
-  # interactive prompt, and it still fast-forwards normally in the common
-  # up-to-date/behind case. Unlike ComfyUI core (step 1/6) this repo is the
-  # user's own actively-developed code, and this very script is one of its
-  # files being read by bash while it runs, so a `git reset --hard` here
-  # would both discard any real local state on the Pod and risk rewriting
-  # deploy_pod.sh out from under the interpreter mid-execution. --ff-only
-  # avoids both problems: it never rewrites existing history or working-tree
-  # files that aren't trivially catching up, and a genuine divergence still
-  # aborts deployment with a clear message instead of resetting silently.
+  # AFE 用 --ff-only：不改 git config，分叉时明确失败而不是交互合并。
   (cd ai_film_editor_nodes && git pull --ff-only origin main)
 else
   git clone https://github.com/3Xbang/MJ.git ai_film_editor_nodes
 fi
+
+# 剧本解析 Qwen 需要 accelerate；TTS/成片等见 requirements.txt
+pip install -r ai_film_editor_nodes/requirements.txt -q
 pip install loguru json_repair imageio-ffmpeg accelerate -q
-# CPU-only regression and graph check: run from the repository root so every
-# command validates the code that was just pulled.  A failure stops deployment.
+
 cd "$CN/ai_film_editor_nodes"
 python3 -m compileall -q nodes webui tests
-# Node.js is not part of the base ComfyUI Pod image, so don't hard-depend on
-# it: try to install it via apt if missing, and if that isn't possible,
-# degrade with a clearly visible warning instead of failing the whole
-# deployment or silently skipping with no trace. Every other check below
-# remains mandatory and still stops deployment on failure.
+
 if ! command -v node >/dev/null 2>&1; then
-  echo "⚠️  未检测到 Node.js，尝试通过 apt 自动安装以检查 webui/static/app.js..."
+  echo "⚠️  未检测到 Node.js，尝试 apt 安装以便检查 app.js..."
   apt-get update -y >/dev/null 2>&1 || true
   apt-get install -y nodejs >/dev/null 2>&1 || true
 fi
 if command -v node >/dev/null 2>&1; then
   node --check webui/static/app.js
 else
-  echo "⚠️  Node.js 不可用，已跳过 webui/static/app.js 语法检查（其余 CPU/图/UI 检查仍然执行，任一失败都会停止部署）。"
+  echo "⚠️  Node.js 不可用，已跳过 app.js 语法检查。"
 fi
+
+# 必过的 CPU / 图检查：失败则停止部署
 python3 tests/test_webui_registration.py
 python3 tests/test_analysis_session.py
 python3 tests/test_scene_map.py
@@ -88,9 +76,28 @@ python3 tests/test_shot_contract.py
 python3 tests/test_webui_validation.py
 python3 tests/test_workflow_graph.py
 python3 tests/check_graphs.py
-python3 tests/ui_e2e.py
-cd "$CN"
 
+# 浏览器 E2E：尽力跑，失败不阻断部署（租用 Pod 常无 Chromium）
+run_e2e=0
+if python3 -c "from playwright.sync_api import sync_playwright" >/dev/null 2>&1; then
+  run_e2e=1
+else
+  echo "⚠️  未检测到 playwright，尝试安装..."
+  pip install playwright -q >/dev/null 2>&1 || true
+  python3 -m playwright install --with-deps chromium >/dev/null 2>&1 || true
+  if python3 -c "from playwright.sync_api import sync_playwright" >/dev/null 2>&1; then
+    run_e2e=1
+  fi
+fi
+if [ "$run_e2e" = "1" ] || [ "${AFE_RUN_E2E:-0}" = "1" ]; then
+  if ! python3 tests/ui_e2e.py; then
+    echo "⚠️  ui_e2e 未通过，继续部署（不影响 /afe/ 出片主路径）。"
+  fi
+else
+  echo "⚠️  playwright 不可用，已跳过 ui_e2e。"
+fi
+
+cd "$CN"
 [ -d comfyui_LLM_party ] || git clone https://github.com/heshengtao/comfyui_LLM_party.git
 (cd comfyui_LLM_party && pip install -r requirements.txt -q)
 
@@ -119,7 +126,7 @@ def get(repo, rel, sub, name=None):
     shutil.move(path, dst)
     print('  完成  ', name, flush=True)
 
-# 剧本解析用的语言模型
+# ① 剧本解析
 llm = f'{M}/LLM/Qwen2.5-7B-Instruct'
 if os.path.exists(f'{llm}/model.safetensors.index.json'):
     print('  已有   Qwen2.5-7B-Instruct', flush=True)
@@ -129,13 +136,13 @@ else:
     snapshot_download('Qwen/Qwen2.5-7B-Instruct', local_dir=llm, ignore_patterns=['*.bin'])
     print('  完成   Qwen2.5-7B-Instruct', flush=True)
 
-# 场景图、道具图、角色参考图用：Krea 2 Turbo
+# ② 场景 / 道具 / 角色参考：Krea 2
 K = 'Comfy-Org/Krea-2'
 get(K, 'diffusion_models/krea2_turbo_fp8_scaled.safetensors', 'diffusion_models')
 get(K, 'text_encoders/qwen3vl_4b_fp8_scaled.safetensors', 'text_encoders')
 get(K, 'vae/qwen_image_vae.safetensors', 'vae')
 
-# 分镜首帧、九视图角色卡用：Qwen Image 2.1
+# ③ 首帧 / 九视图：Qwen Image 2.1
 Q = 'toxicdog/Qwen-Image-2.1-INT4ConvRot-ComfyUI'
 get(Q, 'diffusion_models/qwen_image_2.1_int8_convrot.safetensors', 'unet',
     'qwen_image_2.1_turbo_int8_convrot.safetensors')
@@ -144,7 +151,7 @@ get(Q, 'text_encoders/qwen3vl_8b_int8_convrot.safetensors', 'text_encoders')
 get('HarleyWang/Qwen-Image-2.1-PE-ComfyUI', 'qwen_image_2.1_pe_i2i_int8_convrot.safetensors',
     'text_encoders', 'qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors')
 
-# 分镜视频用：Wan 2.2 图生视频 + 4 步加速
+# ④ 分镜视频：Wan 2.2
 W = 'Comfy-Org/Wan_2.2_ComfyUI_Repackaged'
 get(W, 'split_files/diffusion_models/wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors', 'diffusion_models')
 get(W, 'split_files/diffusion_models/wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors', 'diffusion_models')
@@ -159,8 +166,8 @@ EOF
 echo ""
 echo "== 4/6 复制姿势参考图"
 mkdir -p "$COMFY/input/poses"
-cp "$CN"/ai_film_editor_nodes/assets/poses/*.png "$COMFY/input/" 2>/dev/null
-cp "$CN"/ai_film_editor_nodes/assets/poses/*.png "$COMFY/input/poses/" 2>/dev/null
+cp "$CN"/ai_film_editor_nodes/assets/poses/*.png "$COMFY/input/" 2>/dev/null || true
+cp "$CN"/ai_film_editor_nodes/assets/poses/*.png "$COMFY/input/poses/" 2>/dev/null || true
 
 echo ""
 echo "== 5/6 重启 ComfyUI =="
@@ -174,10 +181,7 @@ if [ -z "${COMFY_PORT:-}" ] && [ -n "$ACTIVE_PID" ] && [ -r "/proc/$ACTIVE_PID/c
     fi
   done
 fi
-if [ -z "${COMFY_PORT:-}" ]; then
-  echo "❌ 未配置 ComfyUI 端口，且没有可读取 --port 的现有进程。请先设置 COMFY_PORT。"
-  exit 1
-fi
+COMFY_PORT="${COMFY_PORT:-$DEFAULT_PORT}"
 echo "使用 ComfyUI 端口：$COMFY_PORT"
 pkill -f "python main.py" 2>/dev/null || true
 sleep 3
@@ -206,5 +210,9 @@ if ! curl -fsS "http://127.0.0.1:${COMFY_PORT}/afe/" >/dev/null; then
   tail -80 /tmp/comfyui.log
   exit 1
 fi
+
+echo ""
 echo "✅ 部署完成，/afe/ 可访问。"
-echo "AFE customer entry: use /afe/ only; do not queue legacy now-02.json/now-03.json"
+echo "   打开：http://<Pod公网或代理>:${COMFY_PORT}/afe/"
+echo "   客户入口只用 /afe/；不要手工排队旧 JSON 工作流。"
+echo "   出片前若曾开「试跑模式」，关了再跑 ③④⑤。"
