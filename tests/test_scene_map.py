@@ -246,6 +246,7 @@ def test_scene_environment_rejects_generic_worker_contamination():
     assert validate_empty_scene_prompt("a locksmith calibrates a device in a workshop")
     assert validate_empty_scene_prompt("a worker with an unlisted device")
     assert not validate_empty_scene_prompt("an orange takeout box with water")
+    assert not validate_empty_scene_prompt("a red taillight reflection crossing wet asphalt")
 
 
 def test_unlisted_article_free_occupation_relations_are_rejected():

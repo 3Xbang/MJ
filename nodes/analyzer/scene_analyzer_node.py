@@ -21,8 +21,15 @@ _ENV_UNPROVEN_RELATION_RE = re.compile(
     re.IGNORECASE,
 )
 _ENV_SUBJECT_ACTION_RE = re.compile(
-    r"\b(?:a|an|the)\s+(?:[a-z][a-z-]*\s+){0,3}[a-z][a-z-]*\s+"
-    r"(?:[a-z][a-z-]*(?:ing|ed|s)|is\s+[a-z][a-z-]*ing)\b",
+    r"\b(?:a|an|the)\s+(?:[a-z][a-z-]*\s+){0,3}(?P<head>[a-z][a-z-]*)\s+"
+    r"(?P<act>[a-z][a-z-]*(?:ing|ed|s)|is\s+[a-z][a-z-]*ing)\b",
+    re.IGNORECASE,
+)
+# Place prose uses participles ("a taillight reflection crossing"). Only a
+# person-shaped head noun makes that pattern an action.
+_ENV_ROLE_HEAD_RE = re.compile(
+    r"(?:smith|person|keeper|officer|worker|operator|inspector|guard|driver|"
+    r"chef|clerk|agent|boy|girl|man|woman|guy|stranger|figure|customer|assistant)$",
     re.IGNORECASE,
 )
 _ENV_EXPLICIT_HUMAN_RE = re.compile(
@@ -129,7 +136,7 @@ def validate_empty_scene_prompt(prompt: str, characters=(), forbidden_facts=(), 
     if match:
         return f"contains an unverified subject/object relation: {match.group(0)}"
     match = _ENV_SUBJECT_ACTION_RE.search(text)
-    if match:
+    if match and _ENV_ROLE_HEAD_RE.search(match.group("head")):
         return f"contains an unverified subject/action relation: {match.group(0)}"
     return ""
 
